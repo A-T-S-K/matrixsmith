@@ -10,13 +10,13 @@ Turn the reviewed bundle into `tests/fixtures/devices/<profile>.json`. Preserve 
 
 ## 2. Define family and profile separately
 
-Add a driver under `src/drivers/<family>/` and register it statically. A driver owns discovery hints, scored matching, protocol codecs, operation planning, and notification decoding. A profile owns product/revision facts: dimensions, expected GATT, orientation, limits, evidence, and per-device validation.
+Add a driver under `src/drivers/<family>/` and add it once to `builtInDrivers`. A driver owns discovery hints, matching, endpoints, semantic probes, codecs, planning, notification decoding, and response matching. Physical profiles live under `src/profiles/`, not under whichever driver was first hypothesized.
 
 Never make a profile dimension a global framebuffer constant. Never treat a generic UUID or name substring as protocol identity.
 
 ## 3. Implement scored matching
 
-Return driver ID, score, confidence (`none`, `weak`, `candidate`, `strong`, `exact`), reasons, and contradictions. Combine independent observations and test partial/misleading cases. Equal top scores are ambiguous and must not select a live driver. Manual evidence affects runtime matching only when explicitly supplied in the fingerprint.
+Return driver ID, score, confidence (`none`, `weak`, `candidate`, `strong`, `exact`), reasons, and contradictions. Equal top scores remain ambiguous. When generations share transport shape, add a read-only, non-persistent semantic probe with a serializable response expectation; never use arbitrary writes or treat silence as proof of the other family.
 
 ## 4. Model evidence, validation, and risk
 
@@ -30,13 +30,13 @@ Keep codecs independent of DOM, browser Bluetooth, and mutable singletons. Recor
 
 ## 6. Plan semantic operations
 
-Extend the `MatrixOperation` union only when needed. The driver translates it and logical frames into one `TransmissionPlan` containing exact packets, endpoint/write mode, validation, evidence, risk/persistence, ACK/retry/timeout policy, metadata, and recovery notes. Lab must display the same plan object the executor receives.
+Extend `MatrixOperation` only when needed. A plan contains exact packets, endpoint/write mode, validation, evidence, semantic risk/persistence, explicit `live`/`dry-run-only` intent, purpose, and response expectation. A characteristic write may still be a read-only semantic query; policy follows semantic risk.
 
 Start new operations dry-run only. Use `FakeTransport` for order/failure/timeout/concurrency tests and `ReplayTransport` or imported bundles for match/decoder tests. Do not simulate device-side success.
 
 ## 7. Validate hardware deliberately
 
-Choose the least risky transient/read-only experiment supported by provenance. Add a narrow policy rule rather than a global developer bypass. Require a memory-only session unlock, visible plan and bytes, one deliberate send, host receipt, separate physical observation, and exported trace. Keep retry count one until safe retry behavior is proven.
+Choose the least risky transient/read-only experiment supported by provenance. Capabilities and explicit plan intent drive policy; do not add driver/opcode/profile special cases. Require deliberate action, raw notification retention, separate host/protocol/state claims, and exported trace. Keep retry count one until safe retry behavior is proven.
 
 After repeated reviewed hardware evidence, promote the specific profile capability from unverified to experimental to verified. Do not promote the entire family or other profiles by association.
 

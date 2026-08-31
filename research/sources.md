@@ -1,11 +1,12 @@
 # Sources and search record
 
-Accessed 2026-08-31 unless noted. Protocol implementation sources are pinned in [coolledx-sources.md](coolledx-sources.md).
+Accessed 2026-08-31 unless noted. Protocol sources are pinned in [coolledx-sources.md](coolledx-sources.md) and [coolledux-sources.md](coolledux-sources.md).
 
 ## Primary licensed protocol sources
 
 - `jean-santos/coolled1248-rs` commit `55d008237c2bcc96bd9c5d34b7c221b3325e71fa` — MIT OR Apache-2.0
 - `UpDryTwist/coolledx-driver` commit `ba24137a4fb63b44896143adbd5862ef74de9fff` — MIT
+- `CharlesLennon/coolledux-ble` commit `4f5656d9882adb4926c9dff4dc3fa5783b40a7ac` — MIT
 
 ## Secondary corroboration
 
@@ -22,4 +23,4 @@ Accessed 2026-08-31 unless noted. Protocol implementation sources are pinned in 
 
 Unrelated medical devices, heaters, battery monitors, watches, and adapters reuse FFF0/F1-family UUIDs. Examples previously reviewed include LepuDemo, homeassistant-diesel-heater, Renogy BT2 Reader, and CMF Watch Pro protocol notes. Generic LED libraries using Triones/LEDBLE/QHM/FEE9 or other characteristics do not identify this profile.
 
-Searches covered exact device/capture/manufacturer strings, UUID permutations, 16×32 LED hats, vendor packages, CoolLED1248/CoolLEDX/CoolLEDM, GitHub issues/repos, app stores, and BLE libraries. The final family candidacy comes from combined evidence and pinned protocol implementations, not the UUID alone.
+The final CoolLEDUX identification comes from the exact iLedHat's structured `0x1F` response plus verified `0x04` echo/visual/readback behavior. UUID shape remains only candidate evidence.

@@ -40,8 +40,8 @@ These match MatrixSmith byte-for-byte. The full Python package could not import 
 
 ## Discrepancies and limits
 
-The licensed sources agree on the tested control framing, opcodes, transfer structure, XOR checksum, and pixel-plane direction. Primary A clamps brightness/speed below `0x10`, while Primary B accepts the full byte range. MatrixSmith's pure encoder preserves the supplied raw byte and leaves range policy to semantic operations; the live iLedHat gate allows only `0x40` and `0xC0`.
+The licensed sources agree on the tested control framing, opcodes, transfer structure, XOR checksum, and pixel-plane direction. Primary A clamps brightness/speed below `0x10`, while Primary B accepts the full byte range. MatrixSmith preserves the supplied raw byte in the independent classic codec, but the iLedHat hardware session rejected the classic brightness hypothesis, so this driver is dry-run-only for that device.
 
 Primary A uses 500 ms in its animation construction; Primary B accepts a 16-bit speed. MatrixSmith models an explicit 16-bit speed and uses the first `FrameSequence` timing for dry-run. Physical timing interpretation remains unverified.
 
-ACK error names are represented by Primary B, while automatic retry behavior is not sufficiently established. MatrixSmith decodes corroborated status bytes, retains raw notifications, and enables no live automatic retry.
+ACK error names are represented by Primary B, while automatic retry behavior is not sufficiently established. The observed `08 FE` response is retained as rejection/error-like without assigning an unproven exact name to `FE`.

@@ -2,20 +2,21 @@
 
 Local-first matrix display control and protocol lab.
 
-MatrixSmith is a source-available static TypeScript PWA for controlling supported matrix displays, inspecting hardware, developing device drivers, and collecting repeatable protocol evidence. The iLedHat 31AE 32×16 panel is the first experimental profile; it is not a global product assumption.
+MatrixSmith is a source-available static TypeScript PWA for controlling supported matrix displays, inspecting hardware, developing device drivers, and collecting repeatable protocol evidence. The hardware-verified CoolLEDUX iLedHat 31AE 32×16 panel is the first profile; it is not a global product assumption.
 
 ## Current capabilities
 
 - generic Web Bluetooth transport with explicit chooser permissions and inspection mode
 - portable device fingerprints, scored driver matching, and separate driver/profile models
 - semantic matrix operations compiled into inspectable, immutable `TransmissionPlan` objects
-- central safety policy and serialized executor with structured host receipts
+- capability-driven safety and serialized execution with separate host/protocol/state results
 - versioned diagnostic bundle export/import and offline matching/replay foundations
-- independently implemented CoolLEDX control framing, escaping, transfer chunking, XOR checksum, RGB bitplane packing, static image, animation, and rendered-text dry runs
+- independent CoolLEDX and CoolLEDUX drivers with shared factual envelope primitives, active read-only family probing, response correlation, and raw/decoded notification retention
+- verified CoolLEDUX device-info and deliberate raw 0–255 brightness Control for the exact iLedHat
 - responsive Control, Inspect, and Lab surfaces for Chrome on Android
 - structured presets under `matrixsmith:v1:` with legacy iLedHat preset reading
 
-Only `SetBrightness` with raw `0x40` or `0xC0` may be sent live to the `iledhat-31ae-32x16` profile, and only from Lab after a memory-only session unlock. Mode, speed, switch, text, image, and animation remain dry-run. There is no arbitrary raw writer.
+Verified CoolLEDUX `GetDeviceInfo` and `SetBrightness` are live only through explicit actions after the session is resolved. Power and other direct commands remain dry-run-only. Persistent content, password set, and OTA are not implemented live. There is no arbitrary raw writer.
 
 ## Development
 
@@ -37,7 +38,7 @@ Web Bluetooth requires a secure context. `localhost` works for desktop developme
 - [Diagnostics](docs/diagnostics.md)
 - [Adding a driver](docs/adding-a-driver.md)
 - [Testing](docs/testing.md)
-- [CoolLEDX research](research/protocol-findings.md)
+- [iLedHat / CoolLEDUX research](research/protocol-findings.md)
 
 ## Privacy and legal status
 
