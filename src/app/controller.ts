@@ -20,6 +20,9 @@ import { transactionId } from "../diagnostics/transactions";
 import type { DiagnosticRun, DiagnosticStepResult } from "../diagnostics/workflows";
 import { findImporter, type ImportedEvidence } from "../diagnostics/importers";
 import { chooseTestBrightness, COOLLEDUX_DIAGNOSTIC_TOOLS, diagnosticRunId } from "../diagnostics/workflows";
+import { CONTENT_VALIDATION_WORKFLOWS, evaluateValidationAnswers, sessionValidationId, type ContentValidationWorkflow, type ValidationAnswer } from "../diagnostics/validation";
+import { contentCompilationId } from "../diagnostics/content-evidence";
+import { diagnosticAnimation, orientationPattern } from "../render/patterns";
 
 export class MatrixController {
   readonly session = new MatrixSession();
@@ -313,6 +316,102 @@ export class MatrixController {
     this.#contentCompilations.splice(0, this.#contentCompilations.length, ...(bundle.contentCompilations ?? []));
     this.#importedEvidence.splice(0, this.#importedEvidence.length, ...(bundle.importedEvidence ?? []));
     return bundle;
+  }
+
+  /**
+   * Transmit a persistent stored-program content plan. Requires the caller
+   * to have shown the exact consequence and received explicit confirmation;
+   * the confirmation is single-use and scoped to this exact plan. Records a
+   * structured content-compilation evidence entry alongside the transaction.
+   */
+  async sendPersistentContent(plan: TransmissionPlan, options: { readonly confirmedConsequence: boolean; readonly extras?: Partial<ContentCompilationRecord> }): Promise<ExecutionResult> {
+    if (plan.risk !== "persistent" && plan.persistence !== "persistent") throw new Error("sendPersistentContent is only for persistent content plans.");
+    if (!options.confirmedConsequence) throw new Error("Persistent content requires explicit confirmation of its exact consequence.");
+    const experimentalWasEnabled = this.session.experimentalTxEnabled;
+    this.session.enableExperimentalTx();
+    this.session.confirmPersistentPlan(plan.id);
+    const transactionIndex = this.#transactions.length;
+    try {
+      const result = await this.#execute(plan, "operation", null);
+      this.#recordCompilation(plan, options.extras, this.#transactions[transactionIndex]?.id ?? null);
+      return result;
+    } finally {
+      this.session.consumePersistentConfirmation();
+      if (!experimentalWasEnabled) this.session.disableExperimentalTx();
+    }
+  }
+
+  contentValidationWorkflows(): readonly ContentValidationWorkflow[] {
+    const driverId = this.session.selection?.selected?.id;
+    if (!driverId || this.session.source !== "live") return [];
+    return CONTENT_VALIDATION_WORKFLOWS.filter((workflow) => workflow.driverId === driverId);
+  }
+
+  /** Build (without transmitting) the diagnostic content plan for a validation workflow. */
+  planValidationContent(workflowId: string): TransmissionPlan {
+    const workflow = CONTENT_VALIDATION_WORKFLOWS.find(({ id }) => id === workflowId);
+    const profile = this.session.profile;
+    if (!workflow || !profile) throw new Error("The validation workflow or device profile is unavailable.");
+    const operation: MatrixOperation = workflowId === "coolledux-validate-animation"
+      ? { type: "ShowAnimation", sequence: diagnosticAnimation(profile.width, profile.height) }
+      : { type: "ShowFrame", frame: orientationPattern(profile.width, profile.height) };
+    return this.plan(operation);
+  }
+
+  /**
+   * Transmit the diagnostic content for a guided hardware-validation
+   * workflow. The transfer result is recorded; the structured answers are
+   * submitted separately once the user has looked at the physical panel.
+   */
+  async runContentValidation(workflowId: string, options: { readonly confirmedConsequence: boolean }): Promise<{ readonly plan: TransmissionPlan; readonly result: ExecutionResult; readonly transactionIds: readonly string[] }> {
+    const workflow = CONTENT_VALIDATION_WORKFLOWS.find(({ id }) => id === workflowId);
+    if (!workflow) throw new Error(`Unknown validation workflow ${workflowId}.`);
+    if (!options.confirmedConsequence) throw new Error(`Explicit confirmation required. ${workflow.consequence}`);
+    const plan = this.planValidationContent(workflowId);
+    const transactionIndex = this.#transactions.length;
+    const result = await this.sendPersistentContent(plan, { confirmedConsequence: true });
+    const transactionIds = this.#transactions.slice(transactionIndex).map(({ id }) => id);
+    return { plan, result, transactionIds };
+  }
+
+  /**
+   * Record the user's structured observations for a validation workflow as
+   * session-scoped evidence. Profile metadata is never silently promoted;
+   * the result feeds the support matrix and reports for this session only.
+   */
+  recordValidationAnswers(workflowId: string, answers: readonly ValidationAnswer[], transactionIds: readonly string[] = []): import("../diagnostics/validation").SessionValidationResult {
+    const workflow = CONTENT_VALIDATION_WORKFLOWS.find(({ id }) => id === workflowId);
+    if (!workflow) throw new Error(`Unknown validation workflow ${workflowId}.`);
+    const outcome = evaluateValidationAnswers(workflow, answers);
+    const validation = {
+      id: sessionValidationId(), workflowId, recordedAt: new Date().toISOString(),
+      profileId: this.session.profile?.id ?? null, status: outcome.status,
+      validatedAreas: outcome.validatedAreas, rejectedAreas: outcome.rejectedAreas,
+      answers: [...answers], transactionIds: [...transactionIds], findings: outcome.findings,
+    };
+    this.#validations.push(validation);
+    this.trace.record("validation.recorded", { workflowId, status: outcome.status, validated: outcome.validatedAreas.join(","), rejected: outcome.rejectedAreas.join(",") });
+    return validation;
+  }
+
+  #recordCompilation(plan: TransmissionPlan, extras: Partial<ContentCompilationRecord> | undefined, transactionId: string | null): void {
+    const metadata = plan.metadata;
+    const number = (key: string): number => typeof metadata[key] === "number" ? metadata[key] as number : 0;
+    const record: ContentCompilationRecord = {
+      id: contentCompilationId(), createdAt: new Date().toISOString(), operation: plan.operation.type,
+      contentType: (metadata.contentType as ContentCompilationRecord["contentType"]) ?? "graffiti",
+      profileId: plan.profileId, width: number("width"), height: number("height"),
+      tileWidth: number("tileWidth"), tileCount: number("tileCount"), programBytes: number("programBytes"),
+      crc32: typeof metadata.crc32 === "string" ? Number.parseInt(metadata.crc32, 16) : 0,
+      compressedBytes: number("compressedBytes"),
+      compression: metadata.compression === "lzss" ? "lzss" : "lzss-safe",
+      chunkCount: number("chunkCount"), pacingMs: number("pacingMs"),
+      ...(typeof metadata.frameCount === "number" ? { frameCount: metadata.frameCount } : {}),
+      ...(transactionId ? { transactionId } : {}),
+      ...extras,
+    };
+    this.#contentCompilations.push(record);
+    this.trace.record("content.compiled", { operation: plan.operation.type, programBytes: record.programBytes, chunkCount: record.chunkCount, crc32: metadata.crc32 ?? null });
   }
 
   /**
