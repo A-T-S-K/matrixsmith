@@ -8,6 +8,14 @@ import type { ProtocolTransaction } from "../diagnostics/transactions";
 import type { DiagnosticRun, DiagnosticTool } from "../diagnostics/workflows";
 import { computeSupportMatrix, type SupportArea } from "../diagnostics/support";
 import type { ImportedEvidence } from "../diagnostics/importers";
+import type { TransmissionPlan } from "../core/transmission";
+import type { ContentValidationWorkflow, ValidationAnswer } from "../diagnostics/validation";
+import { Framebuffer } from "../render/framebuffer";
+import { FrameSequence } from "../render/frame-sequence";
+import { renderText, scrollOffsets } from "../render/font";
+import { diagnosticAnimation } from "../render/patterns";
+import { decodeImageFile, readGifMetadata, type FitMode } from "../render/image";
+import { DEFAULT_CONTENT_SETTINGS, loadContentSettings, saveContentSettings, type ContentSettings } from "../storage/settings";
 
 export type WorkspaceView = "control" | "diagnose" | "develop";
 export type TransactionFilter = "all" | "txrx" | "queries" | "probes" | "diagnostics" | "errors";
@@ -31,7 +39,7 @@ export interface AppSnapshot {
   readonly deviceState: { readonly brightness: number | null; readonly power: string; readonly payloadHex: string | null };
   readonly capabilities: readonly Capability[];
   readonly support: readonly SupportArea[];
-  readonly recommended: { readonly title: string; readonly description: string; readonly action: "connect" | "identify" | "checks" | "none" };
+  readonly recommended: { readonly title: string; readonly description: string; readonly action: "connect" | "identify" | "checks" | "validate-static" | "validate-animation" | "none" };
   readonly diagnosticTools: readonly DiagnosticTool[];
   readonly diagnosticRuns: readonly DiagnosticRun[];
   readonly candidates: readonly DriverCandidateView[];
@@ -45,7 +53,65 @@ export interface AppSnapshot {
   readonly transactionFilter: TransactionFilter;
   readonly transactionSearch: string;
   readonly lastImport: ImportSummary | null;
+  readonly content: ContentState;
+  readonly pendingSend: PendingSend | null;
+  readonly validationWorkflows: readonly ValidationWorkflowView[];
+  readonly validationFlow: ValidationFlowState | null;
+  readonly validations: readonly import("../diagnostics/validation").SessionValidationResult[];
+  readonly contentCompilations: readonly import("../diagnostics/content-evidence").ContentCompilationRecord[];
 }
+
+export interface ContentState {
+  /** Live content sends require a passed static-frame validation this session. */
+  readonly allowed: boolean;
+  readonly allowedReason: string;
+  readonly settings: ContentSettings;
+  readonly textPreview: Framebuffer | null;
+  readonly image: { readonly preview: Framebuffer; readonly sourceWidth: number; readonly sourceHeight: number; readonly fitMode: FitMode; readonly name: string } | null;
+  readonly animationChoice: "diagnostic" | "scroll-text";
+  readonly animationPreview: readonly Framebuffer[];
+  readonly gif: { readonly byteLength: number; readonly width: number | null; readonly height: number | null; readonly warning: string | null; readonly name: string } | null;
+}
+
+export interface PendingSend {
+  readonly planId: string;
+  readonly label: string;
+  readonly consequence: string;
+  readonly packetCount: number;
+  readonly programBytes: number;
+  readonly chunkCount: number;
+  readonly preview: Framebuffer | null;
+}
+
+export interface ValidationWorkflowView {
+  readonly id: string;
+  readonly label: string;
+  readonly risk: string;
+  readonly persistence: string;
+  readonly validation: string;
+  readonly consequence: string;
+  readonly available: boolean;
+  readonly unavailableReason: string | null;
+}
+
+export interface ValidationFlowState {
+  readonly workflowId: string;
+  readonly label: string;
+  readonly consequence: string;
+  readonly stage: "confirm" | "questions" | "done";
+  readonly preview: readonly Framebuffer[];
+  readonly planSummary: { readonly packetCount: number; readonly programBytes: number; readonly chunkCount: number; readonly crc32: string; readonly pacingMs: number } | null;
+  readonly questions: readonly { readonly id: string; readonly prompt: string }[];
+  readonly answers: Readonly<Record<string, ValidationAnswer>>;
+  readonly transactionIds: readonly string[];
+  readonly result: { readonly status: string; readonly findings: readonly string[] } | null;
+}
+
+/** Exact consequence shown before every persistent content transmission. */
+export const PERSISTENT_CONTENT_CONSEQUENCE =
+  "This replaces the currently stored display program with the new content. "
+  + "The device's hardware reset path is known to restore its factory/default content, "
+  + "but automatic content restoration has not been verified.";
 
 export interface ImportSummary {
   readonly deviceName: string | null;
@@ -73,6 +139,20 @@ export class MatrixStore {
   #transactionFilter: TransactionFilter = "all";
   #transactionSearch = "";
   #lastImport: ImportSummary | null = null;
+  #settings: ContentSettings = loadContentSettings();
+  #imageFile: Blob | null = null;
+  #imageName = "";
+  #imageState: ContentState["image"] | null = null;
+  #gifBytes: Uint8Array | null = null;
+  #gifState: ContentState["gif"] | null = null;
+  #animationChoice: "diagnostic" | "scroll-text" = "diagnostic";
+  #pendingSend: { view: PendingSend; plan: TransmissionPlan; extras?: Record<string, string> } | null = null;
+  #validationFlow: {
+    workflowId: string; label: string; consequence: string; stage: "confirm" | "questions" | "done";
+    preview: Framebuffer[]; planSummary: ValidationFlowState["planSummary"];
+    questions: { id: string; prompt: string }[]; answers: Record<string, ValidationAnswer>;
+    transactionIds: string[]; result: { status: string; findings: readonly string[] } | null;
+  } | null = null;
   #snapshot!: AppSnapshot;
 
   constructor(readonly controller: MatrixController, readonly transport: MatrixTransport) {
@@ -115,7 +195,7 @@ export class MatrixStore {
   async identify(): Promise<void> { await this.#run("Running safe identification…", async () => { const run = await this.controller.runDiagnostic("coolledux-identify"); this.#info = run.status === "passed" ? "CoolLEDUX identified from a valid structured 0x1F response." : run.error; }); }
   async runDiagnostic(id: string): Promise<void> { await this.#run("Running diagnostic…", async () => { const run = await this.controller.runDiagnostic(id); this.#info = run.status === "passed" ? "Diagnostic passed." : run.error; }); }
   async refreshInfo(): Promise<void> { await this.runDiagnostic("coolledux-refresh-info"); }
-  async applyBrightness(raw: number): Promise<void> { await this.#run("Applying brightness…", async () => { const command = await this.controller.send(this.controller.plan({ type: "SetBrightness", raw })); if (!command.protocolAcknowledged) throw new Error("Brightness response did not match the command."); const readback = await this.controller.send(this.controller.plan({ type: "GetDeviceInfo" })); const actual = readback.response?.fields.brightnessRaw; if (actual !== raw) throw new Error(`Brightness readback mismatch: expected ${raw}; received ${String(actual)}.`); this.#info = `Brightness ${raw} verified by device-info readback.`; }); }
+  async applyBrightness(raw: number): Promise<void> { this.updateContentSettings({ lastBrightness: raw }); await this.#run("Applying brightness…", async () => { const command = await this.controller.send(this.controller.plan({ type: "SetBrightness", raw })); if (!command.protocolAcknowledged) throw new Error("Brightness response did not match the command."); const readback = await this.controller.send(this.controller.plan({ type: "GetDeviceInfo" })); const actual = readback.response?.fields.brightnessRaw; if (actual !== raw) throw new Error(`Brightness readback mismatch: expected ${raw}; received ${String(actual)}.`); this.#info = `Brightness ${raw} verified by device-info readback.`; }); }
   async readCharacteristic(endpoint: GattEndpoint): Promise<void> { await this.#run("Reading characteristic…", async () => { const value = await this.controller.read(endpoint); this.#info = `Read ${value.length} byte(s). The transaction retains exact bytes.`; }); }
   async toggleSubscription(endpoint: GattEndpoint): Promise<void> { const key = endpointKey(endpoint); await this.#run(this.#subscriptions.has(key) ? "Unsubscribing…" : "Subscribing…", async () => { if (this.#subscriptions.has(key)) throw new Error("Unsubscribe is available after disconnect in this transport adapter."); await this.controller.enableNotifications(endpoint); this.#subscriptions.add(key); this.#info = "Notifications subscribed."; }); }
   recordObservation(summary: string): void { this.controller.recordObservation(summary); this.#info = "Observation recorded for this session."; this.#emit(); }
@@ -151,6 +231,233 @@ export class MatrixStore {
   }
   download(filename: string, content: string, type: string): void { const url = URL.createObjectURL(new Blob([content], { type })); const anchor = document.createElement("a"); anchor.href = url; anchor.download = filename; anchor.click(); URL.revokeObjectURL(url); }
 
+  // ---- Content configuration -------------------------------------------
+
+  updateContentSettings(partial: Partial<ContentSettings>): void {
+    this.#settings = { ...this.#settings, ...partial, schemaVersion: 1 };
+    saveContentSettings(this.#settings);
+    this.#emit();
+  }
+
+  resetContentSettings(): void { this.#settings = DEFAULT_CONTENT_SETTINGS; saveContentSettings(this.#settings); this.#emit(); }
+
+  setAnimationChoice(choice: "diagnostic" | "scroll-text"): void { this.#animationChoice = choice; this.#emit(); }
+
+  async loadImage(file: Blob, name: string): Promise<void> {
+    await this.#run("Decoding image…", async () => {
+      const profile = this.controller.session.profile;
+      if (!profile) throw new Error("Connect and identify a display before importing an image.");
+      const decoded = await decodeImageFile(file, profile.width, profile.height, this.#settings.imageFitMode);
+      this.#imageFile = file;
+      this.#imageName = name;
+      this.#imageState = { preview: decoded.frame, sourceWidth: decoded.sourceWidth, sourceHeight: decoded.sourceHeight, fitMode: decoded.fitMode, name };
+      this.#info = `Image decoded locally to ${profile.width}×${profile.height}. Nothing was uploaded anywhere.`;
+    });
+  }
+
+  async setImageFit(mode: FitMode): Promise<void> {
+    this.updateContentSettings({ imageFitMode: mode });
+    if (this.#imageFile) await this.loadImage(this.#imageFile, this.#imageName);
+  }
+
+  async loadGif(file: Blob, name: string): Promise<void> {
+    await this.#run("Reading GIF…", async () => {
+      const profile = this.controller.session.profile;
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      const meta = readGifMetadata(bytes);
+      if (!meta.isGif) throw new Error("That file is not a GIF (missing GIF87a/GIF89a header).");
+      const warning = profile && meta.width !== null && meta.height !== null && (meta.width > profile.width || meta.height > profile.height)
+        ? `GIF canvas ${meta.width}×${meta.height} exceeds the ${profile.width}×${profile.height} display; only source-tested up to 8 columns per segment.`
+        : profile && meta.width !== null && meta.width > 8
+          ? `GIF wider than 8 columns: the native GIF path is only source-verified inside the untiled 8-column zone.`
+          : null;
+      this.#gifBytes = bytes;
+      this.#gifState = { byteLength: meta.byteLength, width: meta.width, height: meta.height, warning, name };
+      this.#info = "GIF read locally. Nothing was uploaded anywhere.";
+    });
+  }
+
+  // ---- Persistent content sends (explicit consequence confirmation) ----
+
+  requestSendText(): void { this.#requestContentSend("Send rendered text", () => {
+    const profile = this.#requireProfile();
+    const frame = this.#renderTextFrame(profile.width, profile.height);
+    if (!frame) throw new Error("Enter text before sending.");
+    return { plan: this.controller.plan({ type: "ShowText", text: this.#settings.text, frame }), preview: frame, extras: { textContent: this.#settings.text, textRendering: "local bitmap renderer (embedded 5x7 font)" } };
+  }); }
+
+  requestSendImage(): void { this.#requestContentSend("Send image", () => {
+    const image = this.#imageState;
+    if (!image) throw new Error("Choose an image first.");
+    return { plan: this.controller.plan({ type: "ShowFrame", frame: image.preview }), preview: image.preview, extras: { sourceDimensions: `${image.sourceWidth}×${image.sourceHeight}`, fitMode: image.fitMode } };
+  }); }
+
+  requestSendAnimation(): void { this.#requestContentSend("Send animation", () => {
+    const sequence = this.#buildAnimationSequence();
+    return { plan: this.controller.plan({ type: "ShowAnimation", sequence }), preview: sequence.frames[0] ?? null };
+  }); }
+
+  requestSendGif(): void { this.#requestContentSend("Send GIF", () => {
+    const profile = this.#requireProfile();
+    const bytes = this.#gifBytes;
+    const meta = this.#gifState;
+    if (!bytes || !meta) throw new Error("Choose a GIF first.");
+    const width = Math.min(meta.width ?? profile.width, profile.width);
+    const height = Math.min(meta.height ?? profile.height, profile.height);
+    return { plan: this.controller.plan({ type: "ShowGif", gifBytes: bytes, width, height }), preview: null };
+  }); }
+
+  cancelPendingSend(): void { this.#pendingSend = null; this.#emit(); }
+
+  async confirmPendingSend(): Promise<void> {
+    const pending = this.#pendingSend;
+    if (!pending) return;
+    await this.#run("Transmitting stored program…", async () => {
+      await this.controller.sendPersistentContent(pending.plan, { confirmedConsequence: true, extras: pending.extras });
+      this.#pendingSend = null;
+      this.#info = "Content transferred. The stored display program was replaced.";
+    });
+    this.#emit();
+  }
+
+  #requestContentSend(label: string, build: () => { plan: TransmissionPlan; preview: Framebuffer | null; extras?: Record<string, string> }): void {
+    this.#error = null;
+    try {
+      if (!this.#contentAllowed().allowed) throw new Error("Content sends are gated until the static framebuffer validation passes on this session. Run it from Diagnose.");
+      const { plan, preview, extras } = build();
+      this.#pendingSend = {
+        plan,
+        ...(extras ? { extras } : {}),
+        view: {
+          planId: plan.id, label, consequence: PERSISTENT_CONTENT_CONSEQUENCE,
+          packetCount: plan.packets.length,
+          programBytes: typeof plan.metadata.programBytes === "number" ? plan.metadata.programBytes : 0,
+          chunkCount: typeof plan.metadata.chunkCount === "number" ? plan.metadata.chunkCount : 0,
+          preview,
+        },
+      };
+    } catch (error) {
+      this.#error = error instanceof Error ? error.message : String(error);
+    }
+    this.#emit();
+  }
+
+  // ---- Guided hardware validation --------------------------------------
+
+  startValidation(workflowId: string): void {
+    this.#error = null;
+    try {
+      const workflow = this.#findWorkflow(workflowId);
+      const plan = this.controller.planValidationContent(workflowId);
+      const preview = workflowId === "coolledux-validate-animation"
+        ? [...diagnosticAnimation(this.#requireProfile().width, this.#requireProfile().height).frames]
+        : [this.#validationPatternPreview()];
+      this.#validationFlow = {
+        workflowId, label: workflow.label, consequence: workflow.consequence, stage: "confirm",
+        preview,
+        planSummary: {
+          packetCount: plan.packets.length,
+          programBytes: typeof plan.metadata.programBytes === "number" ? plan.metadata.programBytes : 0,
+          chunkCount: typeof plan.metadata.chunkCount === "number" ? plan.metadata.chunkCount : 0,
+          crc32: typeof plan.metadata.crc32 === "string" ? plan.metadata.crc32 : "unknown",
+          pacingMs: typeof plan.metadata.pacingMs === "number" ? plan.metadata.pacingMs : 0,
+        },
+        questions: workflow.questions.map(({ id, prompt }) => ({ id, prompt })),
+        answers: {}, transactionIds: [], result: null,
+      };
+    } catch (error) {
+      this.#error = error instanceof Error ? error.message : String(error);
+    }
+    this.#emit();
+  }
+
+  async confirmValidationTransfer(): Promise<void> {
+    const flow = this.#validationFlow;
+    if (!flow || flow.stage !== "confirm") return;
+    await this.#run("Transferring diagnostic content…", async () => {
+      const { transactionIds } = await this.controller.runContentValidation(flow.workflowId, { confirmedConsequence: true });
+      flow.transactionIds = [...transactionIds];
+      flow.stage = "questions";
+      this.#info = "Diagnostic content transferred. Look at the physical panel, then answer the questions.";
+    });
+    this.#emit();
+  }
+
+  setValidationAnswer(questionId: string, answer: "yes" | "no" | "unsure", note?: string): void {
+    const flow = this.#validationFlow;
+    if (!flow) return;
+    flow.answers[questionId] = { questionId, answer, ...(note ? { note } : {}) };
+    this.#emit();
+  }
+
+  submitValidationAnswers(): void {
+    const flow = this.#validationFlow;
+    if (!flow || flow.stage !== "questions") return;
+    try {
+      const validation = this.controller.recordValidationAnswers(flow.workflowId, Object.values(flow.answers), flow.transactionIds);
+      flow.result = { status: validation.status, findings: validation.findings };
+      flow.stage = "done";
+      this.#info = validation.status === "passed"
+        ? "Validation passed on this physical session. The support matrix and reports now reflect it."
+        : validation.status === "failed"
+          ? "Validation failed; the rejected areas are recorded as evidence. Copy the report before retrying."
+          : "Validation recorded as inconclusive; unanswered questions stay untested.";
+    } catch (error) {
+      this.#error = error instanceof Error ? error.message : String(error);
+    }
+    this.#emit();
+  }
+
+  closeValidation(): void { this.#validationFlow = null; this.#emit(); }
+
+  #findWorkflow(workflowId: string): ContentValidationWorkflow {
+    const workflow = this.controller.contentValidationWorkflows().find(({ id }) => id === workflowId);
+    if (!workflow) throw new Error("This validation workflow is unavailable for the current session.");
+    return workflow;
+  }
+
+  #requireProfile(): { width: number; height: number } {
+    const profile = this.controller.session.profile;
+    if (!profile) throw new Error("No device profile is resolved.");
+    return profile;
+  }
+
+  #validationPatternPreview(): Framebuffer {
+    const profile = this.#requireProfile();
+    return diagnosticAnimation(profile.width, profile.height).frames[0]!;
+  }
+
+  #renderTextFrame(width: number, height: number): Framebuffer | null {
+    if (!this.#settings.text.trim()) return null;
+    return renderText(this.#settings.text, width, height, {
+      color: hexToRgb(this.#settings.textColor),
+      background: hexToRgb(this.#settings.textBackground),
+      alignment: this.#settings.textAlignment,
+    });
+  }
+
+  #buildAnimationSequence(): FrameSequence {
+    const profile = this.#requireProfile();
+    if (this.#animationChoice === "diagnostic") return diagnosticAnimation(profile.width, profile.height);
+    const text = this.#settings.text.trim();
+    if (!text) throw new Error("Enter text to build a scrolling-text animation.");
+    const offsets = scrollOffsets(text, profile.width, 2);
+    const frames = offsets.map((offset) => renderText(text, profile.width, profile.height, {
+      color: hexToRgb(this.#settings.textColor), background: hexToRgb(this.#settings.textBackground), alignment: "left", offsetX: offset,
+    }));
+    return new FrameSequence(frames, frames.map(() => ({ milliseconds: 120 })));
+  }
+
+  #contentAllowed(): { allowed: boolean; reason: string } {
+    const session = this.controller.session;
+    const live = session.source === "live" && this.transport.state === "connected";
+    if (!live) return { allowed: false, reason: "Live content requires a connected physical display." };
+    if (!session.selection?.selected || !session.profile) return { allowed: false, reason: "Run safe identification first." };
+    const validated = this.controller.validations.some((validation) => validation.validatedAreas.includes("static-frame"));
+    if (!validated) return { allowed: false, reason: "Validate the static framebuffer first (Diagnose → Validate static framebuffer). Content stays preview-only until then." };
+    return { allowed: true, reason: "Static framebuffer validated on this session." };
+  }
+
   async #run(label: string, action: () => Promise<void>): Promise<void> { this.#busy = label; this.#error = null; this.#emit(); try { await action(); } catch (error) { this.#error = error instanceof Error ? error.message : String(error); } finally { this.#busy = null; this.#emit(); } }
   #emit(): void { this.#rebuild(); for (const listener of this.#listeners) listener(); }
   #rebuild(): void {
@@ -158,9 +465,39 @@ export class MatrixStore {
     const capabilities = driver && profile ? driver.capabilities(profile) : [];
     const transactions = filterTransactions(this.controller.transactions, this.#transactionFilter, this.#transactionSearch);
     const liveConnected = session.source === "live" && this.transport.state === "connected";
-    this.#snapshot = Object.freeze({ page: this.#page, view: this.#view, connection: this.transport.state, source: session.source, liveConnected, busy: this.#busy, error: this.#error, info: this.#info, bluetoothSupported: "bluetooth" in navigator, previouslyAuthorized: this.#previouslyAuthorized, device: fingerprint ? { name: fingerprint.name ?? "Unnamed display", connectionLabel: session.source === "imported" ? "Offline report" : this.transport.state === "connected" ? "Connected" : this.transport.state, protocol: driver?.family ?? (session.selection?.ambiguous ? "Ambiguous protocol" : "Unknown protocol"), support: driver ? "Supported" : session.selection?.ambiguous ? "Identification required" : "Support unknown", liveGeometry: fingerprint.manuallyConfirmedGeometry ? `${fingerprint.manuallyConfirmedGeometry.width}×${fingerprint.manuallyConfirmedGeometry.height} · manually confirmed` : "Unknown", profileGeometry: profile ? `${profile.width}×${profile.height} · ${profile.id}` : "Unknown", advertisementGeometry: "Not derived in this session", profileId: profile?.id ?? null } : null, deviceState: { brightness: typeof info?.fields.brightnessRaw === "number" ? info.fields.brightnessRaw : null, power: info ? info.fields.powerOn === true ? "On" : `Raw ${String(info.fields.powerRaw)}` : "Unknown", payloadHex: info?.payloadHex ?? null }, capabilities, support: computeSupportMatrix({ connected: Boolean(fingerprint), live: liveConnected, resolvedDriverId: driver?.id ?? null, capabilities, validations: this.controller.validations }), recommended: recommendedAction(Boolean(fingerprint), Boolean(driver), session.selection?.ambiguous ?? false, liveConnected), diagnosticTools: this.controller.diagnosticTools(), diagnosticRuns: this.controller.diagnosticRuns, candidates: (session.selection?.matches ?? []).map((match) => ({ id: match.driverId, family: this.controller.registry.drivers.find((d) => d.id === match.driverId)?.family ?? match.driverId, state: match.driverId === driver?.id ? "VERIFIED ON THIS SESSION" : match.score <= 0 ? "Rejected for this profile" : "Candidate", summary: match.driverId === "coolledux" ? match.driverId === driver?.id ? session.protocolResolution?.summary ?? "Resolved by evidence." : "Shared FFF0/F1 transport" : match.contradictions[0] ?? "Shared FFF0/F1 transport; no verified read-only discriminator available", score: match.score, reasons: match.reasons, contradictions: match.contradictions, canIdentify: match.driverId === "coolledux" && !driver && this.transport.state === "connected" })), gatt: (fingerprint?.services ?? []).map((service) => ({ uuid: service.uuid, primary: service.isPrimary, characteristics: service.characteristics.map((c) => ({ serviceUuid: service.uuid, uuid: c.uuid, properties: Object.entries(c.properties).filter(([, enabled]) => enabled).map(([key]) => key), canRead: c.properties.read, canSubscribe: c.properties.notify || c.properties.indicate, subscribed: this.#subscriptions.has(endpointKey({ serviceUuid: service.uuid, characteristicUuid: c.uuid })) })) })), transactions, rawEvents: this.controller.trace.events, observations: this.controller.observations, reportOpen: this.#reportOpen, reportOptions: this.#reportOptions, reportMarkdown: fingerprint ? this.markdown() : "", transactionFilter: this.#transactionFilter, transactionSearch: this.#transactionSearch, lastImport: this.#lastImport });
+    this.#snapshot = Object.freeze({ page: this.#page, view: this.#view, connection: this.transport.state, source: session.source, liveConnected, busy: this.#busy, error: this.#error, info: this.#info, bluetoothSupported: "bluetooth" in navigator, previouslyAuthorized: this.#previouslyAuthorized, device: fingerprint ? { name: fingerprint.name ?? "Unnamed display", connectionLabel: session.source === "imported" ? "Offline report" : this.transport.state === "connected" ? "Connected" : this.transport.state, protocol: driver?.family ?? (session.selection?.ambiguous ? "Ambiguous protocol" : "Unknown protocol"), support: driver ? "Supported" : session.selection?.ambiguous ? "Identification required" : "Support unknown", liveGeometry: fingerprint.manuallyConfirmedGeometry ? `${fingerprint.manuallyConfirmedGeometry.width}×${fingerprint.manuallyConfirmedGeometry.height} · manually confirmed` : "Unknown", profileGeometry: profile ? `${profile.width}×${profile.height} · ${profile.id}` : "Unknown", advertisementGeometry: "Not derived in this session", profileId: profile?.id ?? null } : null, deviceState: { brightness: typeof info?.fields.brightnessRaw === "number" ? info.fields.brightnessRaw : null, power: info ? info.fields.powerOn === true ? "On" : `Raw ${String(info.fields.powerRaw)}` : "Unknown", payloadHex: info?.payloadHex ?? null }, capabilities, support: computeSupportMatrix({ connected: Boolean(fingerprint), live: liveConnected, resolvedDriverId: driver?.id ?? null, capabilities, validations: this.controller.validations }), recommended: recommendedAction(Boolean(fingerprint), Boolean(driver), session.selection?.ambiguous ?? false, liveConnected, this.controller.validations), diagnosticTools: this.controller.diagnosticTools(), diagnosticRuns: this.controller.diagnosticRuns, candidates: (session.selection?.matches ?? []).map((match) => ({ id: match.driverId, family: this.controller.registry.drivers.find((d) => d.id === match.driverId)?.family ?? match.driverId, state: match.driverId === driver?.id ? "VERIFIED ON THIS SESSION" : match.score <= 0 ? "Rejected for this profile" : "Candidate", summary: match.driverId === "coolledux" ? match.driverId === driver?.id ? session.protocolResolution?.summary ?? "Resolved by evidence." : "Shared FFF0/F1 transport" : match.contradictions[0] ?? "Shared FFF0/F1 transport; no verified read-only discriminator available", score: match.score, reasons: match.reasons, contradictions: match.contradictions, canIdentify: match.driverId === "coolledux" && !driver && this.transport.state === "connected" })), gatt: (fingerprint?.services ?? []).map((service) => ({ uuid: service.uuid, primary: service.isPrimary, characteristics: service.characteristics.map((c) => ({ serviceUuid: service.uuid, uuid: c.uuid, properties: Object.entries(c.properties).filter(([, enabled]) => enabled).map(([key]) => key), canRead: c.properties.read, canSubscribe: c.properties.notify || c.properties.indicate, subscribed: this.#subscriptions.has(endpointKey({ serviceUuid: service.uuid, characteristicUuid: c.uuid })) })) })), transactions, rawEvents: this.controller.trace.events, observations: this.controller.observations, reportOpen: this.#reportOpen, reportOptions: this.#reportOptions, reportMarkdown: fingerprint ? this.markdown() : "", transactionFilter: this.#transactionFilter, transactionSearch: this.#transactionSearch, lastImport: this.#lastImport,
+      content: this.#contentState(profile), pendingSend: this.#pendingSend?.view ?? null,
+      validationWorkflows: this.#validationWorkflowViews(),
+      validationFlow: this.#validationFlow ? { ...this.#validationFlow, preview: [...this.#validationFlow.preview], questions: [...this.#validationFlow.questions], answers: { ...this.#validationFlow.answers }, transactionIds: [...this.#validationFlow.transactionIds] } : null,
+      validations: this.controller.validations, contentCompilations: this.controller.contentCompilations });
   }
+  #contentState(profile: { width: number; height: number } | null): ContentState {
+    const gate = this.#contentAllowed();
+    return {
+      allowed: gate.allowed, allowedReason: gate.reason, settings: this.#settings,
+      textPreview: profile ? this.#renderTextFrame(profile.width, profile.height) : null,
+      image: this.#imageState,
+      animationChoice: this.#animationChoice,
+      animationPreview: profile ? [...diagnosticAnimation(profile.width, profile.height).frames] : [],
+      gif: this.#gifState,
+    };
+  }
+
+  #validationWorkflowViews(): ValidationWorkflowView[] {
+    const live = this.controller.session.source === "live" && this.transport.state === "connected";
+    return this.controller.contentValidationWorkflows().map((workflow) => ({
+      id: workflow.id, label: workflow.label, risk: workflow.risk, persistence: workflow.persistence,
+      validation: workflow.validation, consequence: workflow.consequence,
+      available: live, unavailableReason: live ? null : "Live validation requires a connected physical display.",
+    }));
+  }
+
   #reportData(): ReportData { const session = this.controller.session; const fingerprint = session.fingerprint; if (!fingerprint) throw new Error("No device evidence is available for a report."); const driver = session.selection?.selected; return { createdAt: new Date().toISOString(), matrixsmithVersion: "0.1.0", fingerprint, profile: session.profile, selectedDriver: driver?.id ?? null, driverMatches: session.selection?.matches ?? [], capabilities: driver && session.profile ? driver.capabilities(session.profile) : [], transactions: this.controller.transactions, diagnosticRuns: this.controller.diagnosticRuns, observations: this.controller.observations, trace: this.controller.trace.events, protocolResolution: session.protocolResolution, validations: this.controller.validations, contentCompilations: this.controller.contentCompilations, importedEvidence: this.controller.importedEvidence, liveConnected: session.source === "live" && this.transport.state === "connected", source: session.source }; }
+}
+
+function hexToRgb(hex: string): { r: number; g: number; b: number } {
+  const value = hex.replace("#", "");
+  return { r: Number.parseInt(value.slice(0, 2), 16) || 0, g: Number.parseInt(value.slice(2, 4), 16) || 0, b: Number.parseInt(value.slice(4, 6), 16) || 0 };
 }
 
 function summarizeImport(evidence: ImportedEvidence): ImportSummary {
@@ -181,5 +518,17 @@ export function useMatrixSnapshot(store: MatrixStore): AppSnapshot { return useS
 function endpointKey(endpoint: GattEndpoint): string { return `${endpoint.serviceUuid.toLowerCase()}/${endpoint.characteristicUuid.toLowerCase()}`; }
 /** Turns user text like "FFF0, a950" into chooser-ready service UUIDs; 4-hex shorthand expands to the full base UUID. */
 export function parseServiceHints(text: string): BluetoothServiceUUID[] { return [...new Set(text.split(/[\s,;]+/).map((value) => value.trim()).filter(Boolean).map(normalizeUuid))]; }
-export function recommendedAction(connected: boolean, resolved: boolean, ambiguous: boolean, live = true): AppSnapshot["recommended"] { if (!connected) return { title: "Connect display", description: "Connect a supported display or open an existing diagnostic report.", action: "connect" }; if (!live) return { title: "Review imported evidence", description: "This is an offline report. Explore Diagnose and Develop; live operations remain blocked.", action: "none" }; if (ambiguous && !resolved) return { title: "Run safe identification", description: "Use the verified read-only CoolLEDUX device-info query to resolve this shared GATT profile.", action: "identify" }; if (resolved) return { title: "Run safe device checks", description: "Refresh device info, or explicitly validate brightness with automatic restoration.", action: "checks" }; return { title: "Collect GATT evidence", description: "No safe family probe is available. Inspect services without writing.", action: "none" }; }
+export function recommendedAction(connected: boolean, resolved: boolean, ambiguous: boolean, live = true, validations: readonly import("../diagnostics/validation").SessionValidationResult[] = []): AppSnapshot["recommended"] {
+  if (!connected) return { title: "Connect display", description: "Connect a supported display or open an existing diagnostic report.", action: "connect" };
+  if (!live) return { title: "Review imported evidence", description: "This is an offline report. Explore Diagnose and Develop; live operations remain blocked.", action: "none" };
+  if (ambiguous && !resolved) return { title: "Run safe identification", description: "Use the verified read-only CoolLEDUX device-info query to resolve this shared GATT profile.", action: "identify" };
+  if (resolved) {
+    const validated = (area: string): boolean => validations.some((validation) => validation.validatedAreas.includes(area as never));
+    const rejected = (area: string): boolean => validations.some((validation) => validation.rejectedAreas.includes(area as never));
+    if (!validated("static-frame") && !rejected("static-frame")) return { title: "Validate static framebuffer", description: "Run the guided orientation/color diagnostic. It replaces the stored display content and asks structured questions about what the panel shows.", action: "validate-static" };
+    if (validated("static-frame") && !validated("animation") && !rejected("animation")) return { title: "Validate animation", description: "Run the guided two-frame diagnostic animation to verify frame ordering, timing, and tile synchronization.", action: "validate-animation" };
+    return { title: "Run safe device checks", description: "Refresh device info, or explicitly validate brightness with automatic restoration.", action: "checks" };
+  }
+  return { title: "Collect GATT evidence", description: "No safe family probe is available. Inspect services without writing.", action: "none" };
+}
 function filterTransactions(values: readonly ProtocolTransaction[], filter: TransactionFilter, search: string): ProtocolTransaction[] { const query = search.trim().toLowerCase(); return values.filter((t) => { const matchesFilter = filter === "all" || filter === "txrx" && t.packets.length > 0 || filter === "queries" && /get|read/i.test(t.operation) || filter === "probes" && t.source === "probe" || filter === "diagnostics" && t.source === "diagnostic" || filter === "errors" && Boolean(t.error || t.responseTimedOut); if (!matchesFilter) return false; if (!query) return true; return [t.operation, t.driverId, t.decodedResponse?.summary, ...t.packets.map((p) => p.hex), t.decodedResponse?.opcode === undefined ? "" : `0x${t.decodedResponse.opcode.toString(16)}`].some((value) => String(value ?? "").toLowerCase().includes(query)); }); }

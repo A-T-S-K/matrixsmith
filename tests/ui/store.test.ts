@@ -46,7 +46,7 @@ describe("recommended next action", () => {
     expect(recommendedAction(true, false, true).action).toBe("identify");
   });
   it("offers safe device checks once identified", () => {
-    expect(recommendedAction(true, true, false).action).toBe("checks");
+    expect(recommendedAction(true, true, false).action).toBe("validate-static");
   });
   it("falls back to evidence collection when no safe probe exists", () => {
     expect(recommendedAction(true, false, false).action).toBe("none");
@@ -67,7 +67,7 @@ describe("workspace snapshot", () => {
     expect(snapshot.candidates.some((c) => c.canIdentify)).toBe(true);
     await store.identify();
     snapshot = store.getSnapshot();
-    expect(snapshot.recommended.action).toBe("checks");
+    expect(snapshot.recommended.action).toBe("validate-static");
     expect(snapshot.candidates.find((c) => c.id === "coolledux")?.state).toBe("VERIFIED ON THIS SESSION");
     expect(snapshot.support.find((row) => row.label === "Protocol identity")?.state).toBe("Verified");
     expect(snapshot.deviceState.brightness).toBe(0xcc);
