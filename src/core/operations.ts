@@ -4,6 +4,7 @@ import type { FrameSequence } from "../render/frame-sequence";
 export type DisplayMode = "static" | "left" | "right" | "up" | "down" | "snowflake" | "picture" | "laser";
 
 export type MatrixOperation =
+  | { readonly type: "GetDeviceInfo" }
   | { readonly type: "SetBrightness"; readonly raw: number }
   | { readonly type: "SetScrollSpeed"; readonly raw: number }
   | { readonly type: "SetDisplayMode"; readonly mode: DisplayMode }

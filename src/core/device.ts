@@ -27,6 +27,10 @@ export interface DeviceFingerprint {
   readonly browserDeviceId?: string;
   readonly name?: string;
   readonly advertisedServices: readonly string[];
+  /** Services placed in requestDevice filters; these are requests, not observations. */
+  readonly requestedServices?: readonly string[];
+  /** Services the browser granted and that GATT enumeration made accessible. */
+  readonly browserGrantedServices?: readonly string[];
   readonly rawAdvertisementHex?: string;
   readonly manufacturerDataHex?: string;
   readonly services: readonly GattServiceFingerprint[];

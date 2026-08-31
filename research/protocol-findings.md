@@ -1,76 +1,61 @@
-# iLedHat / CoolLEDX protocol findings
+# iLedHat protocol findings
 
-Research date: 2026-08-31
+Research and hardware-validation date: 2026-08-31
 
 ## Current decision
 
-The observed iLedHat is a strong CoolLEDX candidate, not a verified CoolLEDX device. FFF0/FFF1 alone is non-identifying; the score combines name, advertisement, AE31 manufacturer prefix when available, complete GATT shape, and characteristic properties. The checked-in profile remains experimental.
+The physical 32×16 `iLedHat` is a hardware-verified **CoolLEDUX** device. CoolLEDX and CoolLEDUX share FFF0/FFF1 and the `0x01…0x03` escaped envelope, so static browser-visible GATT evidence is honestly ambiguous. An explicit read-only CoolLEDUX `0x1F` device-info probe resolves the protocol family for a session.
 
-MatrixSmith implements the licensed-evidence-backed family codec offline. Only brightness raw `0x40` and `0xC0` may cross the live policy, in Lab, after explicit session unlock and exact-plan review. Successful browser write resolution is not profile verification.
+The earlier CoolLEDX hypothesis is retained as rejected evidence: classic brightness TX `01 00 02 06 08 40 03` produced RX `01 00 02 06 08 FE 03` and no visible brightness change. The decoded payload is `08 FE`; `FE` is rejection/error-like in this observation, but its exact semantics are not mapped.
 
-## Observed physical profile
+## Physical evidence
 
-| Fact | Confidence / validation |
+| Fact | Result |
 |---|---|
-| name `iLedHat` and raw advertisement | observed |
-| advertised service FFF0 | observed |
-| manufacturer bytes `AE315EEA07000001100020031E` | observed |
-| boot-visible identifier `31AE` | observed |
-| primary FFF0, single FFF1 | observed |
-| FFF1 READ, NOTIFY, WRITE WITHOUT RESPONSE | observed |
-| FFF1 read returned zero bytes | observed |
-| notifications enabled; no unsolicited packet in test | observed |
-| pairing/bonding not required | observed |
-| physical geometry 32×16 | manually observed |
-| bytes 10 and 20 correlate with 16 and 32 | inferred correlation, not parser truth |
-| original stored message `FREE LLM TOKENS :-)` | observed |
-| long-ish power-button action displayed `reset` | observed; timing/meaning unknown |
-| post-reset scrolling text `coolled` | observed |
-| advertisement unchanged near full battery | observed; therefore 0x1E is not live battery state of charge |
+| BLE name / scanner address | `iLedHat` / `01:00:00:21:CC:99` |
+| service / characteristic | FFF0 / FFF1 |
+| properties | READ, NOTIFY, WRITE WITHOUT RESPONSE |
+| manufacturer company field | `AE 31` = `0x31AE` little-endian |
+| vendor identifier bytes | `5E EA 07 00 00 01`; semantics unknown, not called a MAC |
+| advertisement layout | height 16, width BE16 32, `colorModeRaw=3`, `firmwareRaw=30` |
+| initial `0x1F` response | 48-byte payload beginning `1F 01 CC` |
+| brightness TX / RX | `01 00 02 06 04 40 03` / identical echo |
+| physical result | panel visibly dimmed |
+| follow-up `0x1F` response | 48-byte payload beginning `1F 01 40` |
 
-## Corroborated CoolLEDX family facts
+Confirmed device-info prefix only: payload byte 0 is opcode `0x1F`, byte 1 is power state (`0x01` observed on), and byte 2 is raw brightness. All later bytes remain opaque and are preserved exactly. The parser intentionally accepts other response lengths with the same minimum prefix.
 
-Control frame:
+## Shared wire facts
+
+Both generations use:
 
 ```text
-01 || escape(length_be16 || opcode || args) || 03
+01 || escape(length_be16 || payload) || 03
 01 -> 02 05
 02 -> 02 06
 03 -> 02 07
-00 is unchanged
 ```
 
-Corroborated opcodes: text 02, image 03, animation 04, mode 06, speed 07, brightness 08, switch 09. Transfer content uses 128-byte chunks with reserved byte, full content length BE16, chunk index BE16, size U8, data, and XOR checksum, framed with the content opcode. RGB frame bits are column-major separate R/G/B planes, top-to-bottom, with the top pixel in each group as MSB. For 32×16 the packed frame is 192 bytes.
+MatrixSmith shares only GATT constants, envelope encoding/decoding, and conservative advertisement-layout parsing. Commands, capabilities, matching resolution, and response semantics remain generation-specific.
 
-Exact control vectors:
+## CoolLEDUX direct commands in this branch
+
+| Operation | Opcode | iLedHat validation | Live status |
+|---|---:|---|---|
+| GetDeviceInfo | `1F` | verified structured response | explicit live query/probe |
+| SetBrightness | `04 level` | verified at `40`, observed initial `CC` | explicit live Control |
+| SetPower | `05 bool` | external-source confirmed, not iLedHat-tested | dry-run only |
+| Mirror | `0C bool` | external-source confirmed, not iLedHat-tested | not exposed live |
+
+Golden vectors:
 
 ```text
-brightness 10  01 00 02 06 08 10 03
-brightness 40  01 00 02 06 08 40 03
-brightness C0  01 00 02 06 08 C0 03
-speed 10       01 00 02 06 07 10 03
-mode static    01 00 02 06 06 02 05 03
-switch off     01 00 02 06 09 00 03
-switch on      01 00 02 06 09 02 05 03
+device info       01 00 02 05 1F 03
+brightness 40     01 00 02 06 04 40 03
+brightness CC     01 00 02 06 04 CC 03
+classic rejected  01 00 02 06 08 40 03 -> 01 00 02 06 08 FE 03
 ```
 
-The two pinned licensed implementations produce equivalent control bytes. See [coolledx-sources.md](coolledx-sources.md).
+## Explicitly deferred
 
-## Implemented offline
-
-- generic framing and escaping
-- typed control encoders
-- 128-byte transfer records and XOR checksum
-- image/animation/text-rendered banner transfer headers
-- RGB888 to one-bit R/G/B column planes
-- static image and animation `TransmissionPlan` generation
-- raw notification retention and conservative status decoder
-- deterministic fixtures/tests and Lab packet inspection
-
-Text uses a MatrixSmith/browser-rendered logical banner input; the protocol planner emits the corroborated text-shaped header. Deterministic font rendering is deliberately outside protocol golden tests.
-
-## Unverified on this iLedHat
-
-Physical orientation/channel presentation, all command compatibility, persistence behavior, ACK timing, safe retry semantics, maximum transfer size/storage, animation timing interpretation, native text metadata behavior, profile-specific orientation, and recovery/firmware access. A size measured on another 64×16 sign is not applied to this profile.
-
-CoolLEDM is related at outer framing but has incompatible commands. MatrixSmith does not identify CoolLEDX from a CoolLED-looking name or FFF0/FFF1 alone.
+The CoolLEDUX stored-program pipeline—CRC32 announce, LZSS, compressed chunks, RGB444 content, text, images, animation/GIF, Graffiti, borders, and tiling—is next-branch work. Password set and OTA are not implemented.

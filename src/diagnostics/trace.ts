@@ -6,6 +6,7 @@ export type TraceEventType =
   | "gatt.notifications.enabled" | "gatt.read" | "notification.raw" | "notification.decoded"
   | "tx.plan.created" | "tx.plan.authorized" | "tx.plan.blocked" | "tx.packet.started"
   | "tx.packet.hostAccepted" | "tx.packet.failed" | "tx.ack" | "tx.completed"
+  | "tx.response.matched" | "tx.response.timeout" | "protocol.probe.started" | "protocol.probe.resolved" | "protocol.probe.rejected"
   | "observation.recorded" | "disconnect" | "error";
 
 export interface TraceEvent {

@@ -1,5 +1,5 @@
 import type { DeviceFingerprint } from "../../src/core/device";
-import { ILEDHAT_ADVERTISEMENT_HEX } from "../../src/drivers/coolledx/profiles/iledhat-31ae-32x16";
+import { ILEDHAT_ADVERTISEMENT_HEX } from "../../src/profiles/iledhat-31ae-32x16";
 
 export function knownIledHatFingerprint(): DeviceFingerprint {
   return {

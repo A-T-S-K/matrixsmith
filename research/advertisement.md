@@ -31,10 +31,8 @@ Evidence labels in this document mean:
 | 23 | `09` | Complete Local Name AD type | VERIFIED |
 | 24–30 | `69 4C 65 64 48 61 74` | UTF-8/ASCII `iLedHat` | VERIFIED |
 
-## Geometry-looking bytes
+## Vendor layout
 
-`10 00 20` appears at absolute offsets 17–19, inside the vendor-defined manufacturer payload. The physical display is independently known to be 16×32, so `0x10` and `0x20` correlate with 16 and 32.
+External CoolLED research and exact physical geometry strongly support this vendor-payload layout: bytes 0–5 device-specific identifier bytes, byte 6 height, bytes 7–8 width BE16, byte 9 raw color mode, and byte 10 raw firmware/version. This yields height 16, width 32, color mode 3, and firmware 30.
 
-That correlation does **not** establish field boundaries, byte order, or semantics. Possibilities include separate one-byte dimensions with a zero separator, part of a wider integer, or unrelated flags/values. The repository therefore records the bytes but does not use them to configure geometry.
-
-Status: **STRONGLY INFERRED correlation; UNKNOWN encoding**.
+The first six bytes `5E EA 07 00 00 01` do not match the scanner address `01:00:00:21:CC:99`; MatrixSmith calls them `deviceIdentifierBytes`, not a MAC address. Color mode 3 and firmware 30 remain raw values without invented semantics.

@@ -1,0 +1,8 @@
+{
+  "capturedAt": "2026-08-31",
+  "txHex": "01000206084003",
+  "rxHex": "0100020608FE03",
+  "decodedPayloadHex": "08FE",
+  "physicalObservation": "no visible brightness change",
+  "interpretation": "rejection/error-like response; exact 0xFE semantics unmapped"
+}

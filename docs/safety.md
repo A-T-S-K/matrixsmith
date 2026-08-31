@@ -2,34 +2,32 @@
 
 MatrixSmith fails closed at the semantic-plan boundary. No browser UI exposes arbitrary hex or characteristic writes.
 
-## Policy matrix
+## Capability-driven policy
 
 | Condition | Result |
 |---|---|
-| unknown driver | live TX blocked |
-| ambiguous top driver matches | live TX blocked |
-| driver confidence below strong | live TX blocked |
-| imported/fake/replay source | live TX blocked |
-| unverified or rejected operation | live TX blocked |
-| experimental read-only | explicit Inspect/Lab action only |
-| experimental transient | Lab plus per-session unlock |
-| verified transient | eligible for Control in a future profile promotion |
-| persistent or unknown operation classified persistent | blocked this milestone |
-| destructive | blocked |
-| firmware | blocked |
+| source is imported, fake, or replay | block TX |
+| unknown/ambiguous driver for a normal operation | block TX |
+| plan marked `dry-run-only` | block live TX |
+| unverified or rejected validation | block live TX |
+| experimental transient/read-only | require per-session Lab unlock |
+| verified read-only | allow only an explicit user action |
+| verified transient and driver marks plan live | allow explicit Control action |
+| persistent, destructive, or firmware risk | block |
+| endpoint/property mismatch | block |
 
-The experimental unlock defaults off, lives only in `MatrixSession`, is never stored, and clears on disconnect or reload. It does not disable policy checks.
+Validation alone never authorizes a future command: every plan also carries explicit driver intent (`live` or `dry-run-only`). The policy contains no CoolLED family, profile, opcode, or raw-brightness special cases.
 
-## Current live boundary
+Read-only protocol probes are the narrow exception to ordinary ambiguity blocking. A probe must be semantic, non-persistent, explicitly invoked, supported by a candidate match, planned through the driver, and authorized through the same policy/executor path. No probe runs on page load or merely because a device connected. Offline bundles may replay captured probe evidence but cannot transmit.
 
-The only live-eligible operation is `SetBrightness` for driver `coolledx`, profile `iledhat-31ae-32x16`, raw `0x40` or `0xC0`, over FFF0/FFF1 write-without-response. Required endpoint properties, strong/exact match, live source, connection, profile, and session unlock must all agree.
+## Current iLedHat boundary
 
-Promise resolution produces a host-level acceptance receipt only. It does not change profile validation and is never called device verification. The user records the visible device observation separately.
+- CoolLEDUX `GetDeviceInfo` (`0x1F`): verified, read-only, live on explicit Refresh/probe.
+- CoolLEDUX `SetBrightness` (`0x04`, raw 0–255): verified transient, live on deliberate Apply.
+- CoolLEDUX power: dry-run-only on this profile.
+- CoolLEDX brightness for this iLedHat: rejected hardware hypothesis and not live.
+- Mirror, rotation, light modes, timers, stored content, reset, password, OTA, and firmware: not live.
 
-Mode, speed, switch, text, image, animation, persistent commands, reset, delete, password, OTA, DFU, and firmware are not executable live.
+Execution results keep three claims separate: browser/host acceptance, a matching protocol notification, and independently verified device state. Brightness echo establishes protocol acceptance; a following device-info readback can establish the resulting raw brightness.
 
-## Recovery information
-
-Observed on the physical unit: a long-ish power-button action displayed `reset`, cleared the custom text, and restored scrolling text `coolled`. Unknown: exact press duration/sequence, whether it was a factory or program reset, other cleared state, firmware recovery, and wired programming access. MatrixSmith therefore documents no exact reset procedure and implements no software reset command.
-
-If an experiment behaves unexpectedly, stop, disconnect in MatrixSmith, power the device off, preserve/export the diagnostic trace, and avoid additional commands until the observation is reviewed.
+The experimental unlock is memory-only and clears on disconnect or reload. It cannot bypass driver intent, validation, risk, source, confidence, or endpoint checks.

@@ -6,6 +6,17 @@ import type { Persistence, RiskClass } from "./risk";
 export type WriteMode = "with-response" | "without-response";
 export type AckPolicy = "none" | "per-packet" | "final";
 
+export type ResponseExpectation =
+  | { readonly type: "none" }
+  | {
+    readonly type: "notification";
+    readonly required: boolean;
+    readonly timeoutMs: number;
+    readonly opcode?: number;
+    readonly kind?: string;
+    readonly fulfillsOperation: boolean;
+  };
+
 export interface RetryPolicy {
   readonly maxAttempts: number;
   readonly retryOn: readonly string[];
@@ -30,6 +41,10 @@ export interface TransmissionPlan {
   readonly evidenceRefs: readonly string[];
   readonly packets: readonly TransmissionPacket[];
   readonly ackPolicy: AckPolicy;
+  readonly responseExpectation: ResponseExpectation;
+  /** Explicit driver intent. Validation alone never makes a plan executable. */
+  readonly execution: "live" | "dry-run-only";
+  readonly purpose: "operation" | "probe";
   readonly retryPolicy: RetryPolicy;
   readonly timeoutMs: number;
   readonly recoveryNotes: readonly string[];

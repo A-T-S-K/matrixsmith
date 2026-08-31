@@ -1,14 +1,29 @@
 import { describe, expect, it } from "vitest";
 import { emptyFingerprint } from "../../src/core/device";
-import { DriverRegistry } from "../../src/drivers/registry";
+import { builtInDrivers, DriverRegistry } from "../../src/drivers/registry";
 import { coolLedXDriver } from "../../src/drivers/coolledx";
+import { coolLedUxDriver } from "../../src/drivers/coolledux";
 import { knownIledHatFingerprint } from "../helpers/fixtures";
 
 describe("driver matching", () => {
-  it("selects the complete known iLedHat fingerprint strongly", () => {
-    const selection = new DriverRegistry([coolLedXDriver]).match(knownIledHatFingerprint());
-    expect(selection.selected?.id).toBe("coolledx");
-    expect(selection.matches[0]?.confidence).toMatch(/strong|exact/);
+  it("represents same-GATT CoolLEDX/CoolLEDUX evidence as ambiguous", () => {
+    const selection = new DriverRegistry(builtInDrivers).match(knownIledHatFingerprint());
+    expect(selection.selected).toBeNull();
+    expect(selection.ambiguous).toBe(true);
+    expect(selection.matches.map(({ driverId }) => driverId).sort()).toEqual(["coolledux", "coolledx"]);
+  });
+
+  it("does not let CoolLEDX own the iLedHat profile", () => {
+    expect(coolLedXDriver.resolveProfile(knownIledHatFingerprint())).toBeNull();
+    expect(coolLedUxDriver.resolveProfile(knownIledHatFingerprint())?.driverId).toBe("coolledux");
+  });
+
+  it("resolves CoolLEDUX after verified probe evidence", () => {
+    const registry = new DriverRegistry(builtInDrivers);
+    const selection = registry.resolve("coolledux", knownIledHatFingerprint(), "valid structured 0x1F response");
+    expect(selection.selected?.id).toBe("coolledux");
+    expect(selection.ambiguous).toBe(false);
+    expect(selection.matches[0]?.confidence).toBe("exact");
   });
 
   it("does not select on name or FFF0 alone", () => {
