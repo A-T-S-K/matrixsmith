@@ -1,7 +1,8 @@
 import type { Capability } from "../core/capabilities";
-import type { DeviceFingerprint, DeviceProfile } from "../core/device";
+import type { DeviceFingerprint, DeviceProfile, GattEndpoint } from "../core/device";
+import type { Persistence, RiskClass } from "../core/risk";
 import type { MatrixOperation } from "../core/operations";
-import type { TransmissionPlan } from "../core/transmission";
+import type { ResponseExpectation, TransmissionPlan } from "../core/transmission";
 import type { DiscoveryHints } from "../transport/types";
 
 export type MatchConfidence = "none" | "weak" | "candidate" | "strong" | "exact";
@@ -20,11 +21,34 @@ export interface DriverContext {
   readonly source: "live" | "imported" | "fake" | "replay";
 }
 
+export interface DriverNotificationContext {
+  readonly profile: DeviceProfile | null;
+  readonly fingerprint: DeviceFingerprint;
+  readonly source: DriverContext["source"];
+}
+
 export interface DecodedNotification {
+  readonly family: string;
   readonly kind: string;
+  readonly opcode?: number;
   readonly summary: string;
+  readonly payloadHex: string;
   readonly code?: number;
   readonly success?: boolean;
+  readonly status?: number;
+  readonly fields: Readonly<Record<string, string | number | boolean | null>>;
+  readonly unknownTailHex?: string;
+  readonly envelopeError?: string;
+}
+
+export interface DriverProbe {
+  readonly id: string;
+  readonly label: string;
+  readonly risk: Extract<RiskClass, "read-only">;
+  readonly persistence: Extract<Persistence, "none">;
+  readonly validation: "verified" | "experimental";
+  plan(context: DriverContext): TransmissionPlan;
+  interpret(notification: DecodedNotification): { readonly matched: boolean; readonly confidence: "strong" | "exact"; readonly summary: string } | null;
 }
 
 export interface MatrixDriver {
@@ -35,6 +59,15 @@ export interface MatrixDriver {
   profiles(): readonly DeviceProfile[];
   resolveProfile(fingerprint: DeviceFingerprint): DeviceProfile | null;
   capabilities(profile: DeviceProfile): readonly Capability[];
+  endpoints(profile: DeviceProfile): readonly GattEndpoint[];
+  probes?(context: DriverContext): readonly DriverProbe[];
   plan(operation: MatrixOperation, context: DriverContext): TransmissionPlan;
-  decodeNotification?(packet: Uint8Array, context: DriverContext): DecodedNotification | null;
+  decodeNotification?(packet: Uint8Array, context: DriverNotificationContext): DecodedNotification | null;
+  responseMatches?(notification: DecodedNotification, expectation: ResponseExpectation): boolean;
+}
+
+export function notificationMatchesExpectation(notification: DecodedNotification, expectation: ResponseExpectation): boolean {
+  if (expectation.type === "none") return false;
+  return (expectation.opcode === undefined || notification.opcode === expectation.opcode)
+    && (expectation.kind === undefined || notification.kind === expectation.kind);
 }

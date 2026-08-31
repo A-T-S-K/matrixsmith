@@ -27,9 +27,8 @@ describe("diagnostic bundles", () => {
     const controller = new MatrixController(new FakeTransport(fingerprint));
     const json = serializeDiagnosticBundle(createDiagnosticBundle({ fingerprint, driverMatches: [], selectedDriver: null, selectedProfile: null, capabilities: [], trace: [], observations: [] }));
     controller.importBundle(json);
-    expect(controller.session.selection?.selected?.id).toBe("coolledx");
-    const plan = controller.plan({ type: "SetBrightness", raw: 0x40 });
-    expect(controller.authorize(plan).allowed).toBe(false);
-    await expect(controller.send(plan)).rejects.toThrow(/Offline/);
+    expect(controller.session.selection?.selected).toBeNull();
+    expect(controller.session.selection?.ambiguous).toBe(true);
+    expect(() => controller.plan({ type: "SetBrightness", raw: 0x40 })).toThrow(/non-ambiguous/);
   });
 });

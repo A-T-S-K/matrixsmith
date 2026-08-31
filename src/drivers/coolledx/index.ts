@@ -10,7 +10,6 @@ import { decodeCoolLedNotification } from "./notifications";
 import { packCoolLedPixels } from "./pixels";
 import { COOLLEDX_OPCODES, encodeBrightness, encodeMode, encodeSpeed, encodeSwitch } from "./protocol";
 import { createAnimationTransferPayload, createImageTransferPayload, encodeTransferPackets } from "./transfer";
-import { ILEDHAT_PROFILE_ID, iledHat31aeProfile } from "./profiles/iledhat-31ae-32x16";
 
 const modeBytes: Readonly<Record<string, number>> = {
   static: 0x01, left: 0x02, right: 0x03, up: 0x04, down: 0x05, snowflake: 0x06, picture: 0x07, laser: 0x08,
@@ -21,14 +20,10 @@ export const coolLedXDriver: MatrixDriver = {
   family: "CoolLEDX",
   discoveryHints: () => ({ filters: [{ services: [COOLLEDX_SERVICE_UUID] }], optionalServices: [COOLLEDX_SERVICE_UUID] }),
   match: matchCoolLedX,
-  profiles: () => [iledHat31aeProfile],
-  resolveProfile(fingerprint: DeviceFingerprint): DeviceProfile | null {
-    const match = matchCoolLedX(fingerprint);
-    const geometry = fingerprint.manuallyConfirmedGeometry;
-    const compatibleGeometry = !geometry || (geometry.width === 32 && geometry.height === 16);
-    return match.score >= 70 && compatibleGeometry && fingerprint.name?.toLowerCase() === "iledhat" ? iledHat31aeProfile : null;
-  },
+  profiles: () => [],
+  resolveProfile(_fingerprint: DeviceFingerprint): DeviceProfile | null { return null; },
   capabilities: coolLedCapabilities,
+  endpoints: () => [COOLLEDX_ENDPOINT],
   plan: planCoolLedOperation,
   decodeNotification: (packet) => decodeCoolLedNotification(packet),
 };
@@ -36,7 +31,7 @@ export const coolLedXDriver: MatrixDriver = {
 export function coolLedCapabilities(profile: DeviceProfile): readonly Capability[] {
   const shared = { evidenceConfidence: "corroborated" as const, evidenceRefs: ["coolledx-primary-sources"] };
   return [
-    { id: "brightness", label: "Brightness", supported: true, live: profile.id === ILEDHAT_PROFILE_ID, risk: "transient", persistence: "unknown", validation: "experimental", ...shared },
+    { id: "brightness", label: "Brightness", supported: true, live: false, risk: "transient", persistence: "unknown", validation: "unverified", ...shared },
     { id: "scroll-speed", label: "Scroll speed", supported: true, live: false, risk: "transient", persistence: "unknown", validation: "unverified", ...shared },
     { id: "display-mode", label: "Display mode", supported: true, live: false, risk: "transient", persistence: "unknown", validation: "unverified", ...shared },
     { id: "power", label: "Display switch", supported: true, live: false, risk: "transient", persistence: "unknown", validation: "unverified", ...shared },
@@ -54,9 +49,9 @@ export function planCoolLedOperation(operation: MatrixOperation, context: Driver
   let validation: TransmissionPlan["validation"] = "unverified";
 
   switch (operation.type) {
+    case "GetDeviceInfo": throw new Error("CoolLEDX does not define the CoolLEDUX device-info query.");
     case "SetBrightness":
       bytes = [encodeBrightness(operation.raw)];
-      validation = context.profile.id === ILEDHAT_PROFILE_ID ? "experimental" : "unverified";
       break;
     case "SetScrollSpeed": bytes = [encodeSpeed(operation.raw)]; break;
     case "SetDisplayMode": bytes = [encodeMode(modeBytes[operation.mode] ?? 0x01)]; break;
@@ -86,11 +81,12 @@ export function planCoolLedOperation(operation: MatrixOperation, context: Driver
   const packets = bytes.map((packetBytes, index) => ({ index, endpoint: COOLLEDX_ENDPOINT, writeMode: "without-response" as const, bytes: packetBytes, hex: packetHex(packetBytes) }));
   return Object.freeze({
     id: createPlanId("coolledx"), driverId: "coolledx", profileId: context.profile.id, operation,
-    risk, persistence, validation, evidenceRefs: ["coolled1248-rs@55d0082", "coolledx-driver@ba24137"],
+    risk, persistence, validation, execution: "dry-run-only", purpose: "operation", evidenceRefs: ["coolled1248-rs@55d0082", "coolledx-driver@ba24137"],
     packets: Object.freeze(packets), ackPolicy: packets.length > 1 ? "per-packet" : "none",
+    responseExpectation: { type: "none" as const },
     retryPolicy: { maxAttempts: 1, retryOn: [] }, timeoutMs: 5000,
     recoveryNotes: ["No automatic retry is enabled.", "Disconnect power if the device behaves unexpectedly."],
-    metadata: { family: "CoolLEDX", dryRunOnly: operation.type !== "SetBrightness" },
+    metadata: { family: "CoolLEDX", dryRunOnly: true },
   });
 }
 

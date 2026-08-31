@@ -2,6 +2,7 @@ import type { EvidenceConfidence, ValidationStatus } from "./evidence";
 import type { Persistence, RiskClass } from "./risk";
 
 export type CapabilityId =
+  | "device-info"
   | "brightness"
   | "scroll-speed"
   | "display-mode"

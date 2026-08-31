@@ -1,0 +1,7 @@
+{
+  "capturedAt": "2026-08-31",
+  "txHex": "01000206044003",
+  "rxHex": "01000206044003",
+  "decodedPayloadHex": "0440",
+  "physicalObservation": "panel visibly became dimmer"
+}

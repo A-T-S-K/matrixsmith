@@ -56,14 +56,14 @@ export class WebBluetoothTransport implements MatrixTransport {
         transportKind: "web-bluetooth",
         browserDeviceId: device.id,
         ...(device.name ? { name: device.name } : {}),
-        advertisedServices: options.mode === "registered"
-          ? options.hints.filters.flatMap((filter) => (filter.services ?? []).map(String))
-          : [],
+        advertisedServices: [],
+        requestedServices: [...new Set([...options.hints.filters.flatMap((filter) => (filter.services ?? []).map(String)), ...optionalServices])],
+        browserGrantedServices: services.map(({ uuid }) => uuid),
         services,
         evidenceRefs: ["browser-gatt-enumeration"],
         notes: options.mode === "inspection"
           ? ["GATT enumeration includes only services granted by the browser chooser and optional service hints."]
-          : [],
+          : ["Discovery filters are request parameters and are not recorded as advertisement observations."],
       };
       this.#setState("connected");
       return this.#fingerprint;
@@ -97,7 +97,6 @@ export class WebBluetoothTransport implements MatrixTransport {
     const onValue = (event: Event): void => {
       const value = (event.target as BluetoothRemoteGATTCharacteristic).value;
       const bytes = value ? new Uint8Array(value.buffer, value.byteOffset, value.byteLength).slice() : new Uint8Array();
-      this.trace.record("notification.raw", { serviceUuid: endpoint.serviceUuid, characteristicUuid: endpoint.characteristicUuid, byteLength: bytes.length }, bytes);
       listener(bytes);
     };
     characteristic.addEventListener("characteristicvaluechanged", onValue);

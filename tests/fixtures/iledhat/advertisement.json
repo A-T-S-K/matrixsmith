@@ -1,0 +1,11 @@
+{
+  "capturedAt": "2026-08-31",
+  "rawHex": "0201060303F0FF0EFFAE315EEA07000001100020031E0809694C6564486174",
+  "companyId": 12718,
+  "vendorPayloadHex": "5EEA07000001100020031E",
+  "deviceIdentifierBytesHex": "5EEA07000001",
+  "height": 16,
+  "width": 32,
+  "colorModeRaw": 3,
+  "firmwareRaw": 30
+}

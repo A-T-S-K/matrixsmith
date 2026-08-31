@@ -1,0 +1,8 @@
+{
+  "capturedAt": "2026-08-31",
+  "deviceName": "iLedHat",
+  "bleAddressShownByNrfConnect": "01:00:00:21:CC:99",
+  "serviceUuid": "0000fff0-0000-1000-8000-00805f9b34fb",
+  "characteristicUuid": "0000fff1-0000-1000-8000-00805f9b34fb",
+  "properties": ["READ", "NOTIFY", "WRITE_WITHOUT_RESPONSE"]
+}

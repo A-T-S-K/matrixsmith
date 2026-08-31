@@ -1,6 +1,10 @@
 import type { DeviceFingerprint } from "../core/device";
 import type { DiscoveryHints } from "../transport/types";
 import type { DriverMatch, MatrixDriver } from "./types";
+import { coolLedXDriver } from "./coolledx";
+import { coolLedUxDriver } from "./coolledux";
+
+export const builtInDrivers: readonly MatrixDriver[] = Object.freeze([coolLedXDriver, coolLedUxDriver]);
 
 export interface DriverSelection {
   readonly matches: readonly DriverMatch[];
@@ -28,5 +32,15 @@ export class DriverRegistry {
     const filters = this.#drivers.flatMap((driver) => driver.discoveryHints().filters);
     const optionalServices = [...new Set(this.#drivers.flatMap((driver) => driver.discoveryHints().optionalServices).map(String))];
     return { filters, optionalServices };
+  }
+
+  resolve(driverId: string, fingerprint: DeviceFingerprint, reason: string): DriverSelection {
+    const selected = this.#drivers.find((driver) => driver.id === driverId) ?? null;
+    if (!selected) throw new Error(`Unknown driver ${driverId}.`);
+    const matches = this.#drivers.map((driver) => {
+      const match = driver.match(fingerprint);
+      return driver.id === driverId ? { ...match, score: 100, confidence: "exact" as const, reasons: [...match.reasons, reason] } : match;
+    }).sort((a, b) => b.score - a.score);
+    return { matches, selected, ambiguous: false };
   }
 }
