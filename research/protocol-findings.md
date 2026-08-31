@@ -56,6 +56,24 @@ brightness CC     01 00 02 06 04 CC 03
 classic rejected  01 00 02 06 08 40 03 -> 01 00 02 06 08 FE 03
 ```
 
-## Explicitly deferred
+## Stored-program pipeline (implemented offline, awaiting physical validation)
 
-The CoolLEDUX stored-program pipeline—CRC32 announce, LZSS, compressed chunks, RGB444 content, text, images, animation/GIF, Graffiti, borders, and tiling—is next-branch work. Password set and OTA are not implemented.
+The CoolLEDUX stored-program pipeline is now fully implemented and conformance-tested offline: custom CRC32 announce (`0x02`), safe/regular LZSS, 128-byte compressed chunks (`0x03`) with XOR checksums, dual RGB444 encodings with per-path off sentinels, ≤8-column tiling at full profile height, tiled Graffiti static frames, rendered text via an embedded 5×7 font, tiled pixel animation, native GIF (`0x0C`), and the decorative frame border (`0x04`). See [coolledux-sources.md](coolledux-sources.md) for provenance and the byte-for-byte conformance cross-check against the pinned reference.
+
+Every content capability is classified **experimental + persistent** for this iLedHat until the guided hardware validations pass:
+
+| Capability | Offline status | iLedHat status |
+|---|---|---|
+| Static frame (tiled Graffiti) | conformance-verified | not tested — first physical step: **Validate static framebuffer** |
+| Pixel orientation / color encoding | deterministic 32×16 diagnostic pattern ready | not tested |
+| Rendered text / image | share the Graffiti pipeline | not tested (unlocked by static-frame pass) |
+| Animation | conformance-verified; two-frame diagnostic ready | not tested |
+| GIF | conformance-verified framing; upstream-tested only ≤8 columns | not tested |
+| Recovery | — | unknown; one observation: a long-ish inline power-button action displayed `reset` and restored the default scrolling `coolled` text; exact timing/class unknown; no automatic restoration is implemented or claimed |
+
+## Rejected hypotheses
+
+- Classic CoolLEDX brightness semantics for this profile (`0x08` → `08 FE`, no visible change; exact `0xFE` semantics unmapped).
+- Advertisement byte `0x1E` as battery state-of-charge; the byte position corroborates a raw firmware/version field.
+
+Password set and OTA are not implemented.

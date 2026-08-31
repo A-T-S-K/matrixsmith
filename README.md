@@ -15,9 +15,14 @@ MatrixSmith is a source-available static TypeScript PWA for controlling supporte
 - verified CoolLEDUX device-info and deliberate raw 0–255 brightness Control for the exact iLedHat
 - goal-oriented Preact UI: Home, then a device workspace with Control, Diagnose, and Develop views and a persistent Share report action, responsive for Chrome on Android
 - serializable protocol transactions, driver-contributed diagnostic workflows (including the reversible CoolLEDUX brightness round-trip), and a deterministic shareable Markdown report with privacy-safe defaults
-- structured presets under `matrixsmith:v1:` with legacy iLedHat preset reading
+- an nRF Connect text-log importer that extracts GATT, TX/RX bytes, and timestamps, correlates transactions, decodes packets with the installed drivers, and merges labeled read-only evidence into live or offline sessions
+- a complete offline CoolLEDUX stored-program compiler: custom CRC32, Okumura LZSS (regular + safe/all-literal), program/announce/chunk framing, dual RGB444 encodings with per-path off sentinels, and generic 8-column tiling — conformance-tested byte-for-byte against the pinned reference implementation
+- profile-derived content pipelines: tiled Graffiti static frames, rendered text through an embedded 5×7 bitmap font, local PNG/JPEG/WebP image import with fit modes, tiled pixel animation, and native GIF programs
+- guided hardware-validation workflows (deterministic 32×16 orientation/color pattern and a two-frame diagnostic animation) with an exact-consequence confirmation, structured observation questions, and session-scoped validation evidence
+- a support matrix using honest states (`Verified`, `Experimental`, `Not tested`, `Unknown`, `Rejected`, `Unsupported`, `Out of scope`) whose recommended next tests advance the device-support state
+- structured presets under `matrixsmith:v1:` with legacy iLedHat preset reading; content settings persist as small JSON only
 
-Verified CoolLEDUX `GetDeviceInfo` and `SetBrightness` are live only through explicit actions after the session is resolved. Power and other direct commands remain dry-run-only. Persistent content, password set, and OTA are not implemented live. There is no arbitrary raw writer.
+Verified CoolLEDUX `GetDeviceInfo` and `SetBrightness` are live only through explicit actions after the session is resolved. Stored-program content (static frame, text, image, animation, GIF) is compiled and previewable offline, classified experimental + persistent, gated behind the guided static-frame validation, and every send shows its exact consequence before an explicit confirmation. Power and other direct commands remain dry-run-only. Password set and OTA are not implemented. There is no arbitrary raw writer.
 
 ## Development
 

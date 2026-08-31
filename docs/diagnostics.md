@@ -2,10 +2,10 @@
 
 MatrixSmith exports a versioned JSON bundle only when the user taps Download. Nothing is uploaded.
 
-## Version 1 shape
+## Version 2 shape
 
 ```text
-schemaVersion, matrixsmithVersion, createdAt
+schemaVersion (2), matrixsmithVersion, createdAt
 fingerprint
 driverMatches, selectedDriver, selectedProfile
 capabilities
@@ -14,13 +14,26 @@ observations
 advertisementEvidence
 transactions
 diagnosticRuns
+validations          — structured hardware-validation results
+contentCompilations  — compiled-program metadata (type, tiles, CRC, sizes, chunks, pacing)
+importedEvidence     — external-import summaries (provenance, counts, warnings)
 ```
+
+Version 1 bundles remain readable: import migrates them by defaulting the new collections to empty. Binary image/GIF payloads are never embedded in the bundle; content evidence is metadata plus the exact TX packet hex already retained by transactions.
 
 `transactions` are higher-level serializable protocol transactions (semantic operation, driver/profile, safety, ordered TX packets, raw RX packets, decoded response, host/protocol/device verification, timeout/error, findings). `diagnosticRuns` capture named workflow executions with per-step results and restoration state. Raw `trace` events remain the lowest-level ground truth underneath both.
 
 Raw RX/TX bytes serialize as uppercase hexadecimal. The fingerprint contains portable observations, not browser Bluetooth objects. Trace types cover app startup, selection, matching, GATT lifecycle, reads/notifications, plan creation/authorization/blocking, packet host acceptance/failure, decoded notifications, observations, disconnect, and errors. Unknown notifications remain as raw events.
 
 Import validates top-level metadata, fingerprint shape, match/trace/observation collections, and schema version. It creates an offline `imported` session. Matching, profile resolution, capabilities, Diagnose/Develop review, trace display, and decoder work can run offline, but policy rejects every imported transmission. `ReplayTransport` similarly replays notifications and throws on write.
+
+## External capture import (nRF Connect)
+
+`src/diagnostics/importers.ts` implements the nRF Connect text-log importer. It conservatively extracts device name, connection timestamps, service discovery (normalized UUIDs and characteristic properties), descriptor writes/notification enablement, characteristic reads, TX writes, RX notifications, exact packet bytes, and clearly identifiable errors. It invents no packet semantics: extracted bytes are decoded by the installed drivers afterwards, TX/RX are correlated by endpoint, timing, and envelope opcode, and unmatched packets are preserved as their own transactions. BLE/MAC addresses stay out of the fingerprint and out of shareable Markdown by default; imported error text is redacted. Importing never creates a transmitting session — a live session gains labeled read-only evidence, otherwise an offline imported session opens. Unknown lines are counted and reported, never silently discarded.
+
+## Hardware validation results
+
+Guided validation workflows (`src/diagnostics/validation.ts`) transfer diagnostic content once after an explicit consequence confirmation, then record structured yes/no/unsure answers about the physical panel. Results are session-scoped `SessionValidationResult` records with validated and rejected areas; they drive the Diagnose support matrix, the report's support table, and the deterministic suggested next tests. Profile metadata is never silently promoted by a runtime result — the report provides the reviewable evidence for any permanent change.
 
 ## Privacy
 
