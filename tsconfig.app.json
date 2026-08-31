@@ -12,6 +12,8 @@
     "moduleDetection": "force",
     "noEmit": true,
     "strict": true,
+    "jsx": "react-jsx",
+    "jsxImportSource": "preact",
     "noUncheckedIndexedAccess": true
   },
   "include": ["src", "tests", "vite.config.ts"]

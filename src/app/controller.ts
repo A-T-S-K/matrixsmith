@@ -13,6 +13,10 @@ import { SafetyPolicy, type PolicyDecision } from "./safety";
 import { MatrixSession } from "./session";
 import { NotificationRouter, type NotificationRecord } from "./notifications";
 import { packetHex } from "../core/transmission";
+import type { ProtocolTransaction, TransactionSource } from "../diagnostics/transactions";
+import { transactionId } from "../diagnostics/transactions";
+import type { DiagnosticRun, DiagnosticStepResult } from "../diagnostics/workflows";
+import { chooseTestBrightness, COOLLEDUX_DIAGNOSTIC_TOOLS, diagnosticRunId } from "../diagnostics/workflows";
 
 export class MatrixController {
   readonly session = new MatrixSession();
@@ -22,6 +26,8 @@ export class MatrixController {
   readonly #executor: TransmissionExecutor;
   readonly #notificationRouter = new NotificationRouter();
   readonly #observations: ManualObservation[] = [];
+  readonly #transactions: ProtocolTransaction[] = [];
+  readonly #diagnosticRuns: DiagnosticRun[] = [];
   readonly #notificationSubscriptions = new Map<string, () => Promise<void>>();
 
   constructor(readonly transport: MatrixTransport, trace = new TraceRecorder(), registry = new DriverRegistry(builtInDrivers)) {
@@ -31,6 +37,8 @@ export class MatrixController {
   }
 
   get observations(): readonly ManualObservation[] { return this.#observations; }
+  get transactions(): readonly ProtocolTransaction[] { return this.#transactions; }
+  get diagnosticRuns(): readonly DiagnosticRun[] { return this.#diagnosticRuns; }
 
   availableEndpoints(): readonly GattEndpoint[] {
     const fingerprint = this.session.fingerprint;
@@ -60,7 +68,19 @@ export class MatrixController {
     this.session.clearConnection();
   }
 
-  async read(endpoint: GattEndpoint): Promise<Uint8Array> { return this.transport.read(endpoint); }
+  async read(endpoint: GattEndpoint): Promise<Uint8Array> {
+    const startedAt = new Date().toISOString();
+    try {
+      const bytes = await this.transport.read(endpoint);
+      const completedAt = new Date().toISOString();
+      this.#transactions.push({ id: transactionId("read"), startedAt, completedAt, durationMs: duration(startedAt, completedAt), sessionSource: this.session.source, source: "gatt-read", driverId: this.session.selection?.selected?.id ?? null, profileId: this.session.profile?.id ?? null, operation: "GATT Read", safety: { risk: "read-only", persistence: "none", validation: "verified" }, endpoint, packets: [{ timestamp: completedAt, direction: "RX", hex: packetHex(bytes), endpoint }], decodedResponse: null, hostAccepted: true, protocolAcknowledged: null, deviceStateVerified: false, responseTimedOut: false, error: null, findings: ["Characteristic read completed; raw bytes preserved."], observationIds: [], diagnosticRunId: null });
+      return bytes;
+    } catch (error) {
+      const completedAt = new Date().toISOString();
+      this.#transactions.push({ id: transactionId("read"), startedAt, completedAt, durationMs: duration(startedAt, completedAt), sessionSource: this.session.source, source: "gatt-read", driverId: this.session.selection?.selected?.id ?? null, profileId: this.session.profile?.id ?? null, operation: "GATT Read", safety: { risk: "read-only", persistence: "none", validation: "verified" }, endpoint, packets: [], decodedResponse: null, hostAccepted: false, protocolAcknowledged: null, deviceStateVerified: false, responseTimedOut: false, error: errorMessage(error), findings: [], observationIds: [], diagnosticRunId: null });
+      throw error;
+    }
+  }
 
   async enableNotifications(endpoint: GattEndpoint): Promise<void> {
     const key = `${endpoint.serviceUuid.toLowerCase()}/${endpoint.characteristicUuid.toLowerCase()}`;
@@ -121,12 +141,25 @@ export class MatrixController {
   }
 
   async send(plan: TransmissionPlan): Promise<ExecutionResult> {
+    return this.#execute(plan, plan.purpose, null);
+  }
+
+  async #execute(plan: TransmissionPlan, source: TransactionSource, diagnosticRunIdValue: string | null): Promise<ExecutionResult> {
+    const startedAt = new Date().toISOString();
+    const notificationStart = this.session.notifications.length;
     const decision = this.authorize(plan);
     if (!decision.allowed || !decision.authorized) throw new Error(decision.reasons.join(" "));
     const driver = this.registry.drivers.find(({ id }) => id === plan.driverId);
     if (!driver) throw new Error(`Driver ${plan.driverId} is unavailable.`);
     await this.enableDriverNotifications(driver);
-    return this.#executor.execute(decision.authorized, driver);
+    try {
+      const result = await this.#executor.execute(decision.authorized, driver);
+      this.#recordTransaction(plan, result, startedAt, notificationStart, source, diagnosticRunIdValue, null);
+      return result;
+    } catch (error) {
+      this.#recordTransaction(plan, null, startedAt, notificationStart, source, diagnosticRunIdValue, errorMessage(error));
+      throw error;
+    }
   }
 
   async probe(driverId = "coolledux", probeId = "get-device-info"): Promise<ExecutionResult> {
@@ -144,11 +177,87 @@ export class MatrixController {
     const decision = this.authorize(plan);
     if (!decision.allowed || !decision.authorized) throw new Error(decision.reasons.join(" "));
     await this.enableDriverNotifications(driver);
-    const result = await this.#executor.execute(decision.authorized, driver);
+    const startedAt = new Date().toISOString();
+    const notificationStart = this.session.notifications.length;
+    let result: ExecutionResult;
+    try {
+      result = await this.#executor.execute(decision.authorized, driver);
+      this.#recordTransaction(decision.authorized.plan, result, startedAt, notificationStart, "probe", null, null);
+    } catch (error) {
+      this.#recordTransaction(decision.authorized.plan, null, startedAt, notificationStart, "probe", null, errorMessage(error));
+      throw error;
+    }
     const interpretation = result.response ? probe.interpret(result.response) : null;
     if (interpretation?.matched) this.#resolveProtocol(driver, profile, probe.id, interpretation.summary, "live-probe");
     else this.trace.record("protocol.probe.rejected", { driverId, probeId, responseTimedOut: result.responseTimedOut });
     return result;
+  }
+
+  diagnosticTools(): readonly import("../diagnostics/workflows").DiagnosticTool[] {
+    const fingerprint = this.session.fingerprint;
+    if (!fingerprint) return [];
+    const canUseCoolLedUx = this.registry.drivers.some((driver) => driver.id === "coolledux" && driver.match(fingerprint).score > 0);
+    return canUseCoolLedUx ? COOLLEDUX_DIAGNOSTIC_TOOLS.map((tool) => ({ ...tool, available: this.session.source === "live", ...(this.session.source !== "live" ? { unavailableReason: "Imported reports are read-only." } : {}) })) : [];
+  }
+
+  async runDiagnostic(toolId: string): Promise<DiagnosticRun> {
+    const tool = this.diagnosticTools().find((candidate) => candidate.id === toolId);
+    if (!tool?.available) throw new Error(tool?.unavailableReason ?? "This driver family has no verified safe diagnostic tool for the current device.");
+    const id = diagnosticRunId();
+    const startedAt = new Date().toISOString();
+    const steps: DiagnosticStepResult[] = [];
+    const transactionIndex = this.#transactions.length;
+    let restorationAttempted = false;
+    let restorationVerified = false;
+    let status: DiagnosticRun["status"] = "running";
+    let error: string | null = null;
+    const step = (stepId: string, label: string, passed: boolean, summary: string, from: number): void => { steps.push({ id: stepId, label, status: passed ? "passed" : "failed", summary, transactionIds: this.#transactions.slice(from).map((value) => value.id) }); };
+    let baseline: number | null = null;
+    let testWasAttempted = false;
+    try {
+      if (toolId === "coolledux-identify") {
+        const result = await this.probe("coolledux", "get-device-info");
+        step("identify", "Get Device Info", Boolean(result.response), result.response?.summary ?? "No matching structured response.", transactionIndex);
+        if (!result.response) throw new Error("Safe identification did not receive a matching structured response.");
+      } else if (toolId === "coolledux-refresh-info") {
+        const from = this.#transactions.length; const result = await this.#execute(this.plan({ type: "GetDeviceInfo" }), "diagnostic", id);
+        step("refresh", "Refresh Device Info", Boolean(result.response), result.response?.summary ?? "No matching response.", from);
+        if (!result.response) throw new Error("Device-info refresh timed out.");
+      } else if (toolId === "coolledux-brightness-round-trip") {
+        let from = this.#transactions.length; const baselineResult = await this.#execute(this.plan({ type: "GetDeviceInfo" }), "diagnostic", id);
+        baseline = numberField(baselineResult.response, "brightnessRaw");
+        step("baseline", "Record baseline brightness", baseline !== null, baseline === null ? "Brightness was absent from device info." : `Baseline is ${baseline}.`, from);
+        if (baseline === null) throw new Error("Cannot validate brightness without a baseline readback.");
+        const test = chooseTestBrightness(baseline);
+        from = this.#transactions.length; testWasAttempted = true; const setResult = await this.#execute(this.plan({ type: "SetBrightness", raw: test }), "diagnostic", id);
+        step("set-test", "Set test brightness", setResult.protocolAcknowledged === true, `Command response ${setResult.protocolAcknowledged ? "matched" : "did not match"}; test value ${test}.`, from);
+        if (!setResult.protocolAcknowledged) throw new Error("Test brightness command did not receive the required matching response.");
+        from = this.#transactions.length; const verify = await this.#execute(this.plan({ type: "GetDeviceInfo" }), "diagnostic", id); const actual = numberField(verify.response, "brightnessRaw");
+        step("verify-test", "Verify test brightness", actual === test, `Expected ${test}; read back ${actual ?? "unknown"}.`, from);
+        if (actual !== test) throw new Error(`Test brightness readback mismatch: expected ${test}, received ${actual ?? "unknown"}.`);
+      } else throw new Error(`Unknown diagnostic tool ${toolId}.`);
+      status = "passed";
+    } catch (caught) {
+      error = errorMessage(caught); status = "failed";
+    }
+    if (toolId === "coolledux-brightness-round-trip" && baseline !== null && testWasAttempted) {
+      restorationAttempted = true;
+      try {
+        let from = this.#transactions.length; const restore = await this.#execute(this.plan({ type: "SetBrightness", raw: baseline }), "diagnostic", id);
+        step("restore", "Restore baseline brightness", restore.protocolAcknowledged === true, `Restore response ${restore.protocolAcknowledged ? "matched" : "did not match"}.`, from);
+        if (!restore.protocolAcknowledged) throw new Error("Restore command did not receive the required matching response.");
+        from = this.#transactions.length; const verifyRestore = await this.#execute(this.plan({ type: "GetDeviceInfo" }), "diagnostic", id); const restored = numberField(verifyRestore.response, "brightnessRaw");
+        restorationVerified = restored === baseline;
+        step("verify-restore", "Verify restoration", restorationVerified, `Expected baseline ${baseline}; read back ${restored ?? "unknown"}.`, from);
+        if (!restorationVerified) throw new Error(`RESTORE FAILED: expected ${baseline}, read back ${restored ?? "unknown"}.`);
+      } catch (restoreError) {
+        status = "restore-failed"; error = `${error ? `${error} ` : ""}${errorMessage(restoreError)}`;
+      }
+    }
+    const completedAt = new Date().toISOString();
+    const run: DiagnosticRun = { id, toolId, driverId: tool.driverId, startedAt, completedAt, purpose: tool.purpose, safety: { risk: tool.risk, persistence: tool.persistence, validation: tool.validation, explanation: tool.explanation }, status, steps, findings: status === "passed" ? [toolId === "coolledux-brightness-round-trip" ? "Brightness response and readback were validated; baseline restoration was verified." : "The expected structured read-only response was received."] : [error ?? "Diagnostic failed."], error, restorationAttempted, restorationVerified, observationIds: [] };
+    this.#diagnosticRuns.push(run);
+    return run;
   }
 
   recordObservation(summary: string, confidence: ManualObservation["confidence"] = "observed"): ManualObservation {
@@ -173,6 +282,8 @@ export class MatrixController {
       trace: this.trace.events,
       observations: this.#observations,
       advertisementEvidence: fingerprint.rawAdvertisementHex ? { rawHex: fingerprint.rawAdvertisementHex } : null,
+      transactions: this.#transactions,
+      diagnosticRuns: this.#diagnosticRuns,
     });
     return serializeDiagnosticBundle(bundle);
   }
@@ -183,7 +294,17 @@ export class MatrixController {
     this.applyFingerprint(bundle.fingerprint, "imported");
     this.trace.importSerialized(bundle.trace);
     for (const packet of notificationPacketsFromBundle(bundle)) this.#recordIncoming(packet, false);
+    this.#transactions.splice(0, this.#transactions.length, ...(bundle.transactions ?? []));
+    this.#diagnosticRuns.splice(0, this.#diagnosticRuns.length, ...(bundle.diagnosticRuns ?? []));
     return bundle;
+  }
+
+  #recordTransaction(plan: TransmissionPlan, result: ExecutionResult | null, startedAt: string, notificationStart: number, source: TransactionSource, diagnosticRunIdValue: string | null, error: string | null): void {
+    const completedAt = result?.completedAt ?? new Date().toISOString();
+    const endpoint = plan.packets[0]?.endpoint ?? null;
+    const tx = plan.packets.map((packet) => ({ timestamp: startedAt, direction: "TX" as const, hex: packet.hex, endpoint: packet.endpoint }));
+    const rx = this.session.notifications.slice(notificationStart).map((record) => ({ timestamp: record.timestamp, direction: "RX" as const, hex: record.rawHex, ...(endpoint ? { endpoint } : {}) }));
+    this.#transactions.push({ id: transactionId(), startedAt, completedAt, durationMs: duration(startedAt, completedAt), sessionSource: this.session.source, source, driverId: plan.driverId, profileId: plan.profileId, operation: plan.operation.type, safety: { risk: plan.risk, persistence: plan.persistence, validation: plan.validation }, endpoint, packets: [...tx, ...rx], decodedResponse: result?.response ?? null, hostAccepted: result?.hostAccepted ?? false, protocolAcknowledged: result?.protocolAcknowledged ?? null, deviceStateVerified: result?.deviceStateVerified ?? false, responseTimedOut: result?.responseTimedOut ?? false, error, findings: result?.response ? [result.response.summary] : [], observationIds: [], diagnosticRunId: diagnosticRunIdValue });
   }
 
   #recordIncoming(packet: Uint8Array, recordTrace: boolean): NotificationRecord {
@@ -233,3 +354,7 @@ function decodePriority(notification: DecodedNotification): number {
   if (notification.kind.startsWith("malformed")) return 0;
   return 20;
 }
+
+function duration(startedAt: string, completedAt: string): number { return Math.max(0, Date.parse(completedAt) - Date.parse(startedAt)); }
+function errorMessage(error: unknown): string { return error instanceof Error ? error.message : String(error); }
+function numberField(notification: DecodedNotification | null, key: string): number | null { const value = notification?.fields[key]; return typeof value === "number" ? value : null; }

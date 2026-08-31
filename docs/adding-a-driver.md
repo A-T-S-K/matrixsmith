@@ -4,7 +4,7 @@ This workflow is designed so a contributor can add a second device family withou
 
 ## 1. Collect portable evidence
 
-In Lab choose **Probe unknown device**. Enter suspected service UUIDs before opening the chooser; Web Bluetooth permission is established there. Connect, inspect accessible services/characteristics/properties, perform only explicit safe reads, subscribe explicitly to notifications, label the physical action, add manual observations, and export a diagnostic bundle. Unknown-device mode intentionally has no writer.
+From Home choose **Explore unknown BLE device**; Web Bluetooth permission is established in the browser chooser. The controller accepts suspected service UUID hints for the chooser; a UI field for them is planned. Connect, inspect accessible services/characteristics/properties, perform only explicit safe reads, subscribe explicitly to notifications, label the physical action, add manual observations, and export a diagnostic bundle. Unknown-device mode intentionally has no writer.
 
 Turn the reviewed bundle into `tests/fixtures/devices/<profile>.json`. Preserve raw advertisement/GATT/notification bytes. Separate browser-observable facts from boot strings, physical geometry, labels, teardown observations, and other manual evidence.
 
@@ -34,7 +34,11 @@ Extend `MatrixOperation` only when needed. A plan contains exact packets, endpoi
 
 Start new operations dry-run only. Use `FakeTransport` for order/failure/timeout/concurrency tests and `ReplayTransport` or imported bundles for match/decoder tests. Do not simulate device-side success.
 
-## 7. Validate hardware deliberately
+## 7. Contribute diagnostic tools and support status
+
+Register named diagnostic workflows for the family in `src/diagnostics/workflows.ts` (kind `identify` / `inspect` / `validate`, with risk, persistence, validation, and a plain-language pre-run explanation). Tools run through `MatrixController.runDiagnostic`, which only executes semantic operations under the safety policy and records serializable per-step results. Reversible validations must restore and re-verify the original state, and surface a restore failure prominently. If a family has no safe probe, say so rather than inventing one. Capability metadata plus session evidence feed the Diagnose support matrix and report sections automatically — see [UX workflows](ux-workflows.md).
+
+## 8. Validate hardware deliberately
 
 Choose the least risky transient/read-only experiment supported by provenance. Capabilities and explicit plan intent drive policy; do not add driver/opcode/profile special cases. Require deliberate action, raw notification retention, separate host/protocol/state claims, and exported trace. Keep retry count one until safe retry behavior is proven.
 

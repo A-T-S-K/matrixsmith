@@ -13,7 +13,8 @@ MatrixSmith is a source-available static TypeScript PWA for controlling supporte
 - versioned diagnostic bundle export/import and offline matching/replay foundations
 - independent CoolLEDX and CoolLEDUX drivers with shared factual envelope primitives, active read-only family probing, response correlation, and raw/decoded notification retention
 - verified CoolLEDUX device-info and deliberate raw 0–255 brightness Control for the exact iLedHat
-- responsive Control, Inspect, and Lab surfaces for Chrome on Android
+- goal-oriented Preact UI: Home, then a device workspace with Control, Diagnose, and Develop views and a persistent Share report action, responsive for Chrome on Android
+- serializable protocol transactions, driver-contributed diagnostic workflows (including the reversible CoolLEDUX brightness round-trip), and a deterministic shareable Markdown report with privacy-safe defaults
 - structured presets under `matrixsmith:v1:` with legacy iLedHat preset reading
 
 Verified CoolLEDUX `GetDeviceInfo` and `SetBrightness` are live only through explicit actions after the session is resolved. Power and other direct commands remain dry-run-only. Persistent content, password set, and OTA are not implemented live. There is no arbitrary raw writer.
@@ -33,6 +34,7 @@ Web Bluetooth requires a secure context. `localhost` works for desktop developme
 ## Documentation
 
 - [Architecture](docs/architecture.md)
+- [UX workflows](docs/ux-workflows.md)
 - [Driver-oriented ADR](docs/adr/0001-driver-oriented-architecture.md)
 - [Safety policy](docs/safety.md)
 - [Diagnostics](docs/diagnostics.md)

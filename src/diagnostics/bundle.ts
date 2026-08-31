@@ -4,6 +4,8 @@ import type { ManualObservation } from "../core/evidence";
 import type { DriverMatch } from "../drivers/types";
 import type { TraceEvent } from "./trace";
 import { serializeTraceEvent } from "./trace";
+import type { DiagnosticRun } from "./workflows";
+import type { ProtocolTransaction } from "./transactions";
 
 export interface DiagnosticBundleV1 {
   readonly schemaVersion: 1;
@@ -17,6 +19,8 @@ export interface DiagnosticBundleV1 {
   readonly trace: readonly Record<string, unknown>[];
   readonly observations: readonly ManualObservation[];
   readonly advertisementEvidence: Readonly<Record<string, unknown>> | null;
+  readonly transactions?: readonly ProtocolTransaction[];
+  readonly diagnosticRuns?: readonly DiagnosticRun[];
 }
 
 export interface CreateBundleInput {
@@ -28,6 +32,8 @@ export interface CreateBundleInput {
   readonly trace: readonly TraceEvent[];
   readonly observations: readonly ManualObservation[];
   readonly advertisementEvidence?: Readonly<Record<string, unknown>> | null;
+  readonly transactions?: readonly ProtocolTransaction[];
+  readonly diagnosticRuns?: readonly DiagnosticRun[];
 }
 
 export function createDiagnosticBundle(input: CreateBundleInput): DiagnosticBundleV1 {
@@ -43,6 +49,8 @@ export function createDiagnosticBundle(input: CreateBundleInput): DiagnosticBund
     trace: input.trace.map(serializeTraceEvent),
     observations: structuredClone(input.observations),
     advertisementEvidence: input.advertisementEvidence ? structuredClone(input.advertisementEvidence) : null,
+    transactions: structuredClone(input.transactions ?? []),
+    diagnosticRuns: structuredClone(input.diagnosticRuns ?? []),
   };
 }
 
@@ -62,6 +70,8 @@ export function parseDiagnosticBundle(json: string): DiagnosticBundleV1 {
   if (value.trace.some((event) => !isObject(event) || typeof event.timestamp !== "string" || typeof event.type !== "string")) throw new Error("Diagnostic trace is invalid.");
   if (value.observations.some((observation) => !isObject(observation) || typeof observation.id !== "string" || typeof observation.summary !== "string")) throw new Error("Diagnostic observations are invalid.");
   if (value.advertisementEvidence !== null && !isObject(value.advertisementEvidence)) throw new Error("Advertisement evidence is invalid.");
+  if (value.transactions !== undefined && !Array.isArray(value.transactions)) throw new Error("Diagnostic transactions are invalid.");
+  if (value.diagnosticRuns !== undefined && !Array.isArray(value.diagnosticRuns)) throw new Error("Diagnostic runs are invalid.");
   return value as unknown as DiagnosticBundleV1;
 }
 

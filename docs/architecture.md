@@ -3,8 +3,9 @@
 ## Dependency direction
 
 ```text
-Control / Inspect / Lab UI
-  -> MatrixController + MatrixSession
+Preact UI (Home / Control / Diagnose / Develop / Report)
+  -> MatrixStore (immutable AppSnapshot + subscription)
+    -> MatrixController + MatrixSession
     -> semantic MatrixOperation
       -> statically registered MatrixDriver + DeviceProfile
         -> immutable TransmissionPlan + serializable response expectation
@@ -33,10 +34,11 @@ The UI never calls a characteristic write. A driver plans bytes but cannot acces
 - `src/drivers/coolledux`: newer/advanced direct-command subset and safe `0x1F` probe.
 - `src/profiles`: physical products independent of driver directory layout.
 - `src/app`: session lifecycle, central policy, exact-plan authorization, execution, and application orchestration.
-- `src/diagnostics`: typed trace and versioned portable bundle serialization.
+- `src/diagnostics`: typed trace, serializable protocol transactions and diagnostic workflow runs, versioned portable bundle serialization, the deterministic Markdown report generator, and the future `EvidenceImporter` contract.
 - `src/render`: arbitrary positive dimensions in row-major RGB888; hardware wire order is driver-owned.
 - `src/storage`: small key/value abstraction and structured preset records.
-- `src/main.ts`: modular vanilla TypeScript UI wiring only.
+- `src/ui`: Preact pages/views/components plus `MatrixStore`, which turns controller/session/trace state into an immutable `AppSnapshot` consumed via `useSyncExternalStore`. Components invoke semantic store/controller operations only; domain and protocol logic never lives in components.
+- `src/main.tsx`: composition root wiring transport, trace, controller, store, and the Preact render.
 
 ## Runtime versus portable evidence
 
