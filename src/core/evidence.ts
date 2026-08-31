@@ -7,6 +7,12 @@ export interface EvidenceReference {
   readonly summary: string;
   readonly confidence: EvidenceConfidence;
   readonly source?: string;
+  /**
+   * Whether this evidence supports the profile's current model or records a
+   * rejected hypothesis. Rejected evidence must keep flowing into reports as
+   * "rejected hypotheses", never as verified facts.
+   */
+  readonly disposition?: "supports" | "rejects";
 }
 
 export interface ManualObservation {

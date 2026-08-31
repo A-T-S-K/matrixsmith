@@ -6,9 +6,23 @@ import type { TraceEvent } from "./trace";
 import { serializeTraceEvent } from "./trace";
 import type { DiagnosticRun } from "./workflows";
 import type { ProtocolTransaction } from "./transactions";
+import type { SessionValidationResult } from "./validation";
+import type { ContentCompilationRecord } from "./content-evidence";
 
-export interface DiagnosticBundleV1 {
-  readonly schemaVersion: 1;
+export interface ImportedEvidenceSummary {
+  readonly provenance: string;
+  readonly transactionCount: number;
+  readonly warnings: readonly string[];
+}
+
+/**
+ * Schema v2 adds structured hardware-validation results, content-compiler
+ * metadata, and imported-external-evidence summaries. v1 bundles remain
+ * readable: parseDiagnosticBundle migrates them by defaulting the new
+ * collections to empty.
+ */
+export interface DiagnosticBundle {
+  readonly schemaVersion: 2;
   readonly matrixsmithVersion: string;
   readonly createdAt: string;
   readonly fingerprint: DeviceFingerprint;
@@ -21,7 +35,13 @@ export interface DiagnosticBundleV1 {
   readonly advertisementEvidence: Readonly<Record<string, unknown>> | null;
   readonly transactions?: readonly ProtocolTransaction[];
   readonly diagnosticRuns?: readonly DiagnosticRun[];
+  readonly validations?: readonly SessionValidationResult[];
+  readonly contentCompilations?: readonly ContentCompilationRecord[];
+  readonly importedEvidence?: readonly ImportedEvidenceSummary[];
 }
+
+/** The historical v1 shape, kept as a named type for fixtures and tests. */
+export type DiagnosticBundleV1 = Omit<DiagnosticBundle, "schemaVersion" | "validations" | "contentCompilations" | "importedEvidence"> & { readonly schemaVersion: 1 };
 
 export interface CreateBundleInput {
   readonly fingerprint: DeviceFingerprint;
@@ -34,11 +54,14 @@ export interface CreateBundleInput {
   readonly advertisementEvidence?: Readonly<Record<string, unknown>> | null;
   readonly transactions?: readonly ProtocolTransaction[];
   readonly diagnosticRuns?: readonly DiagnosticRun[];
+  readonly validations?: readonly SessionValidationResult[];
+  readonly contentCompilations?: readonly ContentCompilationRecord[];
+  readonly importedEvidence?: readonly ImportedEvidenceSummary[];
 }
 
-export function createDiagnosticBundle(input: CreateBundleInput): DiagnosticBundleV1 {
+export function createDiagnosticBundle(input: CreateBundleInput): DiagnosticBundle {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     matrixsmithVersion: "0.1.0",
     createdAt: new Date().toISOString(),
     fingerprint: structuredClone(input.fingerprint),
@@ -51,17 +74,20 @@ export function createDiagnosticBundle(input: CreateBundleInput): DiagnosticBund
     advertisementEvidence: input.advertisementEvidence ? structuredClone(input.advertisementEvidence) : null,
     transactions: structuredClone(input.transactions ?? []),
     diagnosticRuns: structuredClone(input.diagnosticRuns ?? []),
+    validations: structuredClone(input.validations ?? []),
+    contentCompilations: structuredClone(input.contentCompilations ?? []),
+    importedEvidence: structuredClone(input.importedEvidence ?? []),
   };
 }
 
-export function serializeDiagnosticBundle(bundle: DiagnosticBundleV1): string {
+export function serializeDiagnosticBundle(bundle: DiagnosticBundle): string {
   return JSON.stringify(bundle, null, 2);
 }
 
-export function parseDiagnosticBundle(json: string): DiagnosticBundleV1 {
+export function parseDiagnosticBundle(json: string): DiagnosticBundle {
   let value: unknown;
   try { value = JSON.parse(json); } catch { throw new Error("Diagnostic bundle is not valid JSON."); }
-  if (!isObject(value) || value.schemaVersion !== 1) throw new Error("Unsupported diagnostic bundle schemaVersion.");
+  if (!isObject(value) || (value.schemaVersion !== 1 && value.schemaVersion !== 2)) throw new Error("Unsupported diagnostic bundle schemaVersion.");
   if (typeof value.matrixsmithVersion !== "string" || !validIso(value.createdAt)) throw new Error("Diagnostic bundle metadata is invalid.");
   if (!validFingerprint(value.fingerprint)) throw new Error("Diagnostic bundle fingerprint is invalid.");
   if (!Array.isArray(value.driverMatches) || !value.driverMatches.every(validMatch)) throw new Error("Diagnostic bundle driver matches are invalid.");
@@ -69,13 +95,27 @@ export function parseDiagnosticBundle(json: string): DiagnosticBundleV1 {
   if (!Array.isArray(value.capabilities) || !Array.isArray(value.trace) || !Array.isArray(value.observations)) throw new Error("Diagnostic bundle collections are invalid.");
   if (value.trace.some((event) => !isObject(event) || typeof event.timestamp !== "string" || typeof event.type !== "string")) throw new Error("Diagnostic trace is invalid.");
   if (value.observations.some((observation) => !isObject(observation) || typeof observation.id !== "string" || typeof observation.summary !== "string")) throw new Error("Diagnostic observations are invalid.");
-  if (value.advertisementEvidence !== null && !isObject(value.advertisementEvidence)) throw new Error("Advertisement evidence is invalid.");
-  if (value.transactions !== undefined && !Array.isArray(value.transactions)) throw new Error("Diagnostic transactions are invalid.");
-  if (value.diagnosticRuns !== undefined && !Array.isArray(value.diagnosticRuns)) throw new Error("Diagnostic runs are invalid.");
-  return value as unknown as DiagnosticBundleV1;
+  if (value.advertisementEvidence !== null && value.advertisementEvidence !== undefined && !isObject(value.advertisementEvidence)) throw new Error("Advertisement evidence is invalid.");
+  for (const key of ["transactions", "diagnosticRuns", "validations", "contentCompilations", "importedEvidence"] as const) {
+    if (value[key] !== undefined && !Array.isArray(value[key])) throw new Error(`Diagnostic bundle ${key} are invalid.`);
+  }
+  // Migrate: v1 bundles simply lack the new collections; the rest of the
+  // shape is identical, so stamping schemaVersion 2 with empty defaults is a
+  // complete migration.
+  const migrated = {
+    ...(value as unknown as DiagnosticBundle),
+    schemaVersion: 2 as const,
+    advertisementEvidence: (value.advertisementEvidence ?? null) as DiagnosticBundle["advertisementEvidence"],
+    transactions: (value.transactions ?? []) as DiagnosticBundle["transactions"],
+    diagnosticRuns: (value.diagnosticRuns ?? []) as DiagnosticBundle["diagnosticRuns"],
+    validations: (value.validations ?? []) as DiagnosticBundle["validations"],
+    contentCompilations: (value.contentCompilations ?? []) as DiagnosticBundle["contentCompilations"],
+    importedEvidence: (value.importedEvidence ?? []) as DiagnosticBundle["importedEvidence"],
+  };
+  return migrated;
 }
 
-export function notificationPacketsFromBundle(bundle: DiagnosticBundleV1): readonly Uint8Array[] {
+export function notificationPacketsFromBundle(bundle: DiagnosticBundle): readonly Uint8Array[] {
   return bundle.trace.flatMap((event) => {
     if (event.type !== "notification.raw" || typeof event.rawHex !== "string" || event.rawHex.length % 2 !== 0 || !/^[0-9a-f]*$/i.test(event.rawHex)) return [];
     return [Uint8Array.from(event.rawHex.match(/../g) ?? [], (pair) => Number.parseInt(pair, 16))];

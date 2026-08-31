@@ -1,11 +1,14 @@
 import type { Capability } from "../core/capabilities";
 import type { DeviceFingerprint, DeviceProfile } from "../core/device";
 import type { DriverMatch } from "../drivers/types";
-import type { DiagnosticBundleV1 } from "./bundle";
+import type { DiagnosticBundle } from "./bundle";
 import type { TraceEvent } from "./trace";
 import type { ProtocolTransaction } from "./transactions";
 import type { DiagnosticRun } from "./workflows";
 import type { ManualObservation } from "../core/evidence";
+import type { SessionValidationResult } from "./validation";
+import type { ContentCompilationRecord } from "./content-evidence";
+import { computeSupportMatrix, suggestNextTests, type SupportInput } from "./support";
 
 export interface ReportOptions {
   readonly goal: string;
@@ -21,12 +24,15 @@ export interface ReportOptions {
   readonly includeObservations: boolean;
   readonly includeIdentifiers: boolean;
   readonly includeRawTrace: boolean;
+  /** Include user-entered text content (e.g. rendered text messages) in the report. */
+  readonly includeTextContent: boolean;
 }
 
 export const DEFAULT_REPORT_OPTIONS: ReportOptions = Object.freeze({
   goal: "", includeSummary: true, includeFingerprint: true, includeGatt: true, includeDriverResolution: true,
   includeCapabilities: true, includeDiagnosticRuns: true, includeTransactions: true, includeRawPacketHex: true,
   includeEvidence: true, includeObservations: true, includeIdentifiers: false, includeRawTrace: false,
+  includeTextContent: false,
 });
 
 export interface ReportData {
@@ -42,15 +48,21 @@ export interface ReportData {
   readonly observations: readonly ManualObservation[];
   readonly trace: readonly TraceEvent[];
   readonly protocolResolution: { readonly summary: string; readonly source: string } | null;
+  readonly validations: readonly SessionValidationResult[];
+  readonly contentCompilations: readonly ContentCompilationRecord[];
+  readonly importedEvidence: readonly { readonly provenance: string; readonly transactionCount: number; readonly warnings: readonly string[] }[];
+  readonly liveConnected: boolean;
   readonly source: string;
 }
 
-export function reportDataFromBundle(bundle: DiagnosticBundleV1): ReportData {
+export function reportDataFromBundle(bundle: DiagnosticBundle): ReportData {
   return {
     createdAt: bundle.createdAt, matrixsmithVersion: bundle.matrixsmithVersion, fingerprint: bundle.fingerprint,
     profile: null, selectedDriver: bundle.selectedDriver, driverMatches: bundle.driverMatches, capabilities: bundle.capabilities,
     transactions: bundle.transactions ?? [], diagnosticRuns: bundle.diagnosticRuns ?? [], observations: bundle.observations,
-    trace: deserializeTrace(bundle.trace), protocolResolution: null, source: "imported diagnostic bundle",
+    trace: deserializeTrace(bundle.trace), protocolResolution: null,
+    validations: bundle.validations ?? [], contentCompilations: bundle.contentCompilations ?? [],
+    importedEvidence: bundle.importedEvidence ?? [], liveConnected: false, source: "imported diagnostic bundle",
   };
 }
 
@@ -66,6 +78,9 @@ export function generateMarkdownReport(data: ReportData, options: ReportOptions 
   section(lines, "Device state", deviceStateText(data));
   if (options.includeCapabilities) section(lines, "Capabilities", capabilitiesText(data.capabilities));
   if (options.includeDiagnosticRuns) section(lines, "Diagnostic runs", diagnosticText(data.diagnosticRuns));
+  if (data.validations.length) section(lines, "Hardware validation results", validationText(data.validations));
+  if (data.contentCompilations.length) section(lines, "Content compiler evidence", compilationText(data.contentCompilations, options.includeTextContent));
+  if (data.importedEvidence.length) section(lines, "Imported external evidence", importedEvidenceText(data.importedEvidence));
   if (options.includeTransactions) section(lines, "Protocol transactions", transactionText(data.transactions, options.includeRawPacketHex));
   if (options.includeObservations) section(lines, "Observations", listOrNone(data.observations.map((value) => `${value.recordedAt} — ${value.summary} (${value.confidence})`)));
   const facts = evidenceGroups(data);
@@ -73,7 +88,7 @@ export function generateMarkdownReport(data: ReportData, options: ReportOptions 
   section(lines, "Inferred facts", listOrNone(facts.inferred));
   section(lines, "Unknowns", listOrNone(facts.unknowns));
   section(lines, "Rejected hypotheses", listOrNone(facts.rejected));
-  section(lines, "Suggested next tests", listOrNone(suggestedTests(data)));
+  section(lines, "Suggested next tests", listOrNone([...suggestNextTests(supportInput(data))]));
   section(lines, "Reproduction environment", `- Transport: ${data.fingerprint.transportKind}\n- Profile: ${data.profile?.id ?? "not available"}\n- Browser/device identifiers: ${options.includeIdentifiers ? data.fingerprint.browserDeviceId ?? "not recorded" : "omitted"}`);
   section(lines, "Protocol transcript", transcript(data.transactions, options.includeRawPacketHex));
   if (options.includeRawTrace) section(lines, "Raw event trace", traceText(data.trace, options.includeIdentifiers));
@@ -81,30 +96,145 @@ export function generateMarkdownReport(data: ReportData, options: ReportOptions 
   return `${lines.join("\n").trimEnd()}\n`;
 }
 
+function supportInput(data: ReportData): SupportInput {
+  return {
+    connected: data.fingerprint.services.length > 0,
+    live: data.liveConnected,
+    resolvedDriverId: data.selectedDriver,
+    capabilities: data.capabilities,
+    validations: data.validations,
+  };
+}
+
 function section(lines: string[], title: string, body: string): void { lines.push(`## ${title}`, "", body, ""); }
 function executiveSummary(data: ReportData): string {
   const family = data.selectedDriver ?? (data.driverMatches.length ? "ambiguous protocol candidates" : "unknown protocol");
-  return `${data.fingerprint.name ?? "Unnamed BLE display"}; ${family}; ${data.transactions.length} protocol transaction(s); ${data.diagnosticRuns.length} diagnostic run(s).`;
+  return `${data.fingerprint.name ?? "Unnamed BLE display"}; ${family}; ${data.transactions.length} protocol transaction(s); ${data.diagnosticRuns.length} diagnostic run(s); ${data.validations.length} hardware validation(s).`;
 }
 function supportTable(data: ReportData): string {
-  const selected = Boolean(data.selectedDriver);
-  const capability = (id: string): string => labelCapability(data.capabilities.find((item) => item.id === id));
-  return ["| Area | Status | Evidence |", "| --- | --- | --- |", `| Bluetooth transport | ${data.fingerprint.services.length ? "Verified live" : "Blocked"} | ${data.fingerprint.services.length} accessible service(s) |`, `| Protocol identity | ${selected ? "Verified live" : "Experimental / gated"} | ${data.protocolResolution?.summary ?? "Static candidate evidence only"} |`, `| Read-only status | ${capability("device-info")} | Capability metadata |`, `| Transient control | ${capability("brightness")} | Capability metadata |`, "| Persistence | Experimental / gated | Persistence behavior is unknown |", "| Static framebuffer | Dry-run only | No verified live capability |", "| Pixel orientation | Unsupported | Not validated in this branch |", "| Color encoding | Unsupported | Not validated in this branch |", "| Stored programs | Unsupported | Explicit non-goal |", "| Animation | Dry-run only | No verified live capability |", "| Recovery | Experimental / gated | Brightness workflow restores baseline |"].join("\n");
+  const matrix = computeSupportMatrix(supportInput(data));
+  return ["| Area | Status | Evidence |", "| --- | --- | --- |", ...matrix.map((row) => `| ${row.label} | ${row.state} | ${row.evidence} |`)].join("\n");
 }
-function labelCapability(value: Capability | undefined): string { if (!value?.supported) return "Unsupported"; if (!value.live) return value.validation === "experimental" ? "Experimental / gated" : "Dry-run only"; return value.validation === "verified" ? "Verified live" : "Experimental / gated"; }
 function fingerprintText(data: ReportData, identifiers: boolean): string {
-  const f = data.fingerprint; const rows = [`- Product name: ${f.name ?? "unknown"}`, `- Transport: ${f.transportKind}`, `- Browser opaque device ID: ${identifiers ? f.browserDeviceId ?? "not recorded" : "omitted"}`, `- Live-session geometry: ${f.manuallyConfirmedGeometry ? `${f.manuallyConfirmedGeometry.width}×${f.manuallyConfirmedGeometry.height} (manually confirmed)` : "unknown"}`, `- Profile geometry: ${data.profile ? `${data.profile.width}×${data.profile.height} (${data.profile.id})` : "unknown"}`, "- Advertisement-derived geometry: unknown unless explicitly present in observed advertisement evidence"];
+  const f = data.fingerprint;
+  const advertisedGeometry = profileGeometryFromAdvertisement(data.profile);
+  const rows = [
+    `- Product name: ${f.name ?? "unknown"}`,
+    `- Transport: ${f.transportKind}`,
+    `- Browser opaque device ID: ${identifiers ? f.browserDeviceId ?? "not recorded" : "omitted"}`,
+    `- Live-session geometry: ${f.manuallyConfirmedGeometry ? `${f.manuallyConfirmedGeometry.width}×${f.manuallyConfirmedGeometry.height} (manually confirmed)` : "unknown"}`,
+    `- Physical/profile geometry: ${data.profile ? `${data.profile.width}×${data.profile.height} (${data.profile.id})` : "unknown"}`,
+    `- Captured/profile advertisement geometry: ${advertisedGeometry ?? "not embedded in this session"}`,
+  ];
   return rows.join("\n");
 }
+function profileGeometryFromAdvertisement(profile: DeviceProfile | null): string | null {
+  if (!profile) return null;
+  const width = profile.metadata.width;
+  const height = profile.metadata.height;
+  if (typeof width !== "number" || typeof height !== "number") return null;
+  return `${width}×${height} (from captured advertisement evidence)`;
+}
 function gattText(fingerprint: DeviceFingerprint): string { if (!fingerprint.services.length) return "No accessible GATT hierarchy recorded."; return fingerprint.services.flatMap((service) => [`- Service \`${service.uuid}\` (${service.isPrimary ? "primary" : "secondary"})`, ...service.characteristics.map((c) => `  - Characteristic \`${c.uuid}\`: ${Object.entries(c.properties).filter(([, on]) => on).map(([name]) => name).join(", ") || "no reported properties"}`)]).join("\n"); }
-function advertisementText(data: ReportData, identifiers: boolean): string { const f = data.fingerprint; const manufacturer = identifiers ? f.manufacturerDataHex ?? "not recorded" : redactAddresses(f.manufacturerDataHex ?? "not recorded"); return `- Observed raw advertisement: ${f.rawAdvertisementHex ?? "not available"}\n- Observed manufacturer data: ${manufacturer}\n- Imported/profile evidence: ${data.profile?.evidence.map((item) => `${item.id}: ${item.summary}`).join("; ") ?? "not embedded in this session"}`; }
-function driverText(data: ReportData): string { return data.driverMatches.map((match) => `### ${match.driverId}\n\n- State: ${match.driverId === data.selectedDriver ? "VERIFIED ON THIS SESSION" : match.score <= 0 ? "Rejected for this profile" : "Candidate"}\n- Evidence: ${match.reasons.join("; ") || "none"}\n- Rejected/contradicting evidence: ${match.contradictions.join("; ") || "none"}\n- Details: score ${match.score}; confidence ${match.confidence}`).join("\n\n") || "No driver candidates recorded."; }
+function advertisementText(data: ReportData, identifiers: boolean): string {
+  const f = data.fingerprint;
+  const manufacturer = identifiers ? f.manufacturerDataHex ?? "not recorded" : redactAddresses(f.manufacturerDataHex ?? "not recorded");
+  const advertisedGeometry = profileGeometryFromAdvertisement(data.profile);
+  return [
+    `- Live-session advertisement: ${f.rawAdvertisementHex ?? "not available (Web Bluetooth does not expose advertisement bytes)"}`,
+    `- Live-session manufacturer data: ${manufacturer}`,
+    `- Captured/profile advertisement evidence: ${advertisedGeometry ?? "not embedded in this session"}`,
+    `- Profile evidence: ${data.profile?.evidence.filter((item) => item.disposition !== "rejects").map((item) => `${item.id}: ${item.summary}`).join("; ") ?? "not embedded in this session"}`,
+  ].join("\n");
+}
+function driverText(data: ReportData): string {
+  return data.driverMatches.map((match) => {
+    const profileRejections = (data.profile?.evidence ?? []).filter((item) => item.disposition === "rejects" && mentionsDriver(item.summary + item.id, match.driverId));
+    const state = match.driverId === data.selectedDriver
+      ? "VERIFIED ON THIS SESSION"
+      : profileRejections.length > 0
+        ? "Protocol hypothesis rejected for this profile (static transport shape remains compatible)"
+        : match.score <= 0 ? "Rejected for this profile" : "Candidate";
+    return [
+      `### ${match.driverId}`,
+      "",
+      `- State: ${state}`,
+      `- Static transport match: score ${match.score}; confidence ${match.confidence}${match.score > 0 ? " (shared FFF0/FFF1 GATT shape)" : ""}`,
+      `- Static-match evidence: ${match.reasons.join("; ") || "none"}`,
+      `- Profile protocol evidence: ${profileRejections.length > 0 ? profileRejections.map((item) => `REJECTED — ${item.summary}`).join("; ") : match.driverId === data.selectedDriver ? data.protocolResolution?.summary ?? "resolved by session evidence" : "none recorded"}`,
+      `- Session contradictions: ${match.contradictions.join("; ") || "none"}`,
+    ].join("\n");
+  }).join("\n\n") || "No driver candidates recorded.";
+}
+function mentionsDriver(text: string, driverId: string): boolean {
+  const value = text.toLowerCase();
+  if (driverId === "coolledx") return /coolledx|classic/.test(value) && !value.includes("coolledux");
+  return value.includes(driverId.toLowerCase());
+}
 function deviceStateText(data: ReportData): string { const last = [...data.transactions].reverse().find((t) => t.decodedResponse?.kind === "device-info")?.decodedResponse; return last ? Object.entries(last.fields).map(([key, value]) => `- ${key}: ${String(value)}`).join("\n") : "No verified device-state readback recorded."; }
+function labelCapability(value: Capability): string {
+  if (value.validation === "rejected") return "Rejected";
+  if (value.validation === "verified" && value.live) return "Verified live";
+  if (value.validation === "verified") return "Verified (dry-run only this session)";
+  if (value.validation === "experimental") return value.live ? "Experimental / gated" : "Experimental / not tested here";
+  return "Not tested";
+}
 function capabilitiesText(values: readonly Capability[]): string { return values.length ? ["| Capability | State | Risk | Persistence |", "| --- | --- | --- | --- |", ...values.map((c) => `| ${c.label} | ${labelCapability(c)} | ${c.risk} | ${c.persistence} |`)].join("\n") : "No resolved capabilities."; }
 function diagnosticText(runs: readonly DiagnosticRun[]): string { return runs.map((run) => `### ${run.purpose}\n\n- Safety: ${run.safety.risk}; ${run.safety.explanation}\n- Result: ${run.status}\n- Steps:\n${run.steps.map((s) => `  - ${s.status}: ${s.label} — ${s.summary}`).join("\n")}\n- Findings: ${run.findings.join("; ") || "none"}`).join("\n\n") || "No diagnostic runs recorded."; }
-function transactionText(values: readonly ProtocolTransaction[], raw: boolean): string { return values.map((t) => `### ${t.operation}\n\n- Driver: ${t.driverId ?? "none"}\n- Risk: ${t.safety.risk}; ${t.safety.validation}\n- Status: host=${t.hostAccepted}; protocol=${String(t.protocolAcknowledged)}; device verified=${t.deviceStateVerified}; timeout=${t.responseTimedOut}${t.error ? `; error=${t.error}` : ""}\n${raw ? `- TX: ${t.packets.filter((p) => p.direction === "TX").map((p) => p.hex).join(" | ") || "none"}\n- RX: ${t.packets.filter((p) => p.direction === "RX").map((p) => p.hex).join(" | ") || "none"}` : "- Raw packet hex: excluded"}\n- Decoded: ${t.decodedResponse ? `${t.decodedResponse.summary}; fields=${JSON.stringify(t.decodedResponse.fields)}` : "none"}`).join("\n\n") || "No protocol transactions recorded."; }
-function evidenceGroups(data: ReportData): { verified: string[]; inferred: string[]; unknowns: string[]; rejected: string[] } { const verified = data.profile?.evidence.filter((e) => e.confidence === "observed" || e.confidence === "corroborated").map((e) => e.summary) ?? []; const inferred = data.profile?.evidence.filter((e) => e.confidence === "inferred" || e.confidence === "speculative").map((e) => e.summary) ?? []; const rejected = data.driverMatches.flatMap((m) => m.contradictions); return { verified, inferred, rejected, unknowns: ["Persistence behavior is not established.", "Pixel orientation and color encoding are not validated here.", "Stored-program/content behavior is outside this branch."] }; }
-function suggestedTests(data: ReportData): string[] { if (!data.fingerprint.services.length) return ["Connect a display and enumerate browser-authorized GATT services."]; if (!data.selectedDriver) return data.driverMatches.some((m) => m.driverId === "coolledux" && m.score > 0) ? ["Run safe CoolLEDUX identification (verified read-only 0x1F query)."] : ["No verified safe family probe is available; collect GATT evidence without writing."]; return data.selectedDriver === "coolledux" ? ["Refresh device info.", "Optionally run the explicit reversible brightness round-trip."] : ["Review driver support metadata before any live command."]; }
+function validationText(validations: readonly SessionValidationResult[]): string {
+  return validations.map((validation) => [
+    `### ${validation.workflowId}`,
+    "",
+    `- Recorded: ${validation.recordedAt}`,
+    `- Profile: ${validation.profileId ?? "unknown"}`,
+    `- Result: ${validation.status.toUpperCase()} (session-level physical validation; profile metadata is not silently promoted)`,
+    `- Validated areas: ${validation.validatedAreas.join(", ") || "none"}`,
+    `- Rejected areas: ${validation.rejectedAreas.join(", ") || "none"}`,
+    "- Structured observations:",
+    ...validation.answers.map((answer) => `  - ${answer.questionId}: ${answer.answer}${answer.note ? ` — ${answer.note}` : ""}`),
+    `- Findings: ${validation.findings.join(" ") || "none"}`,
+  ].join("\n")).join("\n\n");
+}
+function compilationText(values: readonly ContentCompilationRecord[], includeText: boolean): string {
+  return values.map((record) => [
+    `### ${record.operation} (${record.contentType})`,
+    "",
+    `- Logical dimensions: ${record.width}×${record.height}`,
+    `- Tiles: ${record.tileCount} (tile width ${record.tileWidth})`,
+    `- Program size: ${record.programBytes} bytes uncompressed`,
+    `- CRC32 (custom): 0x${record.crc32.toString(16).padStart(8, "0").toUpperCase()}`,
+    `- Compressed size: ${record.compressedBytes} bytes (${record.compression})`,
+    `- Chunks: ${record.chunkCount} data packet(s) + 1 announce`,
+    `- Pacing: ${record.pacingMs} ms between packets`,
+    ...(record.frameCount !== undefined ? [`- Frames: ${record.frameCount}${record.frameDelaysMs ? `; delays ${record.frameDelaysMs.join("/")} ms` : ""}`] : []),
+    ...(record.sourceDimensions ? [`- Source image: ${record.sourceDimensions}${record.fitMode ? `; fit mode ${record.fitMode}` : ""}`] : []),
+    ...(record.textContent !== undefined ? [`- Text content: ${includeText ? JSON.stringify(record.textContent) : "omitted (enable text content to include)"}${record.textRendering ? `; rendering ${record.textRendering}` : ""}`] : []),
+  ].join("\n")).join("\n\n");
+}
+function importedEvidenceText(values: readonly ReportData["importedEvidence"][number][]): string {
+  return values.map((entry) => `- Source: ${entry.provenance}; ${entry.transactionCount} parsed transaction(s); warnings: ${entry.warnings.length ? entry.warnings.join("; ") : "none"}`).join("\n");
+}
+function transactionText(values: readonly ProtocolTransaction[], raw: boolean): string { return values.map((t) => `### ${t.operation}\n\n- Source: ${sourceLabel(t)}\n- Driver: ${t.driverId ?? "none"}\n- Risk: ${t.safety.risk}; ${t.safety.validation}\n- Status: host=${t.hostAccepted}; protocol=${String(t.protocolAcknowledged)}; device verified=${t.deviceStateVerified}; timeout=${t.responseTimedOut}${t.error ? `; error=${t.error}` : ""}\n${raw ? `- TX: ${t.packets.filter((p) => p.direction === "TX").map((p) => p.hex).join(" | ") || "none"}\n- RX: ${t.packets.filter((p) => p.direction === "RX").map((p) => p.hex).join(" | ") || "none"}` : "- Raw packet hex: excluded"}\n- Decoded: ${t.decodedResponse ? `${t.decodedResponse.summary}; fields=${JSON.stringify(t.decodedResponse.fields)}` : "none"}`).join("\n\n") || "No protocol transactions recorded."; }
+function sourceLabel(t: ProtocolTransaction): string {
+  if (t.sessionSource === "imported") return t.source === "external-import" ? "nRF Connect import" : "imported bundle";
+  if (t.sessionSource === "live") return "live MatrixSmith";
+  if (t.sessionSource === "replay") return "fixture/replay";
+  return t.sessionSource;
+}
+function evidenceGroups(data: ReportData): { verified: string[]; inferred: string[]; unknowns: string[]; rejected: string[] } {
+  const supporting = (data.profile?.evidence ?? []).filter((e) => e.disposition !== "rejects");
+  const verified = supporting.filter((e) => e.confidence === "observed" || e.confidence === "corroborated").map((e) => e.summary);
+  const inferred = supporting.filter((e) => e.confidence === "inferred" || e.confidence === "speculative").map((e) => e.summary);
+  const rejected = [
+    ...(data.profile?.evidence ?? []).filter((e) => e.disposition === "rejects").map((e) => e.summary),
+    ...data.driverMatches.flatMap((m) => m.contradictions),
+    ...data.validations.flatMap((v) => v.rejectedAreas.map((area) => `Session validation rejected ${area} (${v.workflowId}).`)),
+  ];
+  const matrix = computeSupportMatrix(supportInput(data));
+  const unknowns = matrix.filter((row) => row.state === "Unknown" || row.state === "Not tested").map((row) => `${row.label}: ${row.state.toLowerCase()} — ${row.evidence}.`);
+  for (const validation of data.validations.filter((v) => v.status === "passed")) verified.push(`Session validation ${validation.workflowId} passed on the physical device (${validation.validatedAreas.join(", ")}).`);
+  return { verified, inferred, rejected, unknowns };
+}
 function transcript(values: readonly ProtocolTransaction[], raw: boolean): string { if (!values.length) return "No protocol transcript."; return ["| Timestamp | Operation | Direction | Packet | Result |", "| --- | --- | --- | --- | --- |", ...values.flatMap((t) => t.packets.map((p) => `| ${p.timestamp} | ${t.operation} | ${p.direction} | ${raw ? `\`${p.hex}\`` : "excluded"} | ${t.error ?? (t.deviceStateVerified ? "device verified" : t.protocolAcknowledged ? "protocol acknowledged" : t.hostAccepted ? "host accepted" : "not accepted")} |`))].join("\n"); }
 function traceText(values: readonly TraceEvent[], identifiers: boolean): string { return values.map((e) => `- ${e.timestamp} ${e.type} ${JSON.stringify(sanitizeMetadata(e.metadata, identifiers))}${e.rawBytes ? ` raw=${[...e.rawBytes].map((b) => b.toString(16).padStart(2, "0")).join(" ").toUpperCase()}` : ""}`).join("\n") || "No raw events."; }
 function listOrNone(values: readonly string[]): string { return values.length ? values.map((value) => `- ${value}`).join("\n") : "None recorded."; }

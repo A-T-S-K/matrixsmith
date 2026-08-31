@@ -3,7 +3,7 @@ import type { Persistence, RiskClass } from "../core/risk";
 import type { ValidationStatus } from "../core/evidence";
 import type { DecodedNotification } from "../drivers/types";
 
-export type TransactionSource = "operation" | "probe" | "diagnostic" | "gatt-read";
+export type TransactionSource = "operation" | "probe" | "diagnostic" | "gatt-read" | "external-import";
 
 export interface TransactionPacket {
   readonly timestamp: string;

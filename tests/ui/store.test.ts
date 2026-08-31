@@ -69,7 +69,7 @@ describe("workspace snapshot", () => {
     snapshot = store.getSnapshot();
     expect(snapshot.recommended.action).toBe("checks");
     expect(snapshot.candidates.find((c) => c.id === "coolledux")?.state).toBe("VERIFIED ON THIS SESSION");
-    expect(snapshot.support.find((row) => row.label === "Protocol identity")?.status).toBe("Verified live");
+    expect(snapshot.support.find((row) => row.label === "Protocol identity")?.state).toBe("Verified");
     expect(snapshot.deviceState.brightness).toBe(0xcc);
   });
 

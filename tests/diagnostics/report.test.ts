@@ -44,6 +44,7 @@ function sampleData(): ReportData {
     observations: [{ id: "observation:1", recordedAt: "2026-08-31T12:00:02.000Z", summary: "Panel visibly dimmed.", confidence: "observed" }],
     trace: [{ timestamp: "2026-08-31T12:00:00.500Z", type: "app.started", metadata: { browserDeviceId: "fixture-device", webBluetoothSupported: true } }],
     protocolResolution: { summary: "Valid structured 0x1F response", source: "live-probe" },
+    validations: [], contentCompilations: [], importedEvidence: [], liveConnected: true,
     source: "live",
   };
 }
@@ -81,14 +82,15 @@ describe("markdown report generator", () => {
     const unknowns = markdown.split("## Unknowns")[1]!.split("## Rejected hypotheses")[0]!;
     expect(verified).toContain("0x1F returned structured device info");
     expect(rejected).toContain("Classic brightness hypothesis returned 08 FE and no visible effect");
-    expect(unknowns).toContain("Persistence behavior is not established.");
+    expect(unknowns).toContain("Persistence: unknown");
   });
 
-  it("suggests next tests from deterministic driver metadata", () => {
+  it("suggests next tests that advance the support state", () => {
     const resolved = generateMarkdownReport(sampleData());
-    expect(resolved).toContain("brightness round-trip");
+    expect(resolved).toContain("Validate static framebuffer");
+    expect(resolved).not.toContain("Refresh device info.");
     const ambiguous = generateMarkdownReport({ ...sampleData(), selectedDriver: null, protocolResolution: null });
-    expect(ambiguous).toContain("Run safe CoolLEDUX identification");
+    expect(ambiguous).toContain("Run safe protocol identification");
   });
 
   it("generates a complete report from an imported bundle", async () => {

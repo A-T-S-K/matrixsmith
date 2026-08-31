@@ -3,7 +3,9 @@ import type { GattEndpoint } from "../core/device";
 import type { ManualObservation } from "../core/evidence";
 import type { MatrixOperation } from "../core/operations";
 import type { TransmissionPlan } from "../core/transmission";
-import { createDiagnosticBundle, notificationPacketsFromBundle, parseDiagnosticBundle, serializeDiagnosticBundle, type DiagnosticBundleV1 } from "../diagnostics/bundle";
+import { createDiagnosticBundle, notificationPacketsFromBundle, parseDiagnosticBundle, serializeDiagnosticBundle, type DiagnosticBundle, type ImportedEvidenceSummary } from "../diagnostics/bundle";
+import type { SessionValidationResult } from "../diagnostics/validation";
+import type { ContentCompilationRecord } from "../diagnostics/content-evidence";
 import { TraceRecorder } from "../diagnostics/trace";
 import { builtInDrivers, DriverRegistry } from "../drivers/registry";
 import type { DecodedNotification, MatrixDriver } from "../drivers/types";
@@ -28,6 +30,9 @@ export class MatrixController {
   readonly #observations: ManualObservation[] = [];
   readonly #transactions: ProtocolTransaction[] = [];
   readonly #diagnosticRuns: DiagnosticRun[] = [];
+  readonly #validations: SessionValidationResult[] = [];
+  readonly #contentCompilations: ContentCompilationRecord[] = [];
+  readonly #importedEvidence: ImportedEvidenceSummary[] = [];
   readonly #notificationSubscriptions = new Map<string, () => Promise<void>>();
 
   constructor(readonly transport: MatrixTransport, trace = new TraceRecorder(), registry = new DriverRegistry(builtInDrivers)) {
@@ -39,6 +44,9 @@ export class MatrixController {
   get observations(): readonly ManualObservation[] { return this.#observations; }
   get transactions(): readonly ProtocolTransaction[] { return this.#transactions; }
   get diagnosticRuns(): readonly DiagnosticRun[] { return this.#diagnosticRuns; }
+  get validations(): readonly SessionValidationResult[] { return this.#validations; }
+  get contentCompilations(): readonly ContentCompilationRecord[] { return this.#contentCompilations; }
+  get importedEvidence(): readonly ImportedEvidenceSummary[] { return this.#importedEvidence; }
 
   availableEndpoints(): readonly GattEndpoint[] {
     const fingerprint = this.session.fingerprint;
@@ -284,11 +292,14 @@ export class MatrixController {
       advertisementEvidence: fingerprint.rawAdvertisementHex ? { rawHex: fingerprint.rawAdvertisementHex } : null,
       transactions: this.#transactions,
       diagnosticRuns: this.#diagnosticRuns,
+      validations: this.#validations,
+      contentCompilations: this.#contentCompilations,
+      importedEvidence: this.#importedEvidence,
     });
     return serializeDiagnosticBundle(bundle);
   }
 
-  importBundle(json: string): DiagnosticBundleV1 {
+  importBundle(json: string): DiagnosticBundle {
     const bundle = parseDiagnosticBundle(json);
     this.session.clearConnection();
     this.applyFingerprint(bundle.fingerprint, "imported");
@@ -296,6 +307,9 @@ export class MatrixController {
     for (const packet of notificationPacketsFromBundle(bundle)) this.#recordIncoming(packet, false);
     this.#transactions.splice(0, this.#transactions.length, ...(bundle.transactions ?? []));
     this.#diagnosticRuns.splice(0, this.#diagnosticRuns.length, ...(bundle.diagnosticRuns ?? []));
+    this.#validations.splice(0, this.#validations.length, ...(bundle.validations ?? []));
+    this.#contentCompilations.splice(0, this.#contentCompilations.length, ...(bundle.contentCompilations ?? []));
+    this.#importedEvidence.splice(0, this.#importedEvidence.length, ...(bundle.importedEvidence ?? []));
     return bundle;
   }
 
