@@ -14,4 +14,10 @@ const store = new MatrixStore(new MatrixController(transport, trace), transport)
 trace.record("app.started", { webBluetoothSupported: "bluetooth" in navigator });
 render(<App store={store}/>, root);
 void store.initialize();
-if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("./sw.js").catch((error: unknown) => trace.record("error", { scope: "service-worker", message: String(error) })));
+// The offline shell belongs to production builds only. In dev the service
+// worker would cache Vite's transient module URLs and serve stale HTML after
+// refactors, so dev sessions unregister any worker left by a previous build.
+if ("serviceWorker" in navigator) {
+  if (import.meta.env.PROD) window.addEventListener("load", () => navigator.serviceWorker.register("./sw.js").catch((error: unknown) => trace.record("error", { scope: "service-worker", message: String(error) })));
+  else void navigator.serviceWorker.getRegistrations().then((registrations) => Promise.all(registrations.map((registration) => registration.unregister()))).catch(() => undefined);
+}
