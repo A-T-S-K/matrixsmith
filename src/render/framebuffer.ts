@@ -5,13 +5,11 @@ export interface Rgb {
 }
 
 export class Framebuffer {
-  static readonly WIDTH = 32;
-  static readonly HEIGHT = 16;
   readonly width: number;
   readonly height: number;
   readonly data: Uint8Array;
 
-  constructor(width = Framebuffer.WIDTH, height = Framebuffer.HEIGHT) {
+  constructor(width: number, height: number) {
     if (!Number.isInteger(width) || !Number.isInteger(height) || width <= 0 || height <= 0) {
       throw new RangeError("Framebuffer dimensions must be positive integers.");
     }

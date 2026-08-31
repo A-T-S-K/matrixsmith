@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "transportKind": "web-bluetooth",
+  "name": "iLedHat",
+  "advertisedServices": ["0000fff0-0000-1000-8000-00805f9b34fb"],
+  "rawAdvertisementHex": "0201060303F0FF0EFFAE315EEA07000001100020031E0809694C6564486174",
+  "manufacturerDataHex": "AE315EEA07000001100020031E",
+  "services": [{
+    "uuid": "0000fff0-0000-1000-8000-00805f9b34fb",
+    "isPrimary": true,
+    "characteristics": [{
+      "uuid": "0000fff1-0000-1000-8000-00805f9b34fb",
+      "properties": { "read": true, "notify": true, "indicate": false, "write": false, "writeWithoutResponse": true }
+    }]
+  }],
+  "manuallyConfirmedGeometry": { "width": 32, "height": 16 },
+  "evidenceRefs": ["iledhat-advertisement", "iledhat-gatt", "manual-geometry"],
+  "notes": [
+    "Boot identifier 31AE.",
+    "Original stored message: FREE LLM TOKENS :-)",
+    "Long-ish power-button action displayed reset; exact procedure unknown.",
+    "Post-reset scrolling text: coolled.",
+    "Near-full advertisement was unchanged; 0x1E is not live battery state of charge."
+  ]
+}

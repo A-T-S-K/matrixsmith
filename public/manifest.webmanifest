@@ -1,7 +1,7 @@
 {
-  "name": "iLedHat Controller",
-  "short_name": "iLedHat",
-  "description": "Local-only, safety-first diagnostics for an iLedHat BLE matrix.",
+  "name": "MatrixSmith",
+  "short_name": "MatrixSmith",
+  "description": "Local-first matrix display control and protocol lab.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

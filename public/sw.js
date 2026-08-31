@@ -1,4 +1,4 @@
-const CACHE = "iledhat-shell-v1";
+const CACHE = "matrixsmith-shell-v2";
 const SHELL = ["./", "./index.html", "./manifest.webmanifest", "./icon.svg"];
 
 self.addEventListener("install", (event) => {
