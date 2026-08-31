@@ -39,6 +39,21 @@ export class TraceRecorder {
     for (const listener of this.#listeners) listener(event);
     return event;
   }
+
+  importSerialized(events: readonly Record<string, unknown>[]): void {
+    for (const value of events) {
+      if (typeof value.timestamp !== "string" || typeof value.type !== "string" || !isMetadata(value.metadata)) continue;
+      const rawBytes = typeof value.rawHex === "string" ? fromHex(value.rawHex) : undefined;
+      const event: TraceEvent = {
+        timestamp: value.timestamp,
+        type: value.type as TraceEventType,
+        metadata: value.metadata,
+        ...(rawBytes ? { rawBytes } : {}),
+      };
+      this.#events.push(event);
+      for (const listener of this.#listeners) listener(event);
+    }
+  }
 }
 
 export function serializeTraceEvent(event: TraceEvent): Record<string, unknown> {
@@ -48,4 +63,14 @@ export function serializeTraceEvent(event: TraceEvent): Record<string, unknown> 
     metadata: event.metadata,
     ...(event.rawBytes ? { rawHex: packetHex(event.rawBytes).replaceAll(" ", "") } : {}),
   };
+}
+
+function fromHex(hex: string): Uint8Array | undefined {
+  if (hex.length % 2 !== 0 || !/^[0-9a-f]*$/i.test(hex)) return undefined;
+  return Uint8Array.from(hex.match(/../g) ?? [], (pair) => Number.parseInt(pair, 16));
+}
+
+function isMetadata(value: unknown): value is TraceEvent["metadata"] {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    && Object.values(value).every((item) => item === null || ["string", "number", "boolean"].includes(typeof item));
 }

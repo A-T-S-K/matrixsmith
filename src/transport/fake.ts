@@ -5,6 +5,7 @@ import type { ConnectionState, DeviceSelectionOptions, MatrixTransport, Transpor
 export class FakeTransport implements MatrixTransport {
   readonly kind = "fake" as const;
   readonly writes: { endpoint: GattEndpoint; bytes: Uint8Array; mode: WriteMode }[] = [];
+  readonly writeAttempts: { endpoint: GattEndpoint; bytes: Uint8Array; mode: WriteMode }[] = [];
   state: ConnectionState = "idle";
   fingerprint: DeviceFingerprint | null;
   failWriteAt: number | null = null;
@@ -33,6 +34,7 @@ export class FakeTransport implements MatrixTransport {
 
   async write(endpoint: GattEndpoint, bytes: Uint8Array, mode: WriteMode): Promise<TransportReceipt> {
     if (this.state !== "connected") throw new Error("Transport is disconnected.");
+    this.writeAttempts.push({ endpoint, bytes: bytes.slice(), mode });
     const writeIndex = this.writes.length;
     if (this.failWriteAt === writeIndex) throw new Error(`Injected write failure at packet ${writeIndex}.`);
     if (this.writeDelayMs > 0) await new Promise<void>((resolve) => setTimeout(resolve, this.writeDelayMs));

@@ -11,11 +11,11 @@ function packet(index: number, byte: number): TransmissionPacket {
   return { index, endpoint: COOLLEDX_ENDPOINT, writeMode: "without-response", bytes, hex: packetHex(bytes) };
 }
 
-function authorized(packets: readonly TransmissionPacket[], timeoutMs = 100): AuthorizedTransmission {
+function authorized(packets: readonly TransmissionPacket[], timeoutMs = 100, maxAttempts = 1, retryOn: readonly string[] = []): AuthorizedTransmission {
   return { authorizedAt: new Date().toISOString(), policyDecision: "allow", plan: {
     id: "plan:executor", driverId: "coolledx", profileId: "iledhat-31ae-32x16", operation: { type: "SetBrightness", raw: 0x40 },
     risk: "transient", persistence: "unknown", validation: "experimental", evidenceRefs: [], packets,
-    ackPolicy: "none", retryPolicy: { maxAttempts: 1, retryOn: [] }, timeoutMs, recoveryNotes: [], metadata: {},
+    ackPolicy: "none", retryPolicy: { maxAttempts, retryOn }, timeoutMs, recoveryNotes: [], metadata: {},
   } };
 }
 
@@ -61,5 +61,19 @@ describe("TransmissionExecutor", () => {
     transport.writeDelayMs = 30;
     await expect(new TransmissionExecutor(transport, new TraceRecorder()).execute(authorized([packet(0, 1)], 1))).rejects.toThrow(/timed out/);
     expect(transport.writes).toHaveLength(0);
+  });
+
+  it("respects the explicit retry maximum", async () => {
+    const transport = await connectedFake();
+    transport.failWriteAt = 0;
+    await expect(new TransmissionExecutor(transport, new TraceRecorder()).execute(authorized([packet(0, 1)], 100, 3, ["Injected"]))).rejects.toThrow(/Injected/);
+    expect(transport.writeAttempts).toHaveLength(3);
+  });
+
+  it("rejects an endpoint mismatch before transport write", async () => {
+    const transport = await connectedFake();
+    const wrong = { ...packet(0, 1), endpoint: { serviceUuid: "00001234-0000-1000-8000-00805f9b34fb", characteristicUuid: "00005678-0000-1000-8000-00805f9b34fb" } };
+    await expect(new TransmissionExecutor(transport, new TraceRecorder()).execute(authorized([wrong]))).rejects.toThrow(/endpoint/);
+    expect(transport.writeAttempts).toHaveLength(0);
   });
 });

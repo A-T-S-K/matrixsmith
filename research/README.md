@@ -1,8 +1,9 @@
 # Research index
 
-- [protocol-findings.md](protocol-findings.md) — evidence ledger, rejected families, stop decision, and next artifacts
-- [advertisement.md](advertisement.md) — byte-level decode of the captured advertisement
-- [apk-analysis.md](apk-analysis.md) — static-only analysis of vendor Android packages
-- [sources.md](sources.md) — public-source bibliography and search record
+- [protocol-findings.md](protocol-findings.md) — current CoolLEDX candidacy, licensed vectors, hardware validation boundaries, and unknowns
+- [coolledx-sources.md](coolledx-sources.md) — pinned source provenance and independent implementation statement
+- [advertisement.md](advertisement.md) — byte-level decode of the iLedHat advertisement
+- [apk-analysis.md](apk-analysis.md) — vendor-family APK evidence without overclaiming FFF0/F1 provenance
+- [sources.md](sources.md) — bibliography and search record
 
-Research status as of 2026-08-31: **the FFF0/FFF1 wire protocol is UNKNOWN**. No control packet is approved for transmission.
+Status on 2026-08-31: CoolLEDX is a strong candidate family for the observed iLedHat transport/profile. Its offline codec is corroborated by pinned licensed implementations. Command compatibility on this physical iLedHat remains experimental; only the deliberately gated brightness validation may be transmitted.

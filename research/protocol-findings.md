@@ -1,110 +1,76 @@
-# iLedHat FFF0/FFF1 protocol findings
+# iLedHat / CoolLEDX protocol findings
 
 Research date: 2026-08-31
 
-## Decision
+## Current decision
 
-The exact FFF1 command protocol has **not** been established with high confidence. Development stops before Phase 3 and before all command writes.
+The observed iLedHat is a strong CoolLEDX candidate, not a verified CoolLEDX device. FFF0/FFF1 alone is non-identifying; the score combines name, advertisement, AE31 manufacturer prefix when available, complete GATT shape, and characteristic properties. The checked-in profile remains experimental.
 
-The application contains no FFF1 writer, no raw-hex UI, and no guessed query. `SafeBleTransport` supports selection, connection, GATT discovery, notification subscription, disconnection, and the already-observed zero-length FFF1 read only.
+MatrixSmith implements the licensed-evidence-backed family codec offline. Only brightness raw `0x40` and `0xC0` may cross the live policy, in Lab, after explicit session unlock and exact-plan review. Successful browser write resolution is not profile verification.
 
-## Confirmed hardware transport
+## Observed physical profile
 
-| Fact | Status | Evidence |
-|---|---|---|
-| Advertised name `iLedHat` | VERIFIED | supplied raw advertisement |
-| Advertised service `0xFFF0` | VERIFIED | supplied raw advertisement |
-| Primary service `0000fff0-...` | VERIFIED | supplied nRF Connect enumeration |
-| Only custom characteristic `0000fff1-...` | VERIFIED | supplied nRF Connect enumeration |
-| FFF1 properties READ, NOTIFY, WRITE WITHOUT RESPONSE | VERIFIED | supplied nRF Connect enumeration |
-| CCCD notification enable works | VERIFIED | supplied nRF Connect observation |
-| FFF1 read returns zero bytes | VERIFIED | supplied nRF Connect observation |
-| Unsolicited notifications after subscribe | not observed | supplied nRF Connect observation |
-| Pairing/bonding required | no | supplied nRF Connect observation |
+| Fact | Confidence / validation |
+|---|---|
+| name `iLedHat` and raw advertisement | observed |
+| advertised service FFF0 | observed |
+| manufacturer bytes `AE315EEA07000001100020031E` | observed |
+| boot-visible identifier `31AE` | observed |
+| primary FFF0, single FFF1 | observed |
+| FFF1 READ, NOTIFY, WRITE WITHOUT RESPONSE | observed |
+| FFF1 read returned zero bytes | observed |
+| notifications enabled; no unsolicited packet in test | observed |
+| pairing/bonding not required | observed |
+| physical geometry 32×16 | manually observed |
+| bytes 10 and 20 correlate with 16 and 32 | inferred correlation, not parser truth |
+| original stored message `FREE LLM TOKENS :-)` | observed |
+| long-ish power-button action displayed `reset` | observed; timing/meaning unknown |
+| post-reset scrolling text `coolled` | observed |
+| advertisement unchanged near full battery | observed; therefore 0x1E is not live battery state of charge |
 
-## Protocol fields
+## Corroborated CoolLEDX family facts
 
-| Item | Result | Status |
-|---|---|---|
-| packet framing | not recovered | UNKNOWN |
-| command IDs | not recovered | UNKNOWN |
-| endianness | not recovered | UNKNOWN |
-| checksum/CRC | not recovered | UNKNOWN |
-| sequence numbers | not recovered | UNKNOWN |
-| fragmentation | not recovered | UNKNOWN |
-| MTU assumptions | not recovered | UNKNOWN |
-| ACK/response format | not recovered | UNKNOWN |
-| framebuffer format | not recovered | UNKNOWN |
-| pixel order/orientation | not recovered | UNKNOWN |
-| RGB channel order | not recovered | UNKNOWN |
-| brightness | not recovered | UNKNOWN |
-| rotation | not recovered | UNKNOWN |
-| transient vs persistent upload | not recovered | UNKNOWN |
-| delete/reset/DFU commands | not recovered | UNKNOWN and treated as dangerous |
+Control frame:
 
-There is consequently no command table or golden packet vector to implement yet.
+```text
+01 || escape(length_be16 || opcode || args) || 03
+01 -> 02 05
+02 -> 02 06
+03 -> 02 07
+00 is unchanged
+```
 
-## Public-source investigations
+Corroborated opcodes: text 02, image 03, animation 04, mode 06, speed 07, brightness 08, switch 09. Transfer content uses 128-byte chunks with reserved byte, full content length BE16, chunk index BE16, size U8, data, and XOR checksum, framed with the content opcode. RGB frame bits are column-major separate R/G/B planes, top-to-bottom, with the top pixel in each group as MSB. For 32×16 the packed frame is 192 bytes.
 
-### Exact-name and capture searches
+Exact control vectors:
 
-Searches covered exact and case-varied device names, UUID combinations, the full advertisement prefix, manufacturer bytes, geometry, vendor/package names, and BLE LED-hat terms. No indexed repository, issue, capture, or firmware matched both `iLedHat` and the single-characteristic FFF0/FFF1 profile.
+```text
+brightness 10  01 00 02 06 08 10 03
+brightness 40  01 00 02 06 08 40 03
+brightness C0  01 00 02 06 08 C0 03
+speed 10       01 00 02 06 07 10 03
+mode static    01 00 02 06 06 02 05 03
+switch off     01 00 02 06 09 00 03
+switch on      01 00 02 06 09 02 05 03
+```
 
-Status: **no exact protocol match found**.
+The two pinned licensed implementations produce equivalent control bytes. See [coolledx-sources.md](coolledx-sources.md).
 
-### Current `iledcolor` vendor app
+## Implemented offline
 
-The Google Play listing verifies that `com.led.iledcolor` is published by Shenzhen iLEDShow and controls LED screens. Static analysis of version 1.0.59 is documented in [apk-analysis.md](apk-analysis.md).
+- generic framing and escaping
+- typed control encoders
+- 128-byte transfer records and XOR checksum
+- image/animation/text-rendered banner transfer headers
+- RGB888 to one-bit R/G/B column planes
+- static image and animation `TransmissionPlan` generation
+- raw notification retention and conservative status decoder
+- deterministic fixtures/tests and Lab packet inspection
 
-The app embeds A950–A953 UUIDs, not FFF0/FFF1. This is precisely the family the project requirements warn against assuming.
+Text uses a MatrixSmith/browser-rendered logical banner input; the protocol planner emits the corroborated text-shaped header. Deterministic font rendering is deliberately outside protocol golden tests.
 
-Disposition: **REJECTED as protocol evidence for this unit**. It remains a vendor/product-domain source, but no matching transport identity exists.
+## Unverified on this iLedHat
 
-### `Mini LedShow`
+Physical orientation/channel presentation, all command compatibility, persistence behavior, ACK timing, safe retry semantics, maximum transfer size/storage, animation timing interpretation, native text metadata behavior, profile-specific orientation, and recovery/firmware access. A size measured on another 64×16 sign is not applied to this profile.
 
-Static analysis of version 1.3.3 found both A950–A953 and AE00–AE02 protocol families. Neither matches the supplied GATT profile.
-
-Disposition: **REJECTED as protocol evidence for this unit**.
-
-### Older iOS `iLed Show`
-
-The App Store identifies Shenzhen I-ledshow as the developer. Release notes mention 16-height display fixes, 32×32 resolution, and program deletion; a review mentions a hat. This is the closest historical product clue found.
-
-Disposition: **UNRESOLVED**. No static binary or packet capture was obtained, so no bytes are imported from it.
-
-### Generic FFF0/FFF1 devices
-
-Searches found unrelated products using these UUIDs, including medical devices, diesel heaters, battery monitors, watches/OTA transports, and OBD adapters. Some use FFF1 for notify only and another characteristic for writes; others use FFF1 as a combined channel. This diversity confirms that the UUIDs are not protocol identifiers.
-
-Disposition: **REJECTED** unless a source also matches device name/product, advertisement, GATT shape, and packet behavior.
-
-### Generic BLE LED libraries
-
-`Bluetooth-Devices/led-ble` targets names such as Triones, LEDBLE, QHM, and Dream; it does not claim iLedHat support. `timhodson/ble-led-badge` uses service FEE9, custom D44B... characteristics, and AES encryption.
-
-Disposition: **REJECTED** due to mismatched product identity and GATT profile.
-
-## Evidence needed next
-
-Any one of the following could move the project into Phase 3:
-
-1. A legally obtained IPA for the historical `iLed Show` 1.10–1.12 app, followed by static Objective-C/Swift/native analysis.
-2. A legally obtained older Android vendor APK demonstrably offered for the same `iLedHat` hardware and containing FFF0/FFF1.
-3. A BLE HCI snoop/pcap captured while the known-working official controller performs one narrowly identified action.
-4. A passive packet capture showing connect, CCCD enable, first host command, and response, with the display action labeled.
-5. Firmware extracted through a non-destructive, documented method, with write-command dispatch recovered statically.
-
-For a capture, the preferred first action is a read-only device/version/capability query if the vendor app exposes one. If it does not, capture a transient display preview separately from any save/upload/persist action. Include negotiated MTU, ATT handle, packet boundaries, timing, notifications, app version, phone OS, and the exact visible result.
-
-## First-write approval rule
-
-Before adding the first `writeValueWithoutResponse` call, the change must include:
-
-- source/capture provenance
-- a byte-level packet explanation
-- why the command is transient or read-only
-- checksum/framing tests with at least one independent golden vector
-- an explicit review that the command is not reset, delete, password, flash, OTA, or DFU
-- a documented recovery plan
-
-Until then, all TX is **BLOCKED**.
+CoolLEDM is related at outer framing but has incompatible commands. MatrixSmith does not identify CoolLEDX from a CoolLED-looking name or FFF0/FFF1 alone.

@@ -20,17 +20,21 @@ export class TransmissionExecutor {
     const receipts: TransportReceipt[] = [];
     try {
       for (const packet of authorized.plan.packets) {
-        this.trace.record("tx.packet.started", { planId: authorized.plan.id, packetIndex: packet.index }, packet.bytes);
-        try {
-          const receipt = await withTimeout(
-            this.transport.write(packet.endpoint, packet.bytes, packet.writeMode),
-            authorized.plan.timeoutMs,
-          );
-          receipts.push(receipt);
-          this.trace.record("tx.packet.hostAccepted", { planId: authorized.plan.id, packetIndex: packet.index, byteLength: receipt.byteLength });
-        } catch (error) {
-          this.trace.record("tx.packet.failed", { planId: authorized.plan.id, packetIndex: packet.index, message: errorMessage(error) });
-          throw error;
+        if (!endpointAvailable(this.transport, packet.endpoint, packet.writeMode)) throw new Error("Transmission endpoint is absent or has incompatible properties.");
+        const maxAttempts = Math.max(1, Math.min(5, authorized.plan.retryPolicy.maxAttempts));
+        for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+          this.trace.record("tx.packet.started", { planId: authorized.plan.id, packetIndex: packet.index, attempt }, packet.bytes);
+          try {
+            const receipt = await withTimeout(this.transport.write(packet.endpoint, packet.bytes, packet.writeMode), authorized.plan.timeoutMs);
+            receipts.push(receipt);
+            this.trace.record("tx.packet.hostAccepted", { planId: authorized.plan.id, packetIndex: packet.index, byteLength: receipt.byteLength, attempt });
+            break;
+          } catch (error) {
+            const message = errorMessage(error);
+            this.trace.record("tx.packet.failed", { planId: authorized.plan.id, packetIndex: packet.index, message, attempt });
+            const retryable = attempt < maxAttempts && authorized.plan.retryPolicy.retryOn.some((condition) => message.includes(condition));
+            if (!retryable) throw error;
+          }
         }
       }
       const completedAt = new Date().toISOString();
@@ -55,3 +59,9 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T
 }
 
 function errorMessage(error: unknown): string { return error instanceof Error ? error.message : String(error); }
+
+function endpointAvailable(transport: MatrixTransport, endpoint: import("../core/device").GattEndpoint, mode: import("../core/transmission").WriteMode): boolean {
+  return transport.fingerprint?.services.some((service) => service.uuid.toLowerCase() === endpoint.serviceUuid.toLowerCase()
+    && service.characteristics.some((characteristic) => characteristic.uuid.toLowerCase() === endpoint.characteristicUuid.toLowerCase()
+      && (mode === "without-response" ? characteristic.properties.writeWithoutResponse : characteristic.properties.write))) ?? false;
+}

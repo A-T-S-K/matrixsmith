@@ -1,36 +1,35 @@
-# BLE safety model
+# Safety policy
 
-## Allowed now
+MatrixSmith fails closed at the semantic-plan boundary. No browser UI exposes arbitrary hex or characteristic writes.
 
-- scan through the browser chooser filtered by service FFF0
-- connect/disconnect without bonding
-- enumerate the confirmed primary service and characteristic
-- inspect characteristic properties
-- call `startNotifications()` / `stopNotifications()`
-- log passive notifications
-- perform the already-observed FFF1 read, which returns zero bytes on the test unit
-- create and preview framebuffers entirely in browser memory
+## Policy matrix
 
-## Blocked now
+| Condition | Result |
+|---|---|
+| unknown driver | live TX blocked |
+| ambiguous top driver matches | live TX blocked |
+| driver confidence below strong | live TX blocked |
+| imported/fake/replay source | live TX blocked |
+| unverified or rejected operation | live TX blocked |
+| experimental read-only | explicit Inspect/Lab action only |
+| experimental transient | Lab plus per-session unlock |
+| verified transient | eligible for Control in a future profile promotion |
+| persistent or unknown operation classified persistent | blocked this milestone |
+| destructive | blocked |
+| firmware | blocked |
 
-- every FFF1 characteristic write
-- guessed status/version/capability queries
-- raw hex entry
-- fuzzing and probe sequences
-- display, brightness, rotation, password, storage, reset, delete, OTA, DFU, and firmware commands
+The experimental unlock defaults off, lives only in `MatrixSession`, is never stored, and clears on disconnect or reload. It does not disable policy checks.
 
-The application records a blocked TX attempt as `TX [BLOCKED] ...`, but its production UI provides no way to attempt one.
+## Current live boundary
 
-## Command classification once recovered
+The only live-eligible operation is `SetBrightness` for driver `coolledx`, profile `iledhat-31ae-32x16`, raw `0x40` or `0xC0`, over FFF0/FFF1 write-without-response. Required endpoint properties, strong/exact match, live source, connection, profile, and session unlock must all agree.
 
-| Class | Examples | Policy |
-|---|---|---|
-| read-only query | version, status, capabilities | first candidate after packet provenance and golden tests |
-| transient control | preview framebuffer, volatile brightness | requires evidence it does not persist or write flash |
-| persistent write | saved program, boot image, device name, password | deferred until transient control is visually confirmed |
-| destructive | delete all, factory reset, flash erase | prohibited without explicit user authorization and recovery plan |
-| firmware/DFU | bootloader entry, OTA start/data/finalize | prohibited during protocol discovery |
+Promise resolution produces a host-level acceptance receipt only. It does not change profile validation and is never called device verification. The user records the visible device observation separately.
 
-## Recovery information currently known
+Mode, speed, switch, text, image, animation, persistent commands, reset, delete, password, OTA, DFU, and firmware are not executable live.
 
-No documented recovery mode, factory reset sequence, firmware image, or wired programming interface has been verified for this unit. That absence increases the cost of a bad write and is a primary reason for the fail-closed transport.
+## Recovery information
+
+Observed on the physical unit: a long-ish power-button action displayed `reset`, cleared the custom text, and restored scrolling text `coolled`. Unknown: exact press duration/sequence, whether it was a factory or program reset, other cleared state, firmware recovery, and wired programming access. MatrixSmith therefore documents no exact reset procedure and implements no software reset command.
+
+If an experiment behaves unexpectedly, stop, disconnect in MatrixSmith, power the device off, preserve/export the diagnostic trace, and avoid additional commands until the observation is reviewed.

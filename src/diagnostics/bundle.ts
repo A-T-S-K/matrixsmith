@@ -65,6 +65,13 @@ export function parseDiagnosticBundle(json: string): DiagnosticBundleV1 {
   return value as unknown as DiagnosticBundleV1;
 }
 
+export function notificationPacketsFromBundle(bundle: DiagnosticBundleV1): readonly Uint8Array[] {
+  return bundle.trace.flatMap((event) => {
+    if (event.type !== "notification.raw" || typeof event.rawHex !== "string" || event.rawHex.length % 2 !== 0 || !/^[0-9a-f]*$/i.test(event.rawHex)) return [];
+    return [Uint8Array.from(event.rawHex.match(/../g) ?? [], (pair) => Number.parseInt(pair, 16))];
+  });
+}
+
 function validFingerprint(value: unknown): value is DeviceFingerprint {
   if (!isObject(value) || value.schemaVersion !== 1 || typeof value.transportKind !== "string") return false;
   if (!Array.isArray(value.advertisedServices) || !value.advertisedServices.every((item) => typeof item === "string")) return false;

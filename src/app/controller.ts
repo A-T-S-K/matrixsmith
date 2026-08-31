@@ -133,6 +133,7 @@ export class MatrixController {
     const bundle = parseDiagnosticBundle(json);
     this.session.clearConnection();
     this.applyFingerprint(bundle.fingerprint, "imported");
+    this.trace.importSerialized(bundle.trace);
     return bundle;
   }
 }

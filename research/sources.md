@@ -1,45 +1,25 @@
-# Public sources and search record
+# Sources and search record
 
-Accessed 2026-08-31. Source links are included for reproducibility; third-party protocol claims were not treated as hardware compatibility evidence without a matching product identity.
+Accessed 2026-08-31 unless noted. Protocol implementation sources are pinned in [coolledx-sources.md](coolledx-sources.md).
+
+## Primary licensed protocol sources
+
+- `jean-santos/coolled1248-rs` commit `55d008237c2bcc96bd9c5d34b7c221b3325e71fa` — MIT OR Apache-2.0
+- `UpDryTwist/coolledx-driver` commit `ba24137a4fb63b44896143adbd5862ef74de9fff` — MIT
+
+## Secondary corroboration
+
+- `schulzad/coolled-sign-controller` commit `430fc716aa0d3d1355ac27d7c1ad9ee62bf054cf` — no visible project license when scoped; no code copied
 
 ## Vendor/product sources
 
-- [Official Shenzhen iLEDShow site](https://www.iledshow.com/) — identifies the manufacturer/product domain and lists app-controlled LED hats, caps, flexible displays, backpacks, and bare boards.
-- [Google Play: `com.led.iledcolor`](https://play.google.com/store/apps/details?id=com.led.iledcolor) — verifies package, publisher, and app purpose.
-- [APKPure: iledcolor 1.0.59 archive metadata](https://apkpure.net/iledcolor/com.led.iledcolor/download) — archive version, signature, variants, and published hashes used for static analysis verification.
-- [APKPure: Mini LedShow](https://apkpure.net/mini-ledshow/com.led.miniled) — package identity, versions, and published hash.
-- [Apple App Store: historical iLed Show](https://apps.apple.com/us/app/iled-show/id1486290176) — publisher, version history, 16-height/32×32/program-ID notes, and hat-related review.
+- Shenzhen iLEDShow website — manufacturer/product domain
+- Google Play `com.led.iledcolor` and APKPure archive metadata
+- APKPure Mini LedShow metadata
+- Apple App Store historical `iLed Show` release notes/reviews
 
-## Rejected generic protocols
+## Non-matching UUID cautions
 
-- [Bluetooth-Devices/led-ble](https://github.com/Bluetooth-Devices/led-ble) — generic strip/bulb families with different advertised identities.
-- [timhodson/ble-led-badge](https://github.com/timhodson/ble-led-badge) — FEE9/D44B... AES badge protocol, not FFF0/FFF1.
-- [homeassistant-diesel-heater](https://github.com/Xev/homeassistant-diesel-heater) — demonstrates unrelated heaters using FFF0/FFF1-family UUIDs with different write channels/framing.
-- [LepuDemo](https://github.com/viatom-develop/LepuDemo) — demonstrates unrelated medical devices using FFF0/FFF1/FFF2.
-- [Renogy BT2 Reader](https://github.com/neilsheps/Renogy-BT2-Reader) — uses FFF0/FFF1 as a receive service while sending via FFD0/FFD1.
-- [CMF Watch Pro 2 protocol notes](https://github.com/joshuapassos/CMF-Watch-Pro-2-BLE-Protocol) — unrelated wearable with FFF0 plus separate FFF1/FFF2 directions.
+Unrelated medical devices, heaters, battery monitors, watches, and adapters reuse FFF0/F1-family UUIDs. Examples previously reviewed include LepuDemo, homeassistant-diesel-heater, Renogy BT2 Reader, and CMF Watch Pro protocol notes. Generic LED libraries using Triones/LEDBLE/QHM/FEE9 or other characteristics do not identify this profile.
 
-## Static-analysis tooling
-
-- [JADX](https://github.com/skylot/jadx) — inspected for the Android wrapper; app logic was Flutter AOT rather than ordinary Dex.
-- [Blutter](https://github.com/worawit/blutter) — Flutter AOT analysis approach.
-- [flutterdec](https://github.com/caverav/flutterdec) — used to identify Dart 3.11.5, snapshot hash, and statically disassemble the ARM64 application payload.
-
-## Search terms
-
-Searches included the requested strings and permutations of:
-
-```text
-iLedHat / ILEDHAT
-iLedHat FFF0 / FFF1
-0000fff0 / 0000fff1
-16x32 LED hat bluetooth
-iledcolor / iLEDShow / LED Controll
-com.led.iledcolor
-Shenzhen iLEDShow
-BLE LED hat protocol
-0201060303F0FF
-AE315EEA
-```
-
-Search targets included GitHub repositories and issues, Home Assistant/ESPHome projects, Python and JavaScript BLE libraries, APK catalogs, the vendor site, Google Play, and the Apple App Store.
+Searches covered exact device/capture/manufacturer strings, UUID permutations, 16×32 LED hats, vendor packages, CoolLED1248/CoolLEDX/CoolLEDM, GitHub issues/repos, app stores, and BLE libraries. The final family candidacy comes from combined evidence and pinned protocol implementations, not the UUID alone.

@@ -1,34 +1,30 @@
 # Testing
 
-Run:
+Run the complete hardware-independent gate:
 
 ```sh
+npm ci
+npm run typecheck
 npm test
 npm run build
+git diff --check
 ```
 
-Current unit coverage includes:
+Coverage includes advertisement fact extraction; arbitrary framebuffer dimensions; structured/legacy preset storage; scored and ambiguous matching; diagnostic round trips/import isolation; control framing and exact golden vectors; 128-byte transfer records and XOR checksums; 32×16 black/red/green/blue/white/corner/stripe bitplanes; safety blocks; FakeTransport execution order, failure, concurrency, disconnect, timeout, and host-versus-device result separation.
 
-- exact BLE UUID constants
-- captured advertisement structure parsing
-- truncated-advertisement rejection
-- hex logging and blocked-TX classification
-- protocol fail-closed behavior
-- 32×16 framebuffer size and addressing
-- RGB888 host ordering and clamping
-- bounds checks
-- distinctive orientation-pattern corners
+No automated test requires Bluetooth hardware. `ReplayTransport` rejects writes by construction. Physical promotion requires a saved diagnostic bundle plus a separate visible observation.
 
-Protocol framing, checksum, fragmentation, response parsing, wire pixel packing, channel ordering, and golden packet vectors are intentionally absent because no verified format exists. Those tests must be added before the corresponding code.
+## First Galaxy S23 brightness validation
 
-## Galaxy S23 manual diagnostic check
-
-1. Build and deploy over HTTPS.
-2. Open in current Chrome for Android with Bluetooth enabled.
-3. Tap **Connect to iLedHat** and select the device in the browser chooser.
-4. Verify FFF0, FFF1, characteristic properties, and notifications show `yes`.
-5. Tap **Safe read FFF1** and expect `RX <empty read>` unless the firmware behavior differs.
-6. Power off the peripheral and confirm a `DISCONNECT` event and reset status.
-7. Reconnect manually; no automatic write or pairing prompt should occur.
-
-This procedure performs no characteristic write. Enabling notifications does write the standard CCCD through the browser BLE stack, matching the already-tested nRF Connect operation.
+1. Deploy the green build over HTTPS and open it in current Chrome for Android with Bluetooth enabled.
+2. Open MatrixSmith fresh; verify the banner says **Live TX locked**.
+3. Tap **Connect display**, select only the known `iLedHat`, and wait for Connected.
+4. In Inspect, verify selected driver CoolLEDX, profile `iledhat-31ae-32x16`, FFF0, FFF1, and READ/NOTIFY/WRITE WITHOUT RESPONSE.
+5. Optionally tap **Explicit safe read**; the known unit previously returned zero bytes.
+6. Open Lab. Keep the display visible and ensure no critical content is stored on it.
+7. Check **Enable experimental TX for this session**.
+8. Tap **Low test 0x40**. Inspect that the exact packet is `01 00 02 06 08 40 03`, then tap **Send this exact plan** once.
+9. Treat “Host accepted” only as browser-stack acceptance. Record changed/no change/unexpected from the physical display.
+10. If behavior is normal, create **High test 0xC0**, verify `01 00 02 06 08 C0 03`, send once, and record the result.
+11. Download the diagnostic bundle before disconnecting. Disconnect; verify the session unlock clears.
+12. On unexpected behavior, stop after step 8, disconnect, power off, and export the trace. Do not try other operations.

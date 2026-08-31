@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { MatrixController } from "../../src/app/controller";
-import { createDiagnosticBundle, parseDiagnosticBundle, serializeDiagnosticBundle } from "../../src/diagnostics/bundle";
+import { createDiagnosticBundle, notificationPacketsFromBundle, parseDiagnosticBundle, serializeDiagnosticBundle } from "../../src/diagnostics/bundle";
 import { TraceRecorder } from "../../src/diagnostics/trace";
 import { FakeTransport } from "../../src/transport/fake";
 import { knownIledHatFingerprint } from "../helpers/fixtures";
@@ -14,6 +14,7 @@ describe("diagnostic bundles", () => {
     const parsed = parseDiagnosticBundle(serializeDiagnosticBundle(bundle));
     expect(parsed.fingerprint).toEqual(fingerprint);
     expect(parsed.trace[0]?.rawHex).toBe("0300");
+    expect([...notificationPacketsFromBundle(parsed)[0] ?? []]).toEqual([0x03, 0x00]);
   });
 
   it("validates imports defensively", () => {

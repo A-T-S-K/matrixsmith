@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseAdvertisement } from "../../src/ble/advertisement";
+import { parseAdvertisement } from "../../src/discovery/advertisement";
 
 const CAPTURE = "0201060303F0FF0EFFAE315EEA07000001100020031E0809694C6564486174";
 

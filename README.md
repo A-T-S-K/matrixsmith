@@ -1,30 +1,46 @@
-# iLedHat controller
+# MatrixSmith
 
-A local-only, open-source Web Bluetooth controller project for the 32×16 RGB matrix sold as `iLedHat` / `ILEDHAT`.
+Local-first matrix display control and protocol lab.
 
-The current milestone is intentionally limited to safe diagnostics:
+MatrixSmith is a source-available static TypeScript PWA for controlling supported matrix displays, inspecting hardware, developing device drivers, and collecting repeatable protocol evidence. The iLedHat 31AE 32×16 panel is the first experimental profile; it is not a global product assumption.
 
-- select a device advertising service `FFF0`
-- connect without pairing
-- discover `FFF0` / `FFF1`
-- report characteristic properties
-- enable and log notifications
-- perform the already-observed safe zero-length characteristic read
-- render a 32×16 orientation pattern locally without transmitting it
+## Current capabilities
 
-There is **no command encoder, raw-hex input, or BLE write path**. The exact FFF1 protocol is not yet established. See [research/protocol-findings.md](research/protocol-findings.md).
+- generic Web Bluetooth transport with explicit chooser permissions and inspection mode
+- portable device fingerprints, scored driver matching, and separate driver/profile models
+- semantic matrix operations compiled into inspectable, immutable `TransmissionPlan` objects
+- central safety policy and serialized executor with structured host receipts
+- versioned diagnostic bundle export/import and offline matching/replay foundations
+- independently implemented CoolLEDX control framing, escaping, transfer chunking, XOR checksum, RGB bitplane packing, static image, animation, and rendered-text dry runs
+- responsive Control, Inspect, and Lab surfaces for Chrome on Android
+- structured presets under `matrixsmith:v1:` with legacy iLedHat preset reading
+
+Only `SetBrightness` with raw `0x40` or `0xC0` may be sent live to the `iledhat-31ae-32x16` profile, and only from Lab after a memory-only session unlock. Mode, speed, switch, text, image, and animation remain dry-run. There is no arbitrary raw writer.
 
 ## Development
 
 ```sh
-npm install
+npm ci
+npm run typecheck
 npm test
 npm run build
 npm run dev
 ```
 
-Web Bluetooth requires a secure context. Use HTTPS on the Galaxy S23; `localhost` is suitable for desktop development. The production build is static and can be hosted on GitHub Pages or Cloudflare Pages.
+Web Bluetooth requires a secure context. `localhost` works for desktop development; use an HTTPS deployment or tunnel for the Galaxy S23. To allow one local tunnel hostname, copy `.env.example` to `.env.local` and set `MATRIXSMITH_TUNNEL_HOST`. Wildcard hosts are not enabled.
 
-## Privacy
+## Documentation
 
-The application has no backend, analytics, telemetry, external fonts, or runtime third-party scripts. Browser CSP restricts network connections to the hosting origin. Display content stays in the browser unless and until a reviewed, verified BLE codec is added.
+- [Architecture](docs/architecture.md)
+- [Driver-oriented ADR](docs/adr/0001-driver-oriented-architecture.md)
+- [Safety policy](docs/safety.md)
+- [Diagnostics](docs/diagnostics.md)
+- [Adding a driver](docs/adding-a-driver.md)
+- [Testing](docs/testing.md)
+- [CoolLEDX research](research/protocol-findings.md)
+
+## Privacy and legal status
+
+The app has no backend, account, analytics, telemetry, runtime CDN, external font, or content upload. Diagnostic files are created only by explicit local download.
+
+This repository currently has no project `LICENSE`. Do not describe MatrixSmith itself as open source until the owner chooses and adds a license. The public source and cited third-party protocol evidence have separate provenance documented in `research/`.
