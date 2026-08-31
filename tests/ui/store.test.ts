@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { MatrixController } from "../../src/app/controller";
 import { TraceRecorder } from "../../src/diagnostics/trace";
-import { MatrixStore, recommendedAction } from "../../src/ui/store";
+import { MatrixStore, parseServiceHints, recommendedAction } from "../../src/ui/store";
 import { knownIledHatFingerprint } from "../helpers/fixtures";
 import { ScriptedCoolLedUxDevice } from "../helpers/scripted-device";
 import type { DeviceFingerprint } from "../../src/core/device";
@@ -27,6 +27,16 @@ async function connectedStore(fingerprint = knownIledHatFingerprint()): Promise<
   await store.connect();
   return { transport, store };
 }
+
+describe("service hint parsing", () => {
+  it("expands 16-bit shorthand, keeps full UUIDs, and drops empties and duplicates", () => {
+    expect(parseServiceHints(" FFF0, a950;\nFFF0  0000fff0-0000-1000-8000-00805f9b34fb")).toEqual([
+      "0000fff0-0000-1000-8000-00805f9b34fb",
+      "0000a950-0000-1000-8000-00805f9b34fb",
+    ]);
+    expect(parseServiceHints("")).toEqual([]);
+  });
+});
 
 describe("recommended next action", () => {
   it("asks for a connection when disconnected", () => {
