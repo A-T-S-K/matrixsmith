@@ -1,0 +1,50 @@
+nRF Connect, 2026-08-31
+iLedHat (01:00:00:21:CC:99)
+V	20:15:01.102	Connecting to 01:00:00:21:CC:99...
+D	20:15:01.104	gatt = device.connectGatt(autoConnect = false, TRANSPORT_LE, preferred PHY = LE 1M)
+I	20:15:02.311	Connected to 01:00:00:21:CC:99
+V	20:15:02.315	Discovering services...
+D	20:15:02.316	gatt.discoverServices()
+I	20:15:02.921	Services discovered
+V	20:15:02.925	Generic Access (0x1800)
+- Device Name [R] (0x2A00)
+- Appearance [R] (0x2A01)
+V	20:15:02.927	Generic Attribute (0x1801)
+V	20:15:02.930	Unknown Service (0000fff0-0000-1000-8000-00805f9b34fb)
+- Unknown Characteristic [N R WNR] (0000fff1-0000-1000-8000-00805f9b34fb)
+	Client Characteristic Configuration (0x2902)
+V	20:15:10.501	Enabling notifications for 0000fff1-0000-1000-8000-00805f9b34fb
+D	20:15:10.502	gatt.setCharacteristicNotification(0000fff1-0000-1000-8000-00805f9b34fb, true)
+D	20:15:10.503	gatt.writeDescriptor(00002902-0000-1000-8000-00805f9b34fb, value=0x0100)
+I	20:15:10.687	Data written to descr. 00002902-0000-1000-8000-00805f9b34fb, value: (0x) 01-00
+A	20:15:10.688	"Notifications enabled" sent
+V	20:15:22.104	Reading characteristic 0000fff1-0000-1000-8000-00805f9b34fb
+D	20:15:22.105	gatt.readCharacteristic(0000fff1-0000-1000-8000-00805f9b34fb)
+I	20:15:22.240	Read Response received from 0000fff1-0000-1000-8000-00805f9b34fb, value: (0x) 
+A	20:15:22.241	"" received
+V	20:15:30.001	Writing command to characteristic 0000fff1-0000-1000-8000-00805f9b34fb
+D	20:15:30.002	gatt.writeCharacteristic(0000fff1-0000-1000-8000-00805f9b34fb, value=0x010002051F03, WRITE COMMAND)
+I	20:15:30.090	Data written to 0000fff1-0000-1000-8000-00805f9b34fb, value: (0x) 01-00-02-05-1F-03
+A	20:15:30.091	"(0x) 01-00-02-05-1F-03" sent
+I	20:15:30.242	Notification received from 0000fff1-0000-1000-8000-00805f9b34fb, value: (0x) 01-00-30-1F-02-05-CC-00-00-00-00-02-05-09-02-05-04-02-07-00-00-05-00-00-1E-00-10-00-AE-31-00-20-00-10-07-69-4C-65-64-48-61-74-00-00-00-00-00-00-00-00-00-00-00-00-00-03
+A	20:15:30.243	"(0x) 01-00-30-1F-02-05-CC-00-00-00-00-02-05-09-02-05-04-02-07-00-00-05-00-00-1E-00-10-00-AE-31-00-20-00-10-07-69-4C-65-64-48-61-74-00-00-00-00-00-00-00-00-00-00-00-00-00-03" received
+V	20:16:05.410	Writing command to characteristic 0000fff1-0000-1000-8000-00805f9b34fb
+D	20:16:05.411	gatt.writeCharacteristic(0000fff1-0000-1000-8000-00805f9b34fb, value=0x01000206084003, WRITE COMMAND)
+I	20:16:05.490	Data written to 0000fff1-0000-1000-8000-00805f9b34fb, value: (0x) 01-00-02-06-08-40-03
+A	20:16:05.491	"(0x) 01-00-02-06-08-40-03" sent
+I	20:16:05.633	Notification received from 0000fff1-0000-1000-8000-00805f9b34fb, value: (0x) 01-00-02-06-08-FE-03
+A	20:16:05.634	"(0x) 01-00-02-06-08-FE-03" received
+V	20:17:12.008	Writing command to characteristic 0000fff1-0000-1000-8000-00805f9b34fb
+D	20:17:12.009	gatt.writeCharacteristic(0000fff1-0000-1000-8000-00805f9b34fb, value=0x01000206044003, WRITE COMMAND)
+I	20:17:12.101	Data written to 0000fff1-0000-1000-8000-00805f9b34fb, value: (0x) 01-00-02-06-04-40-03
+A	20:17:12.102	"(0x) 01-00-02-06-04-40-03" sent
+I	20:17:12.230	Notification received from 0000fff1-0000-1000-8000-00805f9b34fb, value: (0x) 01-00-02-06-04-40-03
+A	20:17:12.231	"(0x) 01-00-02-06-04-40-03" received
+V	20:17:40.700	Writing command to characteristic 0000fff1-0000-1000-8000-00805f9b34fb
+D	20:17:40.701	gatt.writeCharacteristic(0000fff1-0000-1000-8000-00805f9b34fb, value=0x010002051F03, WRITE COMMAND)
+I	20:17:40.788	Data written to 0000fff1-0000-1000-8000-00805f9b34fb, value: (0x) 01-00-02-05-1F-03
+A	20:17:40.789	"(0x) 01-00-02-05-1F-03" sent
+I	20:17:40.930	Notification received from 0000fff1-0000-1000-8000-00805f9b34fb, value: (0x) 01-00-30-1F-02-05-40-00-00-00-00-02-05-09-02-05-04-02-07-00-00-05-00-00-1E-00-10-00-AE-31-00-20-00-10-07-69-4C-65-64-48-61-74-00-00-00-00-00-00-00-00-00-00-00-00-00-03
+A	20:17:40.931	"(0x) 01-00-30-1F-02-05-40-00-00-00-00-02-05-09-02-05-04-02-07-00-00-05-00-00-1E-00-10-00-AE-31-00-20-00-10-07-69-4C-65-64-48-61-74-00-00-00-00-00-00-00-00-00-00-00-00-00-03" received
+E	20:18:55.120	Error 8 (0x8): GATT CONN TIMEOUT
+I	20:18:55.121	Disconnected

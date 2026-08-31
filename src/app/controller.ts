@@ -18,6 +18,7 @@ import { packetHex } from "../core/transmission";
 import type { ProtocolTransaction, TransactionSource } from "../diagnostics/transactions";
 import { transactionId } from "../diagnostics/transactions";
 import type { DiagnosticRun, DiagnosticStepResult } from "../diagnostics/workflows";
+import { findImporter, type ImportedEvidence } from "../diagnostics/importers";
 import { chooseTestBrightness, COOLLEDUX_DIAGNOSTIC_TOOLS, diagnosticRunId } from "../diagnostics/workflows";
 
 export class MatrixController {
@@ -311,6 +312,30 @@ export class MatrixController {
     this.#contentCompilations.splice(0, this.#contentCompilations.length, ...(bundle.contentCompilations ?? []));
     this.#importedEvidence.splice(0, this.#importedEvidence.length, ...(bundle.importedEvidence ?? []));
     return bundle;
+  }
+
+  /**
+   * Import an external capture (currently nRF Connect text logs). When a live
+   * session is active the imported transactions join it as labeled evidence;
+   * otherwise an offline imported session opens. Imported evidence never
+   * transmits: the safety policy blocks every non-live source.
+   */
+  importExternalLog(content: string): ImportedEvidence {
+    const importer = findImporter(content);
+    if (!importer) throw new Error("No importer recognizes this capture format. nRF Connect text logs are supported.");
+    const evidence = importer.parse(content, { drivers: this.registry.drivers });
+    if (!evidence.fingerprint && evidence.transactions.length === 0) throw new Error(evidence.warnings[0] ?? "The capture contained no recognizable evidence.");
+    const liveSessionActive = this.session.source === "live" && this.session.fingerprint !== null;
+    if (!liveSessionActive) {
+      this.session.clearConnection();
+      if (evidence.fingerprint) this.applyFingerprint(evidence.fingerprint, "imported");
+      else this.session.source = "imported";
+    }
+    this.#transactions.push(...evidence.transactions);
+    this.#observations.push(...evidence.observations);
+    this.#importedEvidence.push({ provenance: evidence.provenance, transactionCount: evidence.transactions.length, warnings: evidence.warnings });
+    this.trace.record("evidence.imported", { importer: importer.id, transactions: evidence.transactions.length, warnings: evidence.warnings.length, unparsedLines: evidence.unparsedLineCount });
+    return evidence;
   }
 
   #recordTransaction(plan: TransmissionPlan, result: ExecutionResult | null, startedAt: string, notificationStart: number, source: TransactionSource, diagnosticRunIdValue: string | null, error: string | null): void {

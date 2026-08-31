@@ -7,6 +7,7 @@ import { DEFAULT_REPORT_OPTIONS, generateMarkdownReport, type ReportData, type R
 import type { ProtocolTransaction } from "../diagnostics/transactions";
 import type { DiagnosticRun, DiagnosticTool } from "../diagnostics/workflows";
 import { computeSupportMatrix, type SupportArea } from "../diagnostics/support";
+import type { ImportedEvidence } from "../diagnostics/importers";
 
 export type WorkspaceView = "control" | "diagnose" | "develop";
 export type TransactionFilter = "all" | "txrx" | "queries" | "probes" | "diagnostics" | "errors";
@@ -43,6 +44,19 @@ export interface AppSnapshot {
   readonly reportMarkdown: string;
   readonly transactionFilter: TransactionFilter;
   readonly transactionSearch: string;
+  readonly lastImport: ImportSummary | null;
+}
+
+export interface ImportSummary {
+  readonly deviceName: string | null;
+  readonly bleAddress: string | null;
+  readonly serviceCount: number;
+  readonly characteristicCount: number;
+  readonly transactionCount: number;
+  readonly decodedCount: number;
+  readonly warnings: readonly string[];
+  readonly unparsedLineCount: number;
+  readonly provenance: string;
 }
 
 export class MatrixStore {
@@ -58,6 +72,7 @@ export class MatrixStore {
   #reportOptions: ReportOptions = DEFAULT_REPORT_OPTIONS;
   #transactionFilter: TransactionFilter = "all";
   #transactionSearch = "";
+  #lastImport: ImportSummary | null = null;
   #snapshot!: AppSnapshot;
 
   constructor(readonly controller: MatrixController, readonly transport: MatrixTransport) {
@@ -105,6 +120,18 @@ export class MatrixStore {
   async toggleSubscription(endpoint: GattEndpoint): Promise<void> { const key = endpointKey(endpoint); await this.#run(this.#subscriptions.has(key) ? "Unsubscribing…" : "Subscribing…", async () => { if (this.#subscriptions.has(key)) throw new Error("Unsubscribe is available after disconnect in this transport adapter."); await this.controller.enableNotifications(endpoint); this.#subscriptions.add(key); this.#info = "Notifications subscribed."; }); }
   recordObservation(summary: string): void { this.controller.recordObservation(summary); this.#info = "Observation recorded for this session."; this.#emit(); }
   importBundle(json: string): void { this.controller.importBundle(json); this.#page = "workspace"; this.#view = "diagnose"; this.#info = "Diagnostic report opened offline. Live operations remain blocked."; this.#emit(); }
+  importExternalCapture(content: string): void {
+    this.#error = null;
+    try {
+      const evidence = this.controller.importExternalLog(content);
+      this.#lastImport = summarizeImport(evidence);
+      this.#page = "workspace"; this.#view = "develop";
+      this.#info = `Imported ${evidence.transactions.length} transaction(s) from the ${evidence.provenance}. Imported evidence never transmits.`;
+    } catch (error) {
+      this.#error = error instanceof Error ? error.message : String(error);
+    }
+    this.#emit();
+  }
   exportBundle(): string { return this.controller.exportBundle(); }
   markdown(): string { return generateMarkdownReport(this.#reportData(), this.#reportOptions); }
 
@@ -131,9 +158,23 @@ export class MatrixStore {
     const capabilities = driver && profile ? driver.capabilities(profile) : [];
     const transactions = filterTransactions(this.controller.transactions, this.#transactionFilter, this.#transactionSearch);
     const liveConnected = session.source === "live" && this.transport.state === "connected";
-    this.#snapshot = Object.freeze({ page: this.#page, view: this.#view, connection: this.transport.state, source: session.source, liveConnected, busy: this.#busy, error: this.#error, info: this.#info, bluetoothSupported: "bluetooth" in navigator, previouslyAuthorized: this.#previouslyAuthorized, device: fingerprint ? { name: fingerprint.name ?? "Unnamed display", connectionLabel: session.source === "imported" ? "Offline report" : this.transport.state === "connected" ? "Connected" : this.transport.state, protocol: driver?.family ?? (session.selection?.ambiguous ? "Ambiguous protocol" : "Unknown protocol"), support: driver ? "Supported" : session.selection?.ambiguous ? "Identification required" : "Support unknown", liveGeometry: fingerprint.manuallyConfirmedGeometry ? `${fingerprint.manuallyConfirmedGeometry.width}×${fingerprint.manuallyConfirmedGeometry.height} · manually confirmed` : "Unknown", profileGeometry: profile ? `${profile.width}×${profile.height} · ${profile.id}` : "Unknown", advertisementGeometry: "Not derived in this session", profileId: profile?.id ?? null } : null, deviceState: { brightness: typeof info?.fields.brightnessRaw === "number" ? info.fields.brightnessRaw : null, power: info ? info.fields.powerOn === true ? "On" : `Raw ${String(info.fields.powerRaw)}` : "Unknown", payloadHex: info?.payloadHex ?? null }, capabilities, support: computeSupportMatrix({ connected: Boolean(fingerprint), live: liveConnected, resolvedDriverId: driver?.id ?? null, capabilities, validations: this.controller.validations }), recommended: recommendedAction(Boolean(fingerprint), Boolean(driver), session.selection?.ambiguous ?? false, liveConnected), diagnosticTools: this.controller.diagnosticTools(), diagnosticRuns: this.controller.diagnosticRuns, candidates: (session.selection?.matches ?? []).map((match) => ({ id: match.driverId, family: this.controller.registry.drivers.find((d) => d.id === match.driverId)?.family ?? match.driverId, state: match.driverId === driver?.id ? "VERIFIED ON THIS SESSION" : match.score <= 0 ? "Rejected for this profile" : "Candidate", summary: match.driverId === "coolledux" ? match.driverId === driver?.id ? session.protocolResolution?.summary ?? "Resolved by evidence." : "Shared FFF0/F1 transport" : match.contradictions[0] ?? "Shared FFF0/F1 transport; no verified read-only discriminator available", score: match.score, reasons: match.reasons, contradictions: match.contradictions, canIdentify: match.driverId === "coolledux" && !driver && this.transport.state === "connected" })), gatt: (fingerprint?.services ?? []).map((service) => ({ uuid: service.uuid, primary: service.isPrimary, characteristics: service.characteristics.map((c) => ({ serviceUuid: service.uuid, uuid: c.uuid, properties: Object.entries(c.properties).filter(([, enabled]) => enabled).map(([key]) => key), canRead: c.properties.read, canSubscribe: c.properties.notify || c.properties.indicate, subscribed: this.#subscriptions.has(endpointKey({ serviceUuid: service.uuid, characteristicUuid: c.uuid })) })) })), transactions, rawEvents: this.controller.trace.events, observations: this.controller.observations, reportOpen: this.#reportOpen, reportOptions: this.#reportOptions, reportMarkdown: fingerprint ? this.markdown() : "", transactionFilter: this.#transactionFilter, transactionSearch: this.#transactionSearch });
+    this.#snapshot = Object.freeze({ page: this.#page, view: this.#view, connection: this.transport.state, source: session.source, liveConnected, busy: this.#busy, error: this.#error, info: this.#info, bluetoothSupported: "bluetooth" in navigator, previouslyAuthorized: this.#previouslyAuthorized, device: fingerprint ? { name: fingerprint.name ?? "Unnamed display", connectionLabel: session.source === "imported" ? "Offline report" : this.transport.state === "connected" ? "Connected" : this.transport.state, protocol: driver?.family ?? (session.selection?.ambiguous ? "Ambiguous protocol" : "Unknown protocol"), support: driver ? "Supported" : session.selection?.ambiguous ? "Identification required" : "Support unknown", liveGeometry: fingerprint.manuallyConfirmedGeometry ? `${fingerprint.manuallyConfirmedGeometry.width}×${fingerprint.manuallyConfirmedGeometry.height} · manually confirmed` : "Unknown", profileGeometry: profile ? `${profile.width}×${profile.height} · ${profile.id}` : "Unknown", advertisementGeometry: "Not derived in this session", profileId: profile?.id ?? null } : null, deviceState: { brightness: typeof info?.fields.brightnessRaw === "number" ? info.fields.brightnessRaw : null, power: info ? info.fields.powerOn === true ? "On" : `Raw ${String(info.fields.powerRaw)}` : "Unknown", payloadHex: info?.payloadHex ?? null }, capabilities, support: computeSupportMatrix({ connected: Boolean(fingerprint), live: liveConnected, resolvedDriverId: driver?.id ?? null, capabilities, validations: this.controller.validations }), recommended: recommendedAction(Boolean(fingerprint), Boolean(driver), session.selection?.ambiguous ?? false, liveConnected), diagnosticTools: this.controller.diagnosticTools(), diagnosticRuns: this.controller.diagnosticRuns, candidates: (session.selection?.matches ?? []).map((match) => ({ id: match.driverId, family: this.controller.registry.drivers.find((d) => d.id === match.driverId)?.family ?? match.driverId, state: match.driverId === driver?.id ? "VERIFIED ON THIS SESSION" : match.score <= 0 ? "Rejected for this profile" : "Candidate", summary: match.driverId === "coolledux" ? match.driverId === driver?.id ? session.protocolResolution?.summary ?? "Resolved by evidence." : "Shared FFF0/F1 transport" : match.contradictions[0] ?? "Shared FFF0/F1 transport; no verified read-only discriminator available", score: match.score, reasons: match.reasons, contradictions: match.contradictions, canIdentify: match.driverId === "coolledux" && !driver && this.transport.state === "connected" })), gatt: (fingerprint?.services ?? []).map((service) => ({ uuid: service.uuid, primary: service.isPrimary, characteristics: service.characteristics.map((c) => ({ serviceUuid: service.uuid, uuid: c.uuid, properties: Object.entries(c.properties).filter(([, enabled]) => enabled).map(([key]) => key), canRead: c.properties.read, canSubscribe: c.properties.notify || c.properties.indicate, subscribed: this.#subscriptions.has(endpointKey({ serviceUuid: service.uuid, characteristicUuid: c.uuid })) })) })), transactions, rawEvents: this.controller.trace.events, observations: this.controller.observations, reportOpen: this.#reportOpen, reportOptions: this.#reportOptions, reportMarkdown: fingerprint ? this.markdown() : "", transactionFilter: this.#transactionFilter, transactionSearch: this.#transactionSearch, lastImport: this.#lastImport });
   }
   #reportData(): ReportData { const session = this.controller.session; const fingerprint = session.fingerprint; if (!fingerprint) throw new Error("No device evidence is available for a report."); const driver = session.selection?.selected; return { createdAt: new Date().toISOString(), matrixsmithVersion: "0.1.0", fingerprint, profile: session.profile, selectedDriver: driver?.id ?? null, driverMatches: session.selection?.matches ?? [], capabilities: driver && session.profile ? driver.capabilities(session.profile) : [], transactions: this.controller.transactions, diagnosticRuns: this.controller.diagnosticRuns, observations: this.controller.observations, trace: this.controller.trace.events, protocolResolution: session.protocolResolution, validations: this.controller.validations, contentCompilations: this.controller.contentCompilations, importedEvidence: this.controller.importedEvidence, liveConnected: session.source === "live" && this.transport.state === "connected", source: session.source }; }
+}
+
+function summarizeImport(evidence: ImportedEvidence): ImportSummary {
+  return {
+    deviceName: evidence.deviceName,
+    bleAddress: evidence.bleAddress,
+    serviceCount: evidence.fingerprint?.services.length ?? 0,
+    characteristicCount: evidence.fingerprint?.services.reduce((total, service) => total + service.characteristics.length, 0) ?? 0,
+    transactionCount: evidence.transactions.length,
+    decodedCount: evidence.transactions.filter((t) => t.decodedResponse !== null).length,
+    warnings: evidence.warnings,
+    unparsedLineCount: evidence.unparsedLineCount,
+    provenance: evidence.provenance,
+  };
 }
 
 export function useMatrixSnapshot(store: MatrixStore): AppSnapshot { return useSyncExternalStore(store.subscribe, store.getSnapshot); }

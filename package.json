@@ -12,6 +12,7 @@
     "test:watch": "vitest"
   },
   "devDependencies": {
+    "@types/node": "^26.4.0",
     "@types/web-bluetooth": "0.0.21",
     "typescript": "7.0.2",
     "vite": "8.2.2",
