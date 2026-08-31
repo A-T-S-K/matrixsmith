@@ -36,7 +36,7 @@ root.innerHTML = `
       <article class="panel"><h3>Brightness validation</h3><p>Separated raw values; these are not percentages.</p><div class="actions"><button id="plan-low" disabled>Low test <code>0x40</code></button><button id="plan-high" disabled>High test <code>0xC0</code></button></div></article>
       <article class="panel"><h3>Dry-run controls</h3><div class="actions compact"><button data-dry="mode" disabled>Mode: static</button><button data-dry="speed" disabled>Speed <code>0x10</code></button><button data-dry="power" disabled>Switch on</button><button data-dry="frame" disabled>Static frame</button><button data-dry="animation" disabled>2-frame animation</button><button data-dry="text" disabled>Text banner</button></div></article>
     </div>
-    <article class="panel plan-panel"><div class="panel-heading"><h3>Exact TransmissionPlan</h3><span id="plan-state">No plan</span></div><div id="plan-view" class="empty">Create a plan to inspect the operation, evidence, endpoint, and exact packets.</div><button id="send-plan" class="send" disabled>Send this exact plan</button></article>
+    <article class="panel plan-panel"><div class="panel-heading"><h3>Exact TransmissionPlan</h3><span id="plan-state">No plan</span></div><div id="plan-view" class="empty">Create a plan to inspect the operation, evidence, endpoint, and exact packets.</div><p id="host-result" class="host-result"><strong>HOST RESULT</strong> Not sent. Browser acceptance never implies device verification.</p><button id="send-plan" class="send" disabled>Send this exact plan</button></article>
     <article class="panel"><h3>Device observation</h3><p>Browser acceptance is not device verification.</p><div class="actions compact"><button data-observation="Brightness changed as expected">Changed as expected</button><button data-observation="No visible change">No visible change</button><button data-observation="Unexpected behavior">Unexpected behavior</button></div><div class="inline-form"><input id="observation-note" placeholder="Additional manual observation"><button id="record-note" class="secondary">Record</button></div></article>
     <article class="panel"><h3>Probe unknown device</h3><p>Optional service UUID hints must be supplied before the chooser. Unknown-device mode has no generic write path.</p><div class="inline-form"><input id="service-hints" placeholder="FFF0, service UUID…"><button id="probe" class="secondary">Open inspection chooser</button></div><p class="fineprint">The browser may hide services that were not granted by the chooser.</p></article>
     <article class="panel"><h3>Diagnostic bundle</h3><p>Explicit local JSON export/import. Import creates offline evidence only.</p><div class="actions"><button id="download-bundle" disabled>Download bundle</button><label class="file-button">Import bundle<input id="import-bundle" type="file" accept="application/json,.json"></label></div></article>
@@ -49,6 +49,7 @@ const trace = new TraceRecorder();
 const transport = new WebBluetoothTransport(trace);
 const controller = new MatrixController(transport, trace);
 let currentPlan: TransmissionPlan | null = null;
+let hostResult = "Not sent. Browser acceptance never implies device verification.";
 const connectButton = button("#connect");
 const disconnectButton = button("#disconnect");
 const safeReadButton = button("#safe-read");
@@ -62,7 +63,7 @@ transport.subscribeState(() => render());
 for (const tab of document.querySelectorAll<HTMLButtonElement>("[data-tab]")) tab.addEventListener("click", () => openTab(tab.dataset.tab ?? "control"));
 for (const opener of document.querySelectorAll<HTMLButtonElement>("[data-open-tab]")) opener.addEventListener("click", () => openTab(opener.dataset.openTab ?? "control"));
 connectButton.addEventListener("click", () => run(async () => { await controller.connect(); await controller.enableNotifications(COOLLEDX_ENDPOINT).catch(() => undefined); }));
-disconnectButton.addEventListener("click", () => run(async () => { await controller.disconnect(); currentPlan = null; unlock.checked = false; }));
+disconnectButton.addEventListener("click", () => run(async () => { await controller.disconnect(); currentPlan = null; hostResult = "Not sent. Browser acceptance never implies device verification."; unlock.checked = false; }));
 safeReadButton.addEventListener("click", () => run(async () => { await controller.read(COOLLEDX_ENDPOINT); }));
 notificationsButton.addEventListener("click", () => run(async () => { await controller.enableNotifications(COOLLEDX_ENDPOINT); }));
 unlock.addEventListener("change", () => { unlock.checked ? controller.session.enableExperimentalTx() : controller.session.disableExperimentalTx(); render(); });
@@ -71,8 +72,13 @@ button("#plan-high").addEventListener("click", () => createPlan({ type: "SetBrig
 for (const dryButton of document.querySelectorAll<HTMLButtonElement>("[data-dry]")) dryButton.addEventListener("click", () => createDryPlan(dryButton.dataset.dry ?? ""));
 sendButton.addEventListener("click", () => run(async () => {
   if (!currentPlan) throw new Error("No TransmissionPlan is selected.");
-  const result = await controller.send(currentPlan);
-  element("#plan-state").textContent = `Host accepted ${result.receipts.length} packet(s); device not yet verified`;
+  try {
+    const result = await controller.send(currentPlan);
+    hostResult = `Browser stack accepted ${result.receipts.length} packet(s). Device verification remains false until a separate observation is recorded.`;
+  } catch (error) {
+    hostResult = `Rejected or failed: ${error instanceof Error ? error.message : String(error)}`;
+    throw error;
+  }
 }));
 for (const observation of document.querySelectorAll<HTMLButtonElement>("[data-observation]")) observation.addEventListener("click", () => { controller.recordObservation(observation.dataset.observation ?? "Observation"); render(); });
 button("#record-note").addEventListener("click", () => { const note = input("#observation-note"); controller.recordObservation(note.value); note.value = ""; render(); });
@@ -85,7 +91,7 @@ input("#import-bundle").addEventListener("change", () => run(async () => { const
 if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("./sw.js").catch((error: unknown) => trace.record("error", { scope: "service-worker", message: String(error) })));
 render();
 
-function createPlan(operation: Parameters<MatrixController["plan"]>[0]): void { try { currentPlan = controller.plan(operation); render(); } catch (error) { reportError(error); } }
+function createPlan(operation: Parameters<MatrixController["plan"]>[0]): void { try { currentPlan = controller.plan(operation); hostResult = "Not sent. Browser acceptance never implies device verification."; render(); } catch (error) { reportError(error); } }
 function createDryPlan(kind: string): void {
   const frame = orientationPattern(32, 16);
   if (kind === "mode") createPlan({ type: "SetDisplayMode", mode: "static" });
@@ -106,6 +112,7 @@ function render(): void {
   renderDl("#fingerprint", [["Browser BLE", yesNo("bluetooth" in navigator)], ["Transport", fingerprint?.transportKind ?? "—"], ["Name", fingerprint?.name ?? "—"], ["Driver", selection?.selected?.family ?? "not selected"], ["Profile", profile?.id ?? "not resolved"], ["Geometry", fingerprint?.manuallyConfirmedGeometry ? `${fingerprint.manuallyConfirmedGeometry.width}×${fingerprint.manuallyConfirmedGeometry.height}` : "unknown"], ["Manufacturer", fingerprint?.manufacturerDataHex ?? "not browser-observable"], ["Advertisement", fingerprint?.rawAdvertisementHex ?? "not available in this session"]]);
   renderMatches(); renderGatt(); renderCapabilities();
   const decision = currentPlan ? controller.evaluate(currentPlan) : null; sendButton.disabled = !currentPlan || !decision?.allowed;
+  element("#host-result").innerHTML = `<strong>HOST RESULT</strong> ${escapeHtml(hostResult)}`;
   const banner = element("#safety-banner"); banner.classList.toggle("unlocked", controller.session.experimentalTxEnabled); banner.querySelector("strong")!.textContent = controller.session.experimentalTxEnabled ? "Experimental TX unlocked" : "Live TX locked";
   banner.querySelector("span")!.textContent = currentPlan && decision && !decision.allowed ? decision.reasons.join(" ") : "Only a deliberate, session-unlocked iLedHat brightness experiment can pass policy.";
   if (currentPlan) renderPlan(currentPlan, decision!);
