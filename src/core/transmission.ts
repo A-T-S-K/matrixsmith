@@ -28,6 +28,11 @@ export interface TransmissionPacket {
   readonly writeMode: WriteMode;
   readonly bytes: Uint8Array;
   readonly hex: string;
+  /**
+   * Pause after this packet before the next write, in milliseconds. Pacing is
+   * generic plan metadata: codecs never sleep, the executor owns timing.
+   */
+  readonly delayAfterMs?: number;
 }
 
 export interface TransmissionPlan {

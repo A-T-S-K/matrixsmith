@@ -10,6 +10,8 @@ export interface SafetyContext {
   readonly driverMatch: DriverMatch | null;
   readonly ambiguous: boolean;
   readonly experimentalSessionEnabled: boolean;
+  /** Plan id whose persistent consequence the user explicitly confirmed (single-use). */
+  readonly confirmedPersistentPlanId: string | null;
 }
 
 export interface PolicyDecision {
@@ -30,7 +32,10 @@ export class SafetyPolicy {
     const acceptableConfidence = plan.purpose === "probe" ? ["candidate", "strong", "exact"] : ["strong", "exact"];
     if (!context.driverMatch || !acceptableConfidence.includes(context.driverMatch.confidence)) reasons.push("Driver confidence is below the live threshold for this plan purpose.");
     if (plan.validation === "unverified" || plan.validation === "rejected") reasons.push("The operation is not validated for this profile.");
-    if (plan.risk === "persistent" || plan.persistence === "persistent") reasons.push("Persistent operations are blocked in this milestone.");
+    if (plan.risk === "persistent" || plan.persistence === "persistent") {
+      if (plan.purpose !== "operation") reasons.push("Persistent probes are never allowed.");
+      if (context.confirmedPersistentPlanId !== plan.id) reasons.push("Persistent operations require explicit per-plan confirmation of their exact consequence.");
+    }
     if (plan.risk === "destructive") reasons.push("Destructive operations are blocked.");
     if (plan.risk === "firmware") reasons.push("Firmware operations are blocked.");
     if (plan.validation === "experimental" && !context.experimentalSessionEnabled) reasons.push("Experimental transmission requires a per-session unlock.");

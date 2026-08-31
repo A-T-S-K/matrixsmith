@@ -25,7 +25,7 @@ function context(overrides: Partial<SafetyContext> = {}): SafetyContext {
   return {
     source: "live", fingerprint, selectedDriverId: "coolledx", selectedProfileId: "iledhat-31ae-32x16",
     driverMatch: { driverId: "coolledx", score: 100, confidence: "exact", reasons: [], contradictions: [] },
-    ambiguous: false, experimentalSessionEnabled: true, ...overrides,
+    ambiguous: false, experimentalSessionEnabled: true, confirmedPersistentPlanId: null, ...overrides,
   };
 }
 

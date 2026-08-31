@@ -8,6 +8,7 @@ import { notificationMatchesExpectation, type DriverContext, type MatrixDriver }
 import { matchCoolLedUx } from "./matcher";
 import { decodeCoolLedUxNotification } from "./notifications";
 import { COOLLEDUX_OPCODES, encodeBrightness, encodeDeviceInfoQuery, encodePower } from "./protocol";
+import { compileAnimation, compileGif, compileGraffitiFrame, type CompiledProgram } from "./content";
 
 export const coolLedUxDriver: MatrixDriver = {
   id: "coolledux", family: "CoolLEDUX",
@@ -35,15 +36,26 @@ function resolveIledHatProfile(fingerprint: DeviceFingerprint): DeviceProfile | 
 
 export function coolLedUxCapabilities(profile: DeviceProfile): readonly Capability[] {
   const exact = profile.id === ILEDHAT_PROFILE_ID;
+  // Content capabilities are experimental + persistent: source-verified on
+  // other CoolLEDUX hardware, compiled and testable offline here, and gated
+  // behind the guided hardware-validation workflow for live transmission.
+  const contentShared = { supported: true, live: exact, risk: "persistent" as const, persistence: "persistent" as const, evidenceConfidence: "corroborated" as const, validation: "experimental" as const, evidenceRefs: ["coolledux-ble@4f5656d"] };
   return [
     { id: "device-info", label: "Device information", supported: true, live: exact, risk: "read-only", persistence: "none", evidenceConfidence: "observed", validation: exact ? "verified" : "experimental", evidenceRefs: ["iledhat-coolledux-probe", "coolledux-ble@4f5656d"] },
     { id: "brightness", label: "Brightness", supported: true, live: exact, risk: "transient", persistence: "unknown", evidenceConfidence: "corroborated", validation: exact ? "verified" : "experimental", evidenceRefs: ["iledhat-coolledux-brightness", "coolledux-ble@4f5656d"] },
     { id: "power", label: "Power", supported: true, live: false, risk: "transient", persistence: "unknown", evidenceConfidence: "corroborated", validation: "experimental", evidenceRefs: ["coolledux-ble@4f5656d"] },
+    { id: "static-frame", label: "Static frame (stored program)", ...contentShared },
+    { id: "text", label: "Rendered text (stored program)", ...contentShared },
+    { id: "animation", label: "Animation (stored program)", ...contentShared },
+    { id: "gif", label: "GIF (stored program)", ...contentShared },
   ];
 }
 
 export function createCoolLedUxPlan(operation: MatrixOperation, context: DriverContext, purpose: "operation" | "probe" = "operation"): TransmissionPlan {
   if (context.profile.driverId !== "coolledux") throw new Error("CoolLEDUX cannot plan for a profile owned by another driver.");
+  if (operation.type === "ShowFrame" || operation.type === "ShowAnimation" || operation.type === "ShowText" || operation.type === "ShowGif") {
+    return createContentPlan(operation, context);
+  }
   let bytes: Uint8Array;
   let risk: TransmissionPlan["risk"] = "transient";
   let persistence: TransmissionPlan["persistence"] = "unknown";
@@ -71,4 +83,80 @@ export function createCoolLedUxPlan(operation: MatrixOperation, context: DriverC
     recoveryNotes: ["No automatic retry is enabled.", "Power and mirror remain dry-run-only on this exact hardware."],
     metadata: { family: "CoolLEDUX", dryRunOnly: execution === "dry-run-only" },
   });
+}
+
+/**
+ * Stored-program content plans. All content replaces the device's stored
+ * display program: risk and persistence are declared honestly as persistent,
+ * and the safety policy requires an explicit per-plan confirmation plus the
+ * experimental session unlock before live transmission. Dimensions always
+ * come from the profile; nothing assumes 64x16 or a global 32x16.
+ */
+function createContentPlan(operation: Extract<MatrixOperation, { type: "ShowFrame" | "ShowAnimation" | "ShowText" | "ShowGif" }>, context: DriverContext): TransmissionPlan {
+  const { profile } = context;
+  let compiled: CompiledProgram;
+  let contentType: string;
+  let frameCount = 1;
+  switch (operation.type) {
+    case "ShowFrame":
+      assertGeometry(operation.frame.width, operation.frame.height, profile);
+      compiled = compileGraffitiFrame(operation.frame);
+      contentType = "graffiti";
+      break;
+    case "ShowText":
+      if (!operation.frame) throw new Error("ShowText needs a locally rendered Framebuffer; the native text content path is not the primary route.");
+      assertGeometry(operation.frame.width, operation.frame.height, profile);
+      compiled = compileGraffitiFrame(operation.frame);
+      contentType = "text";
+      break;
+    case "ShowAnimation":
+      assertGeometry(operation.sequence.width, operation.sequence.height, profile);
+      compiled = compileAnimation(operation.sequence);
+      contentType = "animation";
+      frameCount = operation.sequence.frames.length;
+      break;
+    case "ShowGif":
+      if (operation.width > profile.width || operation.height > profile.height) throw new Error(`GIF canvas ${operation.width}×${operation.height} exceeds the ${profile.width}×${profile.height} profile.`);
+      compiled = compileGif(operation.gifBytes, operation.width, operation.height);
+      contentType = "gif";
+      break;
+  }
+  const packets = compiled.packets.map((bytes, index) => ({
+    index, endpoint: COOLLED_ENDPOINT, writeMode: "without-response" as const, bytes, hex: packetHex(bytes),
+    // Pacing metadata only; the executor owns timing.
+    delayAfterMs: compiled.pacingMs,
+  }));
+  return Object.freeze({
+    id: createPlanId("coolledux-content"), driverId: "coolledux", profileId: profile.id, operation,
+    risk: "persistent" as const, persistence: "persistent" as const, validation: "experimental" as const,
+    execution: "live" as const, purpose: "operation" as const,
+    evidenceRefs: ["coolledux-ble@4f5656d", ...(profile.id === ILEDHAT_PROFILE_ID ? ["iledhat-nrf-2026-08-31"] : [])],
+    packets: Object.freeze(packets), ackPolicy: "none" as const,
+    responseExpectation: { type: "none" as const },
+    retryPolicy: { maxAttempts: 1, retryOn: [] }, timeoutMs: 15000,
+    recoveryNotes: [
+      "This replaces the stored display program.",
+      "The hardware reset path has been observed to restore factory content; automatic restoration is not implemented or verified.",
+    ],
+    metadata: {
+      family: "CoolLEDUX", dryRunOnly: false, contentType,
+      programBytes: compiled.programBytes.length,
+      crc32: `0x${compiled.crc32.toString(16).padStart(8, "0").toUpperCase()}`,
+      compressedBytes: compiled.compressedBytes.length,
+      compression: compiled.compression,
+      chunkCount: compiled.chunks.length,
+      tileCount: compiled.tileCount,
+      tileWidth: compiled.tileWidth,
+      pacingMs: compiled.pacingMs,
+      frameCount,
+      width: operation.type === "ShowGif" ? operation.width : operation.type === "ShowAnimation" ? operation.sequence.width : operation.frame!.width,
+      height: operation.type === "ShowGif" ? operation.height : operation.type === "ShowAnimation" ? operation.sequence.height : operation.frame!.height,
+    },
+  });
+}
+
+function assertGeometry(width: number, height: number, profile: DeviceProfile): void {
+  if (width !== profile.width || height !== profile.height) {
+    throw new Error(`Content is ${width}×${height} but the ${profile.id} profile is ${profile.width}×${profile.height}. Content builders must derive dimensions from the DeviceProfile.`);
+  }
 }

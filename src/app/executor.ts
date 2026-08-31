@@ -38,6 +38,9 @@ export class TransmissionExecutor {
             const receipt = await withTimeout(this.transport.write(packet.endpoint, packet.bytes, packet.writeMode), authorized.plan.timeoutMs);
             receipts.push(receipt);
             this.trace.record("tx.packet.hostAccepted", { planId: authorized.plan.id, packetIndex: packet.index, byteLength: receipt.byteLength, attempt });
+            // Executor-owned pacing: honor the packet's declared inter-write
+            // delay (skipped after the final packet).
+            if (packet.delayAfterMs && packet.index < authorized.plan.packets.length - 1) await sleep(packet.delayAfterMs);
             break;
           } catch (error) {
             const message = errorMessage(error);
@@ -81,6 +84,8 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T
 }
 
 function errorMessage(error: unknown): string { return error instanceof Error ? error.message : String(error); }
+
+function sleep(ms: number): Promise<void> { return new Promise((resolve) => setTimeout(resolve, ms)); }
 
 function endpointAvailable(transport: MatrixTransport, endpoint: import("../core/device").GattEndpoint, mode: import("../core/transmission").WriteMode): boolean {
   return transport.fingerprint?.services.some((service) => service.uuid.toLowerCase() === endpoint.serviceUuid.toLowerCase()

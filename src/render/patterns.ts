@@ -1,27 +1,71 @@
 import { Framebuffer } from "./framebuffer";
+import { FrameSequence } from "./frame-sequence";
 
+/**
+ * Deterministic hardware test patterns. The orientation frame identifies all
+ * four corners, the center, and both axes with visually distinct colors:
+ *
+ *   top-left     red        top-right    green
+ *   bottom-left  blue       bottom-right yellow
+ *   center       white
+ *
+ * A single top-edge marker row (dim red) and left-edge marker column (dim
+ * blue) make mirrored or rotated panels obvious even when corners look
+ * plausible.
+ */
 export function orientationPattern(width = 32, height = 16): Framebuffer {
   const frame = new Framebuffer(width, height);
   frame.clear();
 
-  for (let x = 0; x < frame.width; x += 1) {
-    frame.setPixel(x, Math.max(0, Math.floor(height / 2) - 1), 48, 48, 48);
-    if (x % 4 === 0) frame.setPixel(x, Math.floor(height / 2), 255, 180, 0);
-  }
-  for (let y = 0; y < frame.height; y += 1) {
-    frame.setPixel(Math.max(0, Math.floor(width / 2) - 1), y, 48, 48, 48);
-    if (y % 4 === 0) frame.setPixel(Math.floor(width / 2), y, 0, 220, 255);
-  }
+  // Edge axes: dim marker dots along the top row and left column.
+  for (let x = 0; x < width; x += 2) frame.setPixel(x, 0, 96, 0, 0);
+  for (let y = 0; y < height; y += 2) frame.setPixel(0, y, 0, 0, 96);
 
-  paintCorner(frame, 0, 0, 255, 0, 0);
-  paintCorner(frame, frame.width - 3, 0, 0, 255, 0);
-  paintCorner(frame, 0, frame.height - 3, 0, 0, 255);
-  paintCorner(frame, frame.width - 3, frame.height - 3, 255, 255, 255);
+  const corner = Math.max(2, Math.min(3, Math.floor(Math.min(width, height) / 4)));
+  paintBlock(frame, 0, 0, corner, corner, 255, 0, 0);
+  paintBlock(frame, width - corner, 0, corner, corner, 0, 255, 0);
+  paintBlock(frame, 0, height - corner, corner, corner, 0, 0, 255);
+  paintBlock(frame, width - corner, height - corner, corner, corner, 255, 255, 0);
+
+  const centerW = Math.min(4, width);
+  const centerH = Math.min(2, height);
+  paintBlock(frame, Math.floor((width - centerW) / 2), Math.floor((height - centerH) / 2), centerW, centerH, 255, 255, 255);
   return frame;
 }
 
-function paintCorner(frame: Framebuffer, startX: number, startY: number, r: number, g: number, b: number): void {
-  for (let y = startY; y < startY + 3; y += 1) {
-    for (let x = startX; x < startX + 3; x += 1) frame.setPixel(x, y, r, g, b);
+/** Frame 2 of the diagnostic animation: same geometry, inverted/rotated colors. */
+export function orientationPatternInverted(width = 32, height = 16): Framebuffer {
+  const frame = new Framebuffer(width, height);
+  frame.clear();
+  for (let x = 0; x < width; x += 2) frame.setPixel(x, 0, 0, 96, 0);
+  for (let y = 0; y < height; y += 2) frame.setPixel(0, y, 96, 96, 0);
+
+  const corner = Math.max(2, Math.min(3, Math.floor(Math.min(width, height) / 4)));
+  paintBlock(frame, 0, 0, corner, corner, 0, 255, 0);
+  paintBlock(frame, width - corner, 0, corner, corner, 255, 0, 0);
+  paintBlock(frame, 0, height - corner, corner, corner, 255, 255, 0);
+  paintBlock(frame, width - corner, height - corner, corner, corner, 0, 0, 255);
+
+  const centerW = Math.min(4, width);
+  const centerH = Math.min(2, height);
+  paintBlock(frame, Math.floor((width - centerW) / 2), Math.floor((height - centerH) / 2), centerW, centerH, 255, 0, 255);
+  return frame;
+}
+
+/**
+ * Two-frame diagnostic animation for validating frame ordering, timing, tile
+ * synchronization, and loop behavior: the orientation frame, then its
+ * inverted variant, one second each.
+ */
+export function diagnosticAnimation(width = 32, height = 16): FrameSequence {
+  return new FrameSequence(
+    [orientationPattern(width, height), orientationPatternInverted(width, height)],
+    [{ milliseconds: 1000 }, { milliseconds: 1000 }],
+  );
+}
+
+function paintBlock(frame: Framebuffer, startX: number, startY: number, blockWidth: number, blockHeight: number, r: number, g: number, b: number): void {
+  for (let y = startY; y < startY + blockHeight; y += 1) {
+    for (let x = startX; x < startX + blockWidth; x += 1) frame.setPixel(x, y, r, g, b);
   }
 }

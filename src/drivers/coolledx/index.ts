@@ -50,6 +50,7 @@ export function planCoolLedOperation(operation: MatrixOperation, context: Driver
 
   switch (operation.type) {
     case "GetDeviceInfo": throw new Error("CoolLEDX does not define the CoolLEDUX device-info query.");
+    case "ShowGif": throw new Error("CoolLEDX has no verified GIF content path.");
     case "SetBrightness":
       bytes = [encodeBrightness(operation.raw)];
       break;

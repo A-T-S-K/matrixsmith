@@ -11,7 +11,8 @@ export type MatrixOperation =
   | { readonly type: "SetPower"; readonly on: boolean }
   | { readonly type: "ShowFrame"; readonly frame: Framebuffer }
   | { readonly type: "ShowAnimation"; readonly sequence: FrameSequence }
-  | { readonly type: "ShowText"; readonly text: string; readonly frame?: Framebuffer };
+  | { readonly type: "ShowText"; readonly text: string; readonly frame?: Framebuffer }
+  | { readonly type: "ShowGif"; readonly gifBytes: Uint8Array; readonly width: number; readonly height: number };
 
 export function operationName(operation: MatrixOperation): string {
   return operation.type;

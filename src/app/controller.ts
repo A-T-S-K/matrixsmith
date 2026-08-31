@@ -146,6 +146,7 @@ export class MatrixController {
       driverMatch: bestMatch,
       ambiguous: this.session.selection?.ambiguous ?? false,
       experimentalSessionEnabled: this.session.experimentalTxEnabled,
+      confirmedPersistentPlanId: this.session.confirmedPersistentPlanId,
     });
   }
 

@@ -11,10 +11,16 @@ export class MatrixSession {
   readonly notifications: NotificationRecord[] = [];
   protocolResolution: { readonly driverId: string; readonly probeId: string; readonly summary: string; readonly source: "live-probe" | "replay" } | null = null;
   #experimentalTxEnabled = false;
+  #confirmedPersistentPlanId: string | null = null;
 
   get experimentalTxEnabled(): boolean { return this.#experimentalTxEnabled; }
   enableExperimentalTx(): void { this.#experimentalTxEnabled = true; }
   disableExperimentalTx(): void { this.#experimentalTxEnabled = false; }
+  get confirmedPersistentPlanId(): string | null { return this.#confirmedPersistentPlanId; }
+  /** Records that the user explicitly confirmed the exact consequence of ONE persistent plan. */
+  confirmPersistentPlan(planId: string): void { this.#confirmedPersistentPlanId = planId; }
+  /** Confirmation is single-use: consume it when the plan executes (or fails). */
+  consumePersistentConfirmation(): void { this.#confirmedPersistentPlanId = null; }
   get latestDeviceInfo(): DecodedNotification | null {
     for (let index = this.notifications.length - 1; index >= 0; index -= 1) {
       const decoded = this.notifications[index]?.decoded;
@@ -30,5 +36,6 @@ export class MatrixSession {
     this.notifications.length = 0;
     this.protocolResolution = null;
     this.#experimentalTxEnabled = false;
+    this.#confirmedPersistentPlanId = null;
   }
 }
