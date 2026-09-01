@@ -16,7 +16,7 @@ export function processImage(source: DecodedImageSource, width: number, height: 
   try {
     if (resolvedMode === "artwork") {
       const result = reduceArtwork(source, width, height, recipe.composition);
-      intermediate = result.frame; detail = { semanticPaletteSize: result.paletteSize, selectedGridPhase: result.phase, hardSemanticColors: true };
+      intermediate = result.frame; detail = { semanticPaletteSize: result.paletteSize, signedDistanceFields: true, selectedGridPhase: result.phase, hardSemanticColors: true };
     } else if (resolvedMode === "pixel-art") intermediate = reducePixelArt(source, width, height, recipe.composition);
     else intermediate = reducePhoto(source, width, height, recipe.composition, recipe.edgeStrength);
   } catch (error) {
