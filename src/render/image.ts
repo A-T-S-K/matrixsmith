@@ -1,4 +1,9 @@
 import { Framebuffer } from "./framebuffer";
+export { analyzeImage } from "./image/analysis";
+export { processImage } from "./image/process";
+export { decodeImageSource } from "./image/decode";
+export type { CompositionMode, DecodedImageSource, DeviceColorModel, ImageAnalysis, ImageComposition, ImageMode, ImageRecipe, ProcessedImage, ResolvedImageMode } from "./image/types";
+export { ILEDHAT_RGB444 } from "./image/types";
 
 /**
  * Browser-side image import: decode with the browser's native codecs (PNG,

@@ -14,6 +14,10 @@ export interface ContentSettings {
   readonly textBackground: string;
   readonly textAlignment: "left" | "center" | "right";
   readonly imageFitMode: "contain" | "cover" | "stretch" | "center";
+  readonly imageMode: "auto" | "artwork" | "photo" | "pixel-art" | "legacy";
+  readonly imageComposition: "contain" | "cover" | "foreground-trim" | "custom";
+  readonly imageOpticalFit: boolean;
+  readonly imageEdgeStrength: number;
   readonly lastBrightness: number | null;
 }
 
@@ -24,6 +28,10 @@ export const DEFAULT_CONTENT_SETTINGS: ContentSettings = Object.freeze({
   textBackground: "#000000",
   textAlignment: "center",
   imageFitMode: "contain",
+  imageMode: "auto",
+  imageComposition: "contain",
+  imageOpticalFit: false,
+  imageEdgeStrength: 0.12,
   lastBrightness: null,
 });
 

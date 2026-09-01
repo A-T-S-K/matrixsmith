@@ -4,6 +4,7 @@ import type { AppSnapshot, MatrixStore } from "../store";
 import type { ContentPathId } from "../../investigation/gating";
 import { StatusBadge } from "../components/StatusBadge";
 import { FramePreview } from "../components/FramePreview";
+import { ImagePreview } from "../components/ImagePreview";
 
 const CONTENT_TYPES: readonly { readonly id: ContentPathId; readonly label: string }[] = [
   { id: "text", label: "Text" },
@@ -65,9 +66,20 @@ function ContentEditor({ selected, snapshot, store }: { selected: ContentPathId;
     {selected === "image" && <>
       <label class="text-action file-action">Choose an image (PNG/JPEG/WebP) →<input type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => void chooseImage(event)}/></label>
       {content.image ? <>
-        <FramePreview frame={content.image.preview} label="Image preview"/>
-        <label class="field"><span>Fit</span><select value={settings.imageFitMode} onChange={(event) => void store.setImageFit((event.currentTarget as HTMLSelectElement).value as typeof settings.imageFitMode)}><option value="contain">Contain</option><option value="cover">Cover</option><option value="stretch">Stretch</option><option value="center">Center / crop</option></select></label>
-        <p class="fineprint">{content.image.name} · {content.image.sourceWidth}×{content.image.sourceHeight} source. Decoded locally; nothing leaves the browser.</p>
+        <ImagePreview frame={content.image.preview}/>
+        <div class="field-row">
+          <label class="field"><span>Mode</span><select value={settings.imageMode} onChange={(event) => void store.setImageProcessing({ mode: (event.currentTarget as HTMLSelectElement).value as typeof settings.imageMode })}><option value="auto">Auto</option><option value="artwork">Artwork</option><option value="photo">Photo</option><option value="pixel-art">Pixel Art</option></select></label>
+          <label class="field"><span>Composition</span><select value={settings.imageComposition} onChange={(event) => void store.setImageProcessing({ composition: (event.currentTarget as HTMLSelectElement).value as typeof settings.imageComposition })}><option value="contain">Fit whole image</option><option value="cover">Fill / crop</option><option value="foreground-trim">Foreground trim</option><option value="custom">Custom / focal crop</option></select></label>
+        </div>
+        {content.image.processed && <p class="notice">{content.image.processed.analysis.likelyMode === content.image.processed.resolvedMode ? `${labelMode(content.image.processed.resolvedMode)} · ${content.image.processed.analysis.confidence} confidence` : `Auto used ${labelMode(content.image.processed.resolvedMode)}-safe processing · uncertain content type`}</p>}
+        <p class="fineprint">32×16 · {content.image.processed?.resolvedMode ?? "Legacy / Smooth"} · {content.image.processed?.outputColorCount ?? "—"} colors · static delivery uses the selected device profile strategy.</p>
+        {content.image.processed?.warnings.map((warning) => <p class="notice warning">{warning}</p>)}
+        <details class="secondary-section"><summary>Advanced image processing</summary>
+          {(settings.imageMode === "artwork" || content.image.processed?.analysis.likelyMode === "artwork") && <label class="check-row"><input type="checkbox" checked={settings.imageOpticalFit} onChange={(event) => void store.setImageProcessing({ opticalFit: (event.currentTarget as HTMLInputElement).checked })}/><span>Use more of display (previewed optical widening, max 1.35×)</span></label>}
+          <label class="field"><span>Photo edge strength</span><input type="range" min="0" max="0.25" step="0.01" value={settings.imageEdgeStrength} onInput={(event) => void store.setImageProcessing({ edgeStrength: Number((event.currentTarget as HTMLInputElement).value) })}/></label>
+          <button class="text-action" onClick={() => void store.setImageProcessing({ mode: "legacy" })}>Use Legacy / Smooth reducer</button>
+        </details>
+        <p class="fineprint">{content.image.name} · {content.image.sourceWidth}×{content.image.sourceHeight} source. Processed locally; raw image bytes are not persisted or uploaded.</p>
       </> : <p class="empty">Choose a local image to see how it will look on the display.</p>}
       <button class="primary send" disabled={!canSend || !content.image} title={sendTitle} onClick={() => store.requestSendImage()}>Send to display…</button>
     </>}
@@ -93,6 +105,8 @@ function ContentEditor({ selected, snapshot, store }: { selected: ContentPathId;
     </>}
   </div>;
 }
+
+function labelMode(mode: string): string { return mode === "pixel-art" ? "Pixel Art" : mode.charAt(0).toUpperCase() + mode.slice(1); }
 
 /** Why this content type is not available yet, and the one step that changes that. */
 function LockedNotice({ snapshot, store, reason }: { snapshot: AppSnapshot; store: MatrixStore; reason: string }): JSX.Element {

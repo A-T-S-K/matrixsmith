@@ -14,7 +14,7 @@ import { Framebuffer } from "../render/framebuffer";
 import { FrameSequence } from "../render/frame-sequence";
 import { renderText, scrollOffsets } from "../render/font";
 import { diagnosticAnimation } from "../render/patterns";
-import { decodeImageFile, readGifMetadata, type FitMode } from "../render/image";
+import { decodeImageFile, decodeImageSource, ILEDHAT_RGB444, processImage, readGifMetadata, type DecodedImageSource, type FitMode, type ImageComposition, type ImageMode, type ProcessedImage } from "../render/image";
 import { DEFAULT_CONTENT_SETTINGS, loadContentSettings, saveContentSettings, type ContentSettings } from "../storage/settings";
 import type { ClaimState } from "../investigation/claims";
 import type { ContentGate, ContentPathId } from "../investigation/gating";
@@ -331,7 +331,7 @@ export interface ContentState {
   readonly allowedReason: string;
   readonly settings: ContentSettings;
   readonly textPreview: Framebuffer | null;
-  readonly image: { readonly preview: Framebuffer; readonly sourceWidth: number; readonly sourceHeight: number; readonly fitMode: FitMode; readonly name: string } | null;
+  readonly image: { readonly preview: Framebuffer; readonly sourceWidth: number; readonly sourceHeight: number; readonly fitMode: FitMode; readonly name: string; readonly processed: ProcessedImage | null } | null;
   readonly animationChoice: "diagnostic" | "scroll-text";
   readonly animationPreview: readonly Framebuffer[];
   readonly gif: { readonly byteLength: number; readonly width: number | null; readonly height: number | null; readonly warning: string | null; readonly name: string } | null;
@@ -430,6 +430,7 @@ export class MatrixStore {
   #lastImport: ImportSummary | null = null;
   #settings: ContentSettings = loadContentSettings();
   #imageFile: Blob | null = null;
+  #imageSource: DecodedImageSource | null = null;
   #imageName = "";
   #imageState: ContentState["image"] | null = null;
   #gifBytes: Uint8Array | null = null;
@@ -564,17 +565,34 @@ export class MatrixStore {
     await this.#run("Decoding image…", async () => {
       const profile = this.controller.session.profile;
       if (!profile) throw new Error("Connect and identify a display before importing an image.");
-      const decoded = await decodeImageFile(file, profile.width, profile.height, this.#settings.imageFitMode);
+      const source = await decodeImageSource(file);
+      const processed = this.#settings.imageMode === "legacy" ? null : processImage(source, profile.width, profile.height, this.#imageRecipe(), ILEDHAT_RGB444);
+      const decoded = processed ? { frame: processed.frame, sourceWidth: source.width, sourceHeight: source.height, fitMode: this.#settings.imageFitMode } : await decodeImageFile(file, profile.width, profile.height, this.#settings.imageFitMode);
       this.#imageFile = file;
+      this.#imageSource = source;
       this.#imageName = name;
-      this.#imageState = { preview: decoded.frame, sourceWidth: decoded.sourceWidth, sourceHeight: decoded.sourceHeight, fitMode: decoded.fitMode, name };
-      this.#info = `Image decoded locally to ${profile.width}×${profile.height}. Nothing was uploaded anywhere.`;
+      this.#imageState = { preview: decoded.frame, sourceWidth: decoded.sourceWidth, sourceHeight: decoded.sourceHeight, fitMode: decoded.fitMode, name, processed };
+      this.#info = processed ? `Image processed locally as ${processed.resolvedMode} to ${profile.width}×${profile.height}. Nothing was uploaded anywhere.` : `Image decoded locally with Legacy / Smooth to ${profile.width}×${profile.height}. Nothing was uploaded anywhere.`;
     });
   }
 
   async setImageFit(mode: FitMode): Promise<void> {
     this.updateContentSettings({ imageFitMode: mode });
     if (this.#imageFile) await this.loadImage(this.#imageFile, this.#imageName);
+  }
+
+  async setImageProcessing(partial: { mode?: ImageMode; composition?: ContentSettings["imageComposition"]; opticalFit?: boolean; edgeStrength?: number }): Promise<void> {
+    this.updateContentSettings({
+      ...(partial.mode ? { imageMode: partial.mode } : {}),
+      ...(partial.composition ? { imageComposition: partial.composition, imageFitMode: partial.composition === "cover" ? "cover" : "contain" } : {}),
+      ...(partial.opticalFit !== undefined ? { imageOpticalFit: partial.opticalFit } : {}),
+      ...(partial.edgeStrength !== undefined ? { imageEdgeStrength: partial.edgeStrength } : {}),
+    });
+    if (this.#imageFile) await this.loadImage(this.#imageFile, this.#imageName);
+  }
+
+  #imageRecipe(): { mode: ImageMode; composition: ImageComposition; edgeStrength: number } {
+    return { mode: this.#settings.imageMode, composition: { mode: this.#settings.imageComposition, ...(this.#settings.imageOpticalFit ? { opticalScaleX: 1.35 } : {}) }, edgeStrength: this.#settings.imageEdgeStrength };
   }
 
   async loadGif(file: Blob, name: string): Promise<void> {
@@ -606,7 +624,7 @@ export class MatrixStore {
   requestSendImage(): void { this.#requestContentSend("Send image", "image", () => {
     const image = this.#imageState;
     if (!image) throw new Error("Choose an image first.");
-    return { plan: this.controller.plan({ type: "ShowFrame", frame: image.preview }), preview: image.preview, extras: { sourceDimensions: `${image.sourceWidth}×${image.sourceHeight}`, fitMode: image.fitMode } };
+    return { plan: this.controller.plan({ type: "ShowFrame", frame: image.preview }), preview: image.preview, extras: { sourceDimensions: `${image.sourceWidth}×${image.sourceHeight}`, fitMode: image.fitMode, processingMode: image.processed?.resolvedMode ?? "legacy", outputColors: String(image.processed?.outputColorCount ?? "unmeasured") } };
   }); }
 
   requestSendAnimation(): void { this.#requestContentSend("Send animation", "animation", () => {
