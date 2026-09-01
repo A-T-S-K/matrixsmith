@@ -58,6 +58,39 @@ export function observationsComplete(specs: readonly ObservationFieldSpec[], val
   return specs.every((spec) => spec.kind === "note" || !(spec.required ?? true) || byField.has(spec.id));
 }
 
+/**
+ * Domain-layer validation of a full observation submission. The UI performs
+ * its own completeness checks, but the controller never trusts them: any
+ * caller reaching the domain API with missing required fields, mismatched
+ * kinds, unknown fields, invalid choice options, an empty "other", or
+ * incoherent numbers is rejected before evidence is produced.
+ */
+export function validateObservations(specs: readonly ObservationFieldSpec[], values: readonly ObservationValue[]): string[] {
+  const errors: string[] = [];
+  const specById = new Map(specs.map((spec) => [spec.id, spec]));
+  const seen = new Set<string>();
+  for (const value of values) {
+    if (!isValidObservationValue(value)) { errors.push(`Structurally invalid observation value for "${(value as { fieldId?: string })?.fieldId ?? "?"}".`); continue; }
+    if (seen.has(value.fieldId)) errors.push(`Duplicate observation for field "${value.fieldId}".`);
+    seen.add(value.fieldId);
+    const spec = specById.get(value.fieldId);
+    if (!spec) { errors.push(`Unknown observation field "${value.fieldId}".`); continue; }
+    if (spec.kind !== value.kind) { errors.push(`Field "${value.fieldId}" expects kind "${spec.kind}" but received "${value.kind}".`); continue; }
+    if (value.kind === "choice" && spec.kind === "choice") {
+      const known = spec.options.some((option) => option.id === value.optionId);
+      if (!known && !(value.optionId === "other" && spec.allowOther)) errors.push(`Field "${value.fieldId}" has no option "${value.optionId}".`);
+      if (value.optionId === "other" && !(value.otherText ?? "").trim()) errors.push(`Field "${value.fieldId}" chose "other" without describing what was seen.`);
+    }
+    if (value.kind === "duration" && (value.milliseconds < 0 || !Number.isFinite(value.milliseconds))) errors.push(`Field "${value.fieldId}" has an invalid duration.`);
+    if (value.kind === "number" && !Number.isFinite(value.value)) errors.push(`Field "${value.fieldId}" has a non-finite number.`);
+  }
+  for (const spec of specs) {
+    if (spec.kind === "note" || !(spec.required ?? true)) continue;
+    if (!seen.has(spec.id)) errors.push(`Required observation "${spec.id}" is missing.`);
+  }
+  return errors;
+}
+
 export function isValidObservationValue(value: unknown): value is ObservationValue {
   if (typeof value !== "object" || value === null) return false;
   const record = value as Record<string, unknown>;

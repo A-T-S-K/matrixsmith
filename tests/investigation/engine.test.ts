@@ -94,7 +94,9 @@ describe("guided test engine", () => {
     const controller = await connectedController();
     const values: ObservationValue[] = [
       { kind: "boolean", fieldId: "initial-correct", value: "yes" },
-      { kind: "boolean", fieldId: "stays-still", value: "yes" },
+      { kind: "duration", fieldId: "image-visible", milliseconds: 1400, measuredBy: "matrixsmith-timer" },
+      { kind: "boolean", fieldId: "moved", value: "no" },
+      { kind: "duration", fieldId: "observation-end", milliseconds: 17000, measuredBy: "matrixsmith-timer" },
       { kind: "boolean", fieldId: "background-off", value: "yes" },
       { kind: "boolean", fieldId: "tiles-aligned", value: "yes" },
       { kind: "boolean", fieldId: "flicker", value: "no" },
@@ -162,7 +164,10 @@ describe("guided test engine", () => {
 
   it("stops and resumes an investigation without losing completed tests", async () => {
     const controller = await connectedController();
-    controller.recordGuidedTestObservations("coolledux-graffiti-black", [{ kind: "choice", fieldId: "zero-appearance", optionId: "off-black" }], []);
+    controller.recordGuidedTestObservations("coolledux-graffiti-black", [
+      { kind: "choice", fieldId: "zero-appearance", optionId: "off-black" },
+      { kind: "choice", fieldId: "workaround-appearance", optionId: "dim-blue" },
+    ], []);
     const stopped = controller.stopActiveInvestigation();
     expect(stopped?.status).toBe("stopped");
     const resumed = controller.ensureInvestigation();

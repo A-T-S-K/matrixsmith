@@ -98,18 +98,54 @@ describe("guided flow state machine", () => {
     expect(contentClaims.find((claim) => claim.id === "graffiti.black-semantics")?.status).toBe("verified");
   }, 30000);
 
-  it("records the stopwatch as a measured duration observation", async () => {
+  it("records the T0/T1/T2 timeline as measured duration observations", async () => {
     const { store } = await identifiedStore();
     store.startGuidedTest("coolledux-graffiti-timing");
     await store.confirmGuidedTransfer();
-    const flow = store.getSnapshot().guidedFlow!;
+    let flow = store.getSnapshot().guidedFlow!;
     expect(flow.timerSpec).not.toBeNull();
-    store.recordGuidedTimer("event");
-    const updated = store.getSnapshot().guidedFlow!;
-    const duration = updated.values["movement-start"];
-    expect(duration?.kind).toBe("duration");
-    expect((duration as { measuredBy: string }).measuredBy).toBe("matrixsmith-timer");
-    expect(updated.values.moved).toEqual({ kind: "boolean", fieldId: "moved", value: "yes" });
+    expect(flow.currentPhase?.id).toBe("visible");
+    // T1: the complete image became visible.
+    store.recordGuidedTimeline("event");
+    flow = store.getSnapshot().guidedFlow!;
+    const t1 = flow.values["image-visible"];
+    expect(t1?.kind).toBe("duration");
+    expect((t1 as { measuredBy: string }).measuredBy).toBe("matrixsmith-timer");
+    expect(flow.values["initial-correct"]).toEqual({ kind: "boolean", fieldId: "initial-correct", value: "yes" });
+    expect(flow.currentPhase?.id).toBe("movement");
+    // T2: movement began.
+    store.recordGuidedTimeline("event");
+    flow = store.getSnapshot().guidedFlow!;
+    const t2 = flow.values["movement-start"];
+    expect(t2?.kind).toBe("duration");
+    expect((t2 as { measuredBy: string }).measuredBy).toBe("matrixsmith-timer");
+    expect(flow.values.moved).toEqual({ kind: "boolean", fieldId: "moved", value: "yes" });
+    expect(flow.timerStopped).toBe(true);
+    store.closeGuidedTest();
+  }, 30000);
+
+  it("records a still stop with the exact measured observation window", async () => {
+    const { store } = await identifiedStore();
+    store.startGuidedTest("coolledux-graffiti-timing");
+    await store.confirmGuidedTransfer();
+    store.recordGuidedTimeline("event"); // T1
+    store.recordGuidedTimeline("still"); // stopped while still static
+    const flow = store.getSnapshot().guidedFlow!;
+    expect(flow.values["observation-end"]?.kind).toBe("duration");
+    expect(flow.values.moved).toEqual({ kind: "boolean", fieldId: "moved", value: "no" });
+    expect(flow.values["movement-start"]).toBeUndefined();
+    store.closeGuidedTest();
+  }, 30000);
+
+  it("records a failed initial render from the timeline", async () => {
+    const { store } = await identifiedStore();
+    store.startGuidedTest("coolledux-graffiti-timing");
+    await store.confirmGuidedTransfer();
+    store.recordGuidedTimeline("fail");
+    const flow = store.getSnapshot().guidedFlow!;
+    expect(flow.values["initial-correct"]).toEqual({ kind: "boolean", fieldId: "initial-correct", value: "no" });
+    expect(flow.values["image-visible"]).toBeUndefined();
+    expect(flow.timerStopped).toBe(true);
     store.closeGuidedTest();
   }, 30000);
 

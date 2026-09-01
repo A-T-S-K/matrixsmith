@@ -32,6 +32,13 @@ export function GuidedTestDialog({ snapshot, store }: { readonly snapshot: AppSn
   </section></div>;
 }
 
+function stillLabel(phase: import("../../investigation/tests").TimelinePhase, phaseElapsedMs: number | null): string {
+  if (phase.minStillSeconds !== undefined && phaseElapsedMs !== null && phaseElapsedMs >= phase.minStillSeconds * 1000) {
+    return `Still completely static at ${phase.minStillSeconds} seconds`;
+  }
+  return phase.stillLabel ?? "Stop watching";
+}
+
 function stageLabel(stage: GuidedFlowState["stage"]): string {
   return stage === "about" ? "About" : stage === "running" ? "Run" : stage === "observe" ? "Observe" : "Result";
 }
@@ -72,13 +79,21 @@ function ObserveStage({ flow, store }: { flow: GuidedFlowState; store: MatrixSto
   return <>
     <p>{flow.about.observeInstructions}</p>
     {flow.timerSpec && <div class="panel timer-panel">
-      <p class="panel-kicker">STOPWATCH · started at the final accepted packet</p>
+      <p class="panel-kicker">STOPWATCH · started at the final accepted packet (T0)</p>
       <strong class="big-value">{flow.timerElapsedMs !== null ? formatDuration(flow.timerElapsedMs) : "--:--"}</strong>
-      {!flow.timerStopped && <div class="inline-form">
-        <button class="primary" onClick={() => store.recordGuidedTimer("event")}>{flow.timerSpec.startLabel}</button>
-        <button class="secondary" onClick={() => store.recordGuidedTimer("still")}>{flow.timerSpec.stopLabel}</button>
-      </div>}
-      {flow.timerStopped && <p class="fineprint">Recorded: {formatDuration(flow.timerElapsedMs ?? 0)} (measured by MatrixSmith).</p>}
+      {!flow.timerStopped && flow.currentPhase && <>
+        <p>{flow.currentPhase.prompt}</p>
+        <div class="inline-form">
+          <button class="primary" onClick={() => store.recordGuidedTimeline("event")}>{flow.currentPhase.eventLabel}</button>
+          {flow.currentPhase.failLabel && <button class="secondary" onClick={() => store.recordGuidedTimeline("fail")}>{flow.currentPhase.failLabel}</button>}
+          {flow.currentPhase.stillLabel && <button class="secondary" onClick={() => store.recordGuidedTimeline("still")}>
+            {stillLabel(flow.currentPhase, flow.phaseElapsedMs)}
+          </button>}
+        </div>
+        {flow.currentPhase.minStillSeconds !== undefined && flow.phaseElapsedMs !== null && flow.phaseElapsedMs < flow.currentPhase.minStillSeconds * 1000
+          && <p class="fineprint">Stopping before {flow.currentPhase.minStillSeconds} seconds records the exact measured time; stability then stays unverified.</p>}
+      </>}
+      {flow.timerStopped && <p class="fineprint">Timeline recorded (measured by MatrixSmith, from the final accepted write).</p>}
     </div>}
     {flow.regions.length > 0 && <details open><summary>Pattern position diagram</summary>
       {flow.previews.map((frame) => <FramePreview frame={frame} label="Pattern positions"/>)}

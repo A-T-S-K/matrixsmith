@@ -42,13 +42,39 @@ export interface GuidedTestAbout {
   readonly technicalDetails: readonly string[];
 }
 
-export interface GuidedTestTimer {
-  /** Duration observation field the stopwatch feeds. */
+/** Boolean observation set automatically when a timeline button is tapped. */
+export interface TimelineBooleanSet {
   readonly fieldId: string;
-  readonly startLabel: string;
-  readonly stopLabel: string;
-  /** Milestone hold times, in seconds, offered as "still unchanged" shortcuts. */
-  readonly milestoneSeconds: readonly number[];
+  readonly value: "yes" | "no";
+}
+
+/**
+ * One phase of a measured physical timeline. All durations are measured by
+ * MatrixSmith from T0 — the final host-accepted program write — so the human
+ * only ever taps a button at the moment something physically happens and
+ * never estimates a time.
+ */
+export interface TimelinePhase {
+  readonly id: string;
+  /** Instruction shown while this phase is active. */
+  readonly prompt: string;
+  /** Duration field receiving elapsed-since-T0 when the event button is tapped. */
+  readonly fieldId: string;
+  readonly eventLabel: string;
+  readonly eventSets?: readonly TimelineBooleanSet[];
+  /** Optional negative outcome ending the timeline without a duration (e.g. the image never appeared). */
+  readonly failLabel?: string;
+  readonly failSets?: readonly TimelineBooleanSet[];
+  /** Optional "nothing happened" stop ending the observation; elapsed goes to stillDurationFieldId. */
+  readonly stillLabel?: string;
+  readonly stillDurationFieldId?: string;
+  readonly stillSets?: readonly TimelineBooleanSet[];
+  /** Seconds (measured from the previous phase's event) after which the still stop satisfies the observation window. */
+  readonly minStillSeconds?: number;
+}
+
+export interface GuidedTestTimer {
+  readonly phases: readonly TimelinePhase[];
 }
 
 export interface GuidedTestInterpretation {
@@ -92,6 +118,8 @@ export interface GuidedTestDefinition {
   readonly timer?: GuidedTestTimer;
   /** Whether the UI should render the plan's region diagram before/while observing. */
   readonly showRegionDiagram: boolean;
+  /** Optional cross-field coherence validation beyond the generic structural checks; returns error messages. */
+  validate?(values: readonly ObservationValue[]): readonly string[];
   interpret(values: readonly ObservationValue[]): GuidedTestInterpretation;
 }
 
@@ -135,6 +163,12 @@ export function choiceAnswer(values: readonly ObservationValue[], fieldId: strin
 export function durationAnswer(values: readonly ObservationValue[], fieldId: string): number | null {
   const value = findValue(values, fieldId);
   return value?.kind === "duration" ? value.milliseconds : null;
+}
+
+/** Only MatrixSmith-measured durations are evidence-grade; user estimates never verify a claim. */
+export function measuredDurationAnswer(values: readonly ObservationValue[], fieldId: string): number | null {
+  const value = findValue(values, fieldId);
+  return value?.kind === "duration" && value.measuredBy === "matrixsmith-timer" ? value.milliseconds : null;
 }
 
 export function noteAnswer(values: readonly ObservationValue[], fieldId: string): string | null {

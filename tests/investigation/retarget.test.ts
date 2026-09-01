@@ -16,6 +16,7 @@ describe("investigation retargeting", () => {
     transport.notificationOnWrite = null;
     controller.recordGuidedTestObservations("coolledux-graffiti-black", [
       { kind: "choice", fieldId: "zero-appearance", optionId: "off-black" },
+      { kind: "choice", fieldId: "workaround-appearance", optionId: "dim-blue" },
     ], []);
     const before = controller.investigation!;
     controller.startInvestigation({ kind: "troubleshoot", symptomId: "colors-look-wrong", description: "Colors look wrong" });

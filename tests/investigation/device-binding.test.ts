@@ -88,7 +88,9 @@ describe("cross-device evidence isolation", () => {
     // Simulate Device A having a verified animation static strategy.
     controller.recordGuidedTestObservations("coolledux-animation-static", [
       { kind: "boolean", fieldId: "initial-correct", value: "yes" },
-      { kind: "boolean", fieldId: "stays-still", value: "yes" },
+      { kind: "duration", fieldId: "image-visible", milliseconds: 1400, measuredBy: "matrixsmith-timer" },
+      { kind: "boolean", fieldId: "moved", value: "no" },
+      { kind: "duration", fieldId: "observation-end", milliseconds: 17000, measuredBy: "matrixsmith-timer" },
       { kind: "boolean", fieldId: "background-off", value: "yes" },
       { kind: "boolean", fieldId: "tiles-aligned", value: "yes" },
       { kind: "boolean", fieldId: "flicker", value: "no" },

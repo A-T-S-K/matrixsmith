@@ -31,7 +31,7 @@ import {
 } from "../investigation/investigation";
 import { bindingAllowsSessionContinuity, deviceIdentityBinding } from "../investigation/device-identity";
 import { evaluateTestAvailability, type GuidedTestAvailability, type GuidedTestDefinition } from "../investigation/tests";
-import type { ObservationValue } from "../investigation/observations";
+import { validateObservations, type ObservationValue } from "../investigation/observations";
 import { rankRecommendations, type Recommendation } from "../investigation/recommendations";
 import { generateForensicAppendix, generateInvestigationReport, generateTestReport } from "../investigation/reports";
 import { allContentGates, contentPathGate, type ContentGate, type ContentPathId } from "../investigation/gating";
@@ -531,6 +531,12 @@ export class MatrixController {
    */
   recordGuidedTestObservations(testId: string, values: readonly ObservationValue[], transactionIds: readonly string[] = [], startedAt = new Date().toISOString()): CompletedGuidedTest {
     const test = this.guidedTest(testId);
+    // Domain-layer validation: UI checks are never relied on. Invalid or
+    // incomplete submissions are rejected before any evidence is produced,
+    // and only a live physical session can produce current-session evidence.
+    if (this.session.source !== "live" || !this.session.fingerprint) throw new Error("Guided test observations require a live physical device session.");
+    const validationErrors = [...validateObservations(test.observation, values), ...(test.validate?.(values) ?? [])];
+    if (validationErrors.length > 0) throw new Error(`Invalid guided-test observations: ${validationErrors.join(" ")}`);
     const interpretation = test.interpret(values);
     const completedAt = new Date().toISOString();
     const evidence: ClaimEvidence[] = interpretation.claimUpdates.map((update) => ({

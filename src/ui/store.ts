@@ -20,7 +20,7 @@ import type { ClaimState } from "../investigation/claims";
 import type { ContentGate, ContentPathId } from "../investigation/gating";
 import type { CompletedGuidedTest, SymptomId } from "../investigation/investigation";
 import { SYMPTOM_LABELS } from "../investigation/investigation";
-import type { GuidedTestAbout, GuidedTestTimer } from "../investigation/tests";
+import type { GuidedTestAbout, GuidedTestTimer, TimelinePhase } from "../investigation/tests";
 import type { ObservationFieldSpec, ObservationValue } from "../investigation/observations";
 import { observationsComplete } from "../investigation/observations";
 import type { Recommendation } from "../investigation/recommendations";
@@ -160,7 +160,11 @@ export interface GuidedFlowState {
   readonly values: Readonly<Record<string, ObservationValue>>;
   readonly observationsReady: boolean;
   readonly timerSpec: GuidedTestTimer | null;
+  /** Elapsed since T0 (final host-accepted write) while observing; last recorded value once stopped. */
   readonly timerElapsedMs: number | null;
+  /** Elapsed since the current phase's reference point (T0 for the first phase, the previous event for later ones). */
+  readonly phaseElapsedMs: number | null;
+  readonly currentPhase: TimelinePhase | null;
   readonly timerStopped: boolean;
   readonly transferProgress: string | null;
   readonly transactionIds: readonly string[];
@@ -536,7 +540,7 @@ export class MatrixStore {
     planSummary: GuidedFlowState["planSummary"];
     previews: Framebuffer[]; regions: DiagnosticRegionView[];
     observationSpecs: ObservationFieldSpec[]; values: Record<string, ObservationValue>;
-    timerSpec: GuidedTestTimer | null; finalWriteAcceptedAt: string | null; timerStopped: boolean;
+    timerSpec: GuidedTestTimer | null; timerPhaseIndex: number; finalWriteAcceptedAt: string | null; timerStopped: boolean;
     startedAt: string; transferProgress: string | null; transactionIds: string[];
     result: CompletedGuidedTest | null;
   } | null = null;
@@ -616,7 +620,7 @@ export class MatrixStore {
         },
         previews, regions,
         observationSpecs: [...test.observation], values: {},
-        timerSpec: test.timer ?? null, finalWriteAcceptedAt: null, timerStopped: false,
+        timerSpec: test.timer ?? null, timerPhaseIndex: 0, finalWriteAcceptedAt: null, timerStopped: false,
         startedAt: new Date().toISOString(), transferProgress: null, transactionIds: [],
         result: null,
       };
@@ -644,15 +648,37 @@ export class MatrixStore {
     this.#emit();
   }
 
-  /** Record the stopwatch: movement observed now, or an explicit still-unchanged stop. */
-  recordGuidedTimer(kind: "event" | "still"): void {
+  /**
+   * Record the current timeline phase: an event tap (the moment something
+   * physically happened), a fail outcome, or a still/stop. Every duration is
+   * measured by MatrixSmith from T0 — the final host-accepted write — so the
+   * user never estimates a time.
+   */
+  recordGuidedTimeline(action: "event" | "fail" | "still"): void {
     const flow = this.#guidedFlow;
     if (!flow?.timerSpec || !flow.finalWriteAcceptedAt || flow.timerStopped) return;
+    const phase = flow.timerSpec.phases[flow.timerPhaseIndex];
+    if (!phase) return;
     const elapsed = Math.max(0, Date.now() - Date.parse(flow.finalWriteAcceptedAt));
-    flow.values[flow.timerSpec.fieldId] = { kind: "duration", fieldId: flow.timerSpec.fieldId, milliseconds: elapsed, measuredBy: "matrixsmith-timer", ...(kind === "still" ? { note: "no movement observed within this measured period" } : {}) };
-    flow.values.moved = { kind: "boolean", fieldId: "moved", value: kind === "event" ? "yes" : "no" };
-    flow.timerStopped = true;
-    this.#stopTimerTicks();
+    const setBooleans = (sets?: readonly { fieldId: string; value: "yes" | "no" }[]): void => {
+      for (const set of sets ?? []) flow.values[set.fieldId] = { kind: "boolean", fieldId: set.fieldId, value: set.value };
+    };
+    if (action === "event") {
+      flow.values[phase.fieldId] = { kind: "duration", fieldId: phase.fieldId, milliseconds: elapsed, measuredBy: "matrixsmith-timer" };
+      setBooleans(phase.eventSets);
+      flow.timerPhaseIndex += 1;
+      if (flow.timerPhaseIndex >= flow.timerSpec.phases.length) { flow.timerStopped = true; this.#stopTimerTicks(); }
+    } else if (action === "fail") {
+      setBooleans(phase.failSets);
+      flow.timerStopped = true;
+      this.#stopTimerTicks();
+    } else {
+      const fieldId = phase.stillDurationFieldId ?? phase.fieldId;
+      flow.values[fieldId] = { kind: "duration", fieldId, milliseconds: elapsed, measuredBy: "matrixsmith-timer", note: "observation ended with the image still completely static" };
+      setBooleans(phase.stillSets);
+      flow.timerStopped = true;
+      this.#stopTimerTicks();
+    }
     this.#emit();
   }
 
@@ -868,16 +894,28 @@ export class MatrixStore {
   #guidedFlowView(): GuidedFlowState | null {
     const flow = this.#guidedFlow;
     if (!flow) return null;
-    const elapsed = flow.timerSpec && flow.finalWriteAcceptedAt && !flow.timerStopped && flow.stage === "observe"
-      ? Math.max(0, Date.now() - Date.parse(flow.finalWriteAcceptedAt))
-      : flow.values[flow.timerSpec?.fieldId ?? ""]?.kind === "duration" ? (flow.values[flow.timerSpec!.fieldId] as { milliseconds: number }).milliseconds : null;
+    const running = Boolean(flow.timerSpec && flow.finalWriteAcceptedAt && !flow.timerStopped && flow.stage === "observe");
+    const recordedDurations = flow.timerSpec
+      ? flow.timerSpec.phases.flatMap((phase) => [phase.fieldId, phase.stillDurationFieldId ?? phase.fieldId])
+        .map((fieldId) => flow.values[fieldId])
+        .filter((value): value is Extract<ObservationValue, { kind: "duration" }> => value?.kind === "duration")
+        .map((value) => value.milliseconds)
+      : [];
+    const elapsed = running
+      ? Math.max(0, Date.now() - Date.parse(flow.finalWriteAcceptedAt!))
+      : recordedDurations.length > 0 ? Math.max(...recordedDurations) : null;
+    const currentPhase = !flow.timerStopped ? flow.timerSpec?.phases[flow.timerPhaseIndex] ?? null : null;
+    const previousPhase = flow.timerPhaseIndex > 0 ? flow.timerSpec?.phases[flow.timerPhaseIndex - 1] ?? null : null;
+    const previousEvent = previousPhase ? flow.values[previousPhase.fieldId] : undefined;
+    const phaseStartMs = previousEvent?.kind === "duration" ? previousEvent.milliseconds : 0;
+    const phaseElapsedMs = elapsed !== null && currentPhase ? Math.max(0, elapsed - phaseStartMs) : null;
     return {
       testId: flow.testId, title: flow.title, stage: flow.stage, about: flow.about,
       consequence: flow.consequence, category: flow.category, risk: flow.risk,
       planSummary: flow.planSummary, previews: [...flow.previews], regions: [...flow.regions],
       observationSpecs: [...flow.observationSpecs], values: { ...flow.values },
       observationsReady: observationsComplete(flow.observationSpecs, Object.values(flow.values)),
-      timerSpec: flow.timerSpec, timerElapsedMs: elapsed, timerStopped: flow.timerStopped,
+      timerSpec: flow.timerSpec, timerElapsedMs: elapsed, phaseElapsedMs, currentPhase, timerStopped: flow.timerStopped,
       transferProgress: flow.transferProgress, transactionIds: [...flow.transactionIds],
       result: flow.result,
       nextTest: flow.stage === "result" ? recommendationView(this.controller.recommendations()[0] ?? null) : null,

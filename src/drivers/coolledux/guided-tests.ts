@@ -1,8 +1,8 @@
 import type { DeviceProfile } from "../../core/device";
 import type { ObservationFieldSpec, ObservationValue } from "../../investigation/observations";
 import {
-  booleanAnswer, choiceAnswer, durationAnswer,
-  type ClaimUpdate, type GuidedTestDefinition, type GuidedTestInterpretation,
+  booleanAnswer, choiceAnswer, durationAnswer, measuredDurationAnswer,
+  type ClaimUpdate, type GuidedTestDefinition, type GuidedTestInterpretation, type GuidedTestTimer,
 } from "../../investigation/tests";
 import { formatDuration } from "../../investigation/observations";
 import { MINIMUM_STATIC_HOLD_MS, VISIBLE_STATIC_HOLD_METRIC } from "../../investigation/static-viability";
@@ -123,50 +123,120 @@ const graffitiBlackTest: GuidedTestDefinition = {
 // TEST B / C — Graffiti playback timing and the stayTime discriminator
 // ---------------------------------------------------------------------------
 
+/**
+ * Shared measured timeline for static-raster observations. T0 is automatic
+ * (the final host-accepted program write); T1 and T2 are recorded the moment
+ * the user taps — the human never estimates a time.
+ */
+const STATIC_TIMELINE: GuidedTestTimer = {
+  phases: [
+    {
+      id: "visible",
+      prompt: "MatrixSmith's timer is running. Tap the moment the COMPLETE image is visible.",
+      fieldId: "image-visible",
+      eventLabel: "Full image is visible now",
+      eventSets: [{ fieldId: "initial-correct", value: "yes" }],
+      failLabel: "The image is wrong or incomplete",
+      failSets: [{ fieldId: "initial-correct", value: "no" }],
+    },
+    {
+      id: "movement",
+      prompt: "The complete image is visible. Watch it carefully and tap the instant anything shifts.",
+      fieldId: "movement-start",
+      eventLabel: "Movement started",
+      eventSets: [{ fieldId: "moved", value: "yes" }],
+      stillLabel: "Still completely static — stop watching",
+      stillDurationFieldId: "observation-end",
+      stillSets: [{ fieldId: "moved", value: "no" }],
+      minStillSeconds: 15,
+    },
+  ],
+};
+
 function timingObservationFields(): readonly ObservationFieldSpec[] {
   return [
     { kind: "boolean", id: "initial-correct", prompt: "Did the full test image appear correctly at first?" },
-    { kind: "boolean", id: "moved", prompt: "Did the image start moving at any point?" },
-    { kind: "duration", id: "movement-start", prompt: "How long after the upload did movement start?", required: false },
+    { kind: "duration", id: "image-visible", prompt: "When was the complete image visible? (measured by the timer)", required: false },
+    { kind: "boolean", id: "moved", prompt: "Did the image start moving at any point?", required: false },
+    { kind: "duration", id: "movement-start", prompt: "When did movement begin? (measured by the timer)", required: false },
+    { kind: "duration", id: "observation-end", prompt: "When did you stop watching the still image? (measured by the timer)", required: false },
     { kind: "choice", id: "motion-description", prompt: "If it moved, what did the motion look like?", required: false, options: [
       { id: "moves", label: "The whole image moves" },
       { id: "wraps-repeats", label: "It wraps around / repeats" },
       { id: "blank-interval", label: "There is a blank interval" },
       { id: "bands-tiles", label: "Bands or tiles move separately" },
     ], allowOther: true },
+    { kind: "boolean", id: "tiles-present", prompt: "Were all four vertical sections of the image present?", required: false },
+    { kind: "boolean", id: "orientation-correct", prompt: "Was the image the right way up and not mirrored?", required: false },
+    { kind: "boolean", id: "seams", prompt: "Did you notice seams or misaligned strips between sections?", required: false },
     { kind: "note", id: "note", prompt: "Anything else worth recording?" },
   ];
 }
 
+/** Cross-field coherence for the measured timeline. */
+function validateTimeline(values: readonly ObservationValue[]): readonly string[] {
+  const errors: string[] = [];
+  const t1 = durationAnswer(values, "image-visible");
+  const t2 = durationAnswer(values, "movement-start");
+  const end = durationAnswer(values, "observation-end");
+  if (t1 !== null && t2 !== null && t2 < t1) errors.push("Movement cannot begin before the full image was visible.");
+  if (t1 !== null && end !== null && end < t1) errors.push("The observation cannot end before the full image was visible.");
+  return errors;
+}
+
+/**
+ * Interpret the measured T0/T1/T2 timeline:
+ *   T0 = final program write host-accepted (automatic)
+ *   T1 = complete intended raster visibly appeared (user tap, measured)
+ *   T2 = movement first began / observation ended (user tap, measured)
+ * Render latency = T1 − T0; visible static hold = T2 − T1. The hold is
+ * always measured from T1, never from T0, and never fabricated from a
+ * yes/no answer.
+ */
 function interpretTiming(values: readonly ObservationValue[], stayTime: number): GuidedTestInterpretation {
   const initial = booleanAnswer(values, "initial-correct");
   const moved = booleanAnswer(values, "moved");
-  const onsetMs = durationAnswer(values, "movement-start");
+  const t1 = measuredDurationAnswer(values, "image-visible");
+  const t2 = measuredDurationAnswer(values, "movement-start");
+  const end = measuredDurationAnswer(values, "observation-end");
   const motion = choiceAnswer(values, "motion-description");
   const updates: ClaimUpdate[] = [];
   const established: string[] = [];
   const rejected: string[] = [];
   const unknowns: string[] = [];
   const parameterNote = `(mode=0, speed=0, stayTime=${stayTime})`;
+  const renderMetrics: Record<string, number> = t1 !== null ? { renderLatencyMs: t1 } : {};
   if (initial === "yes") {
-    established.push("The full raster appeared correctly after upload.");
-    updates.push({ claimId: "graffiti.initial-render", status: "verified", summary: `Full tiled raster rendered correctly after upload ${parameterNote}.` });
+    established.push(t1 !== null
+      ? `The full raster appeared correctly; render latency (final accepted write → full raster visible) was the measured ${formatDuration(t1)}.`
+      : "The full raster appeared correctly after upload.");
+    updates.push({ claimId: "graffiti.initial-render", status: "verified", summary: `Full tiled raster rendered correctly after upload ${parameterNote}${t1 !== null ? `; render latency ${formatDuration(t1)} (measured)` : ""}.`, ...(t1 !== null ? { metrics: { renderLatencyMs: t1 } } : {}) });
   } else if (initial === "no") {
     rejected.push("The raster did not initially render correctly.");
     updates.push({ claimId: "graffiti.initial-render", status: "rejected", summary: `The tiled raster failed to render correctly ${parameterNote}.` });
   }
+  const tilesIssue = booleanAnswer(values, "tiles-present") === "no" || booleanAnswer(values, "seams") === "yes";
+  if (tilesIssue) {
+    rejected.push("Tile sections were missing or misaligned during this observation.");
+    updates.push({ claimId: "raster.tiling", status: "unresolved", summary: `Tile sections were reported missing or misaligned ${parameterNote}; tiling needs recharacterization.` });
+  }
+  if (booleanAnswer(values, "orientation-correct") === "no") {
+    rejected.push("The image orientation was wrong during this observation.");
+    updates.push({ claimId: "raster.orientation", status: "unresolved", summary: `Orientation was reported wrong ${parameterNote}; orientation needs recharacterization.` });
+  }
   let status: GuidedTestInterpretation["status"];
   let summary: string;
   if (moved === "no") {
-    const heldMs = onsetMs;
+    // Visible static hold is measured from T1 (full raster visible), not T0.
+    const heldMs = t1 !== null && end !== null ? Math.max(0, end - t1) : null;
     if (heldMs !== null && heldMs >= MINIMUM_STATIC_HOLD_MS) {
       status = "passed";
       summary = `The image stayed completely static for the measured ${formatDuration(heldMs)} ${parameterNote}.`;
       established.push(`No movement within the measured ${formatDuration(heldMs)} with stayTime=${stayTime} — meets the ${MINIMUM_STATIC_HOLD_MS / 1000}s stability threshold.`);
       updates.push({
         claimId: "graffiti.playback-stability", status: "verified",
-        summary: `Raster remained static for the measured ${formatDuration(heldMs)} ${parameterNote}, meeting the required ${MINIMUM_STATIC_HOLD_MS / 1000}s observation window.`,
-        metrics: { [VISIBLE_STATIC_HOLD_METRIC]: heldMs },
+        summary: `Raster remained static for the measured ${formatDuration(heldMs)} from full-raster-visible ${parameterNote}, meeting the required ${MINIMUM_STATIC_HOLD_MS / 1000}s observation window.`,
+        metrics: { ...renderMetrics, [VISIBLE_STATIC_HOLD_METRIC]: heldMs },
       });
     } else {
       // A "didn't move" answer without a sufficient MEASURED window never
@@ -188,7 +258,10 @@ function interpretTiming(values: readonly ObservationValue[], stayTime: number):
     }
   } else if (moved === "yes") {
     status = "partial";
-    const onsetText = onsetMs !== null ? ` Movement began after ${formatDuration(onsetMs)} (measured).` : "";
+    const heldMs = t1 !== null && t2 !== null ? Math.max(0, t2 - t1) : null;
+    const onsetText = t2 !== null
+      ? ` Movement began at the measured ${formatDuration(t2)} after the final accepted write${heldMs !== null ? ` — a visible static hold of ${formatDuration(heldMs)} from full-raster-visible` : ""}.`
+      : "";
     summary = `The image rendered and then began moving ${parameterNote}.${onsetText}`;
     rejected.push(`The raster did not remain static with stayTime=${stayTime}.${onsetText}`);
     if (motion) established.push(`Motion character: ${motion}.`);
@@ -198,8 +271,12 @@ function interpretTiming(values: readonly ObservationValue[], stayTime: number):
     updates.push({
       claimId: "graffiti.playback-stability",
       status: stayTime === 0 ? "rejected" : "unresolved",
-      summary: `Raster began moving${onsetMs !== null ? ` after the measured ${formatDuration(onsetMs)}` : ""} ${parameterNote}${motion ? `; motion: ${motion}` : ""}.${stayTime === 0 ? " Both justified Graffiti configurations (stayTime 3 and 0) move; no stable configuration remains." : " stayTime=0 remains the untested discriminator."}`,
-      ...(onsetMs !== null ? { metrics: { movementOnsetMs: onsetMs } } : {}),
+      summary: `Raster began moving${t2 !== null ? ` at the measured ${formatDuration(t2)} after the final accepted write` : ""}${heldMs !== null ? ` (visible static hold ${formatDuration(heldMs)} from T1)` : ""} ${parameterNote}${motion ? `; motion: ${motion}` : ""}.${stayTime === 0 ? " Both justified Graffiti configurations (stayTime 3 and 0) move; no stable configuration remains." : " stayTime=0 remains the untested discriminator."}`,
+      metrics: {
+        ...renderMetrics,
+        ...(t2 !== null ? { movementOnsetFromUploadMs: t2 } : {}),
+        ...(heldMs !== null ? { [VISIBLE_STATIC_HOLD_METRIC]: heldMs } : {}),
+      },
     });
   } else {
     status = "inconclusive";
@@ -220,7 +297,7 @@ function interpretTiming(values: readonly ObservationValue[], stayTime: number):
 const graffitiTimingTest: GuidedTestDefinition = {
   id: "coolledux-graffiti-timing",
   driverId: "coolledux",
-  title: "Measure static-image movement",
+  title: "Measure how long a static image stays still",
   category: "recommended",
   targetClaims: ["graffiti.playback-stability", "graffiti.initial-render"],
   prerequisites: [
@@ -240,7 +317,7 @@ const graffitiTimingTest: GuidedTestDefinition = {
       { outcome: "Movement starts after a measurable delay", learns: "The measured onset points at a playback parameter (like stayTime) as the trigger." },
       { outcome: "The image is wrong from the start", learns: "The problem is rendering, not playback timing." },
     ],
-    observeInstructions: "Watch the panel. Tap \"Movement started\" the instant anything shifts, or use the still-unchanged buttons at each milestone.",
+    observeInstructions: "Follow the timer prompts: tap when the full image is visible, then tap the instant anything shifts — or stop once it has stayed completely still for 15 seconds.",
     technicalDetails: [
       "Graffiti stored program, mode=0, speed=0, stayTime=3 — the exact baseline that previously exhibited movement.",
       "The stopwatch starts at the final host-accepted write; the recorded duration is measured by MatrixSmith, not estimated later.",
@@ -249,15 +326,16 @@ const graffitiTimingTest: GuidedTestDefinition = {
   },
   operation: { type: "ShowDiagnostic", diagnosticId: "graffiti-timing-probe", parameters: { stayTime: 3 } },
   observation: timingObservationFields(),
-  timer: { fieldId: "movement-start", startLabel: "Movement started", stopLabel: "Still unchanged — stop watching", milestoneSeconds: [5, 10, 15] },
+  timer: STATIC_TIMELINE,
   showRegionDiagram: false,
+  validate: validateTimeline,
   interpret: (values) => interpretTiming(values, 3),
 };
 
 const graffitiStayTimeTest: GuidedTestDefinition = {
   id: "coolledux-graffiti-staytime",
   driverId: "coolledux",
-  title: "Compare stayTime 3 and 0",
+  title: "Try a different static-image setting",
   category: "advanced",
   targetClaims: ["graffiti.playback-stability"],
   prerequisites: [
@@ -276,7 +354,7 @@ const graffitiStayTimeTest: GuidedTestDefinition = {
       { outcome: "Movement timing changes", learns: "stayTime directly influences playback; its scale can be characterized next." },
       { outcome: "The image stays still", learns: "stayTime=0 is a static configuration for this panel." },
     ],
-    observeInstructions: "Watch the panel exactly as before. Tap \"Movement started\" the instant anything shifts.",
+    observeInstructions: "Watch the panel exactly as before and follow the same timer prompts.",
     technicalDetails: [
       "Identical program to the baseline except the per-tile stayTime byte: 0 instead of 3. Every other byte and frame is unchanged.",
       "No other stayTime values are offered: upstream never documents the field, so only the used value (3) and the null value (0) are justified. 0xFF is deliberately not probed.",
@@ -284,8 +362,9 @@ const graffitiStayTimeTest: GuidedTestDefinition = {
   },
   operation: { type: "ShowDiagnostic", diagnosticId: "graffiti-timing-probe", parameters: { stayTime: 0 } },
   observation: timingObservationFields(),
-  timer: { fieldId: "movement-start", startLabel: "Movement started", stopLabel: "Still unchanged — stop watching", milestoneSeconds: [5, 10, 15] },
+  timer: STATIC_TIMELINE,
   showRegionDiagram: false,
+  validate: validateTimeline,
   interpret: (values) => interpretTiming(values, 0),
 };
 
@@ -296,7 +375,10 @@ const graffitiStayTimeTest: GuidedTestDefinition = {
 function staticRasterObservationFields(): readonly ObservationFieldSpec[] {
   return [
     { kind: "boolean", id: "initial-correct", prompt: "Did the image appear correctly at first?" },
-    { kind: "boolean", id: "stays-still", prompt: "Did it remain completely stationary for at least 15 seconds?" },
+    { kind: "duration", id: "image-visible", prompt: "When was the complete image visible? (measured by the timer)", required: false },
+    { kind: "boolean", id: "moved", prompt: "Did the image move, flicker, or reset?", required: false },
+    { kind: "duration", id: "movement-start", prompt: "When did it move or reset? (measured by the timer)", required: false },
+    { kind: "duration", id: "observation-end", prompt: "When did you stop watching the still image? (measured by the timer)", required: false },
     { kind: "boolean", id: "background-off", prompt: "Is the background genuinely off/black?" },
     { kind: "boolean", id: "tiles-aligned", prompt: "Are all four tiles aligned with no seams?" },
     { kind: "boolean", id: "flicker", prompt: "Did you notice any flicker or periodic reset?", required: false },
@@ -306,7 +388,13 @@ function staticRasterObservationFields(): readonly ObservationFieldSpec[] {
 
 function interpretAnimationStatic(values: readonly ObservationValue[], variant: "single" | "identical-pair"): GuidedTestInterpretation {
   const initial = booleanAnswer(values, "initial-correct");
-  const still = booleanAnswer(values, "stays-still");
+  const moved = booleanAnswer(values, "moved");
+  const t1 = measuredDurationAnswer(values, "image-visible");
+  const t2 = measuredDurationAnswer(values, "movement-start");
+  const end = measuredDurationAnswer(values, "observation-end");
+  // Stillness must be MEASURED: hold = (movement or observation end) − full-raster-visible.
+  const heldMs = t1 !== null ? (moved === "no" && end !== null ? Math.max(0, end - t1) : moved === "yes" && t2 !== null ? Math.max(0, t2 - t1) : null) : null;
+  const still: "yes" | "no" | null = moved === "yes" ? "no" : moved === "no" && heldMs !== null && heldMs >= MINIMUM_STATIC_HOLD_MS ? "yes" : null;
   const background = booleanAnswer(values, "background-off");
   const tiles = booleanAnswer(values, "tiles-aligned");
   const flicker = booleanAnswer(values, "flicker");
@@ -329,10 +417,11 @@ function interpretAnimationStatic(values: readonly ObservationValue[], variant: 
   if (flicker === "yes") established.push("Flicker or a periodic reset was observed and recorded.");
   const passed = initial === "yes" && still === "yes" && tiles !== "no" && flicker !== "yes";
   if (passed) {
-    established.push(`The ${label} program held a stable static raster for the reported ≥15 s observation.`);
+    established.push(`The ${label} program held a stable static raster for the measured ${formatDuration(heldMs!)} from full-raster-visible.`);
     updates.push({
       claimId, status: "verified",
-      summary: `The ${label} program rendered the raster and held it stationary for the reported ≥15 s observation${background === "yes" ? " with an off background" : background === "no" ? "; the 0x0000 background was NOT off (recorded separately)" : "; background state unobserved"}.`,
+      summary: `The ${label} program rendered the raster and held it stationary for the measured ${formatDuration(heldMs!)}${background === "yes" ? " with an off background" : background === "no" ? "; the 0x0000 background was NOT off (recorded separately)" : "; background state unobserved"}.`,
+      metrics: { ...(t1 !== null ? { renderLatencyMs: t1 } : {}), [VISIBLE_STATIC_HOLD_METRIC]: heldMs! },
     });
     return {
       status: "passed", established, rejected, unknowns,
@@ -347,9 +436,15 @@ function interpretAnimationStatic(values: readonly ObservationValue[], variant: 
     return { status: "failed", established, rejected, unknowns, summary: `The ${label} render failed.`, claimUpdates: updates, ...(variant === "single" ? { nextHint: "Optionally try the separate two-identical-frame variant." } : {}) };
   }
   if (still === "no" || flicker === "yes") {
-    rejected.push(`The ${label} raster did not remain visually stable.`);
-    updates.push({ claimId, status: "rejected", summary: `The ${label} raster rendered but did not remain stable (movement or flicker observed).` });
+    rejected.push(`The ${label} raster did not remain visually stable${heldMs !== null ? ` (visible static hold ${formatDuration(heldMs)}, measured)` : ""}.`);
+    updates.push({ claimId, status: "rejected", summary: `The ${label} raster rendered but did not remain stable (movement or flicker observed${heldMs !== null ? `; measured hold ${formatDuration(heldMs)}` : ""}).`, ...(heldMs !== null ? { metrics: { [VISIBLE_STATIC_HOLD_METRIC]: heldMs } } : {}) });
     return { status: "partial", established, rejected, unknowns, summary: `The ${label} raster rendered but was not stable.`, claimUpdates: updates, ...(variant === "single" ? { nextHint: "Optionally try the separate two-identical-frame variant." } : {}) };
+  }
+  if (moved === "no" && heldMs !== null) {
+    // Stopped early: honest partial evidence with the exact measured hold.
+    unknowns.push(`Static for the measured ${formatDuration(heldMs)} — below the ${MINIMUM_STATIC_HOLD_MS / 1000}s window; stability stays unverified.`);
+    updates.push({ claimId, status: "unresolved", summary: `The ${label} raster stayed still for the measured ${formatDuration(heldMs)}; observation stopped before the required ${MINIMUM_STATIC_HOLD_MS / 1000}s window.`, metrics: { [VISIBLE_STATIC_HOLD_METRIC]: heldMs } });
+    return { status: "inconclusive", established, rejected, unknowns, summary: `Observation ended after ${formatDuration(heldMs)} — before the required window.`, claimUpdates: updates };
   }
   unknowns.push("Stability was not conclusively observed.");
   updates.push({ claimId, status: "unresolved", summary: `Observation of the ${label} program was inconclusive.` });
@@ -387,7 +482,9 @@ const animationStaticTest: GuidedTestDefinition = {
   },
   operation: { type: "ShowDiagnostic", diagnosticId: "animation-static-raster", parameters: { frames: 1 } },
   observation: staticRasterObservationFields(),
+  timer: STATIC_TIMELINE,
   showRegionDiagram: false,
+  validate: validateTimeline,
   interpret: (values) => interpretAnimationStatic(values, "single"),
 };
 
@@ -417,7 +514,9 @@ const animationStaticPairTest: GuidedTestDefinition = {
   },
   operation: { type: "ShowDiagnostic", diagnosticId: "animation-static-raster", parameters: { frames: 2 } },
   observation: staticRasterObservationFields(),
+  timer: STATIC_TIMELINE,
   showRegionDiagram: false,
+  validate: validateTimeline,
   interpret: (values) => interpretAnimationStatic(values, "identical-pair"),
 };
 
