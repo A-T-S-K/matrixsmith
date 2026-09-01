@@ -4,15 +4,35 @@ import type { MatrixTransport, TransportReceipt } from "../transport/types";
 import type { DecodedNotification, MatrixDriver } from "../drivers/types";
 import type { NotificationRouter } from "./notifications";
 
+/**
+ * Real measured timing for one written packet. Reports must never replace
+ * these with the plan's requested pacing: the scheduled delay is recorded
+ * alongside the actual timestamps so both are inspectable.
+ */
+export interface PacketTiming {
+  readonly index: number;
+  /** Wall-clock timestamp when the write call actually started. */
+  readonly writeStartedAt: string;
+  /** Wall-clock timestamp when the host accepted the write. */
+  readonly hostAcceptedAt: string;
+  /** The pacing the plan requested after this packet, if any. */
+  readonly scheduledDelayMs: number;
+  /** Measured gap since the previous packet's write start (null for the first packet). */
+  readonly gapSincePreviousTxMs: number | null;
+}
+
 export interface ExecutionResult {
   readonly planId: string;
   readonly receipts: readonly TransportReceipt[];
+  readonly packetTimings: readonly PacketTiming[];
   readonly completedAt: string;
   readonly hostAccepted: boolean;
   readonly protocolAcknowledged: boolean | null;
   readonly deviceStateVerified: boolean;
   readonly response: DecodedNotification | null;
   readonly responseTimedOut: boolean;
+  /** Wall-clock timestamp of the final packet's host acceptance. */
+  readonly finalWriteAcceptedAt: string | null;
 }
 
 export class TransmissionExecutor {
@@ -24,6 +44,8 @@ export class TransmissionExecutor {
     if (this.transport.state !== "connected") throw new Error("Cannot transmit while disconnected.");
     this.#running = true;
     const receipts: TransportReceipt[] = [];
+    const packetTimings: PacketTiming[] = [];
+    let previousWriteStartMs: number | null = null;
     const expectation = authorized.plan.responseExpectation;
     const armed = expectation.type === "notification" && this.notifications && driver
       ? this.notifications.arm(expectation, (notification, expected) => driver.responseMatches?.(notification, expected) ?? false)
@@ -35,8 +57,17 @@ export class TransmissionExecutor {
         for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
           this.trace.record("tx.packet.started", { planId: authorized.plan.id, packetIndex: packet.index, attempt }, packet.bytes);
           try {
+            const writeStartMs = Date.now();
             const receipt = await withTimeout(this.transport.write(packet.endpoint, packet.bytes, packet.writeMode), authorized.plan.timeoutMs);
             receipts.push(receipt);
+            packetTimings.push({
+              index: packet.index,
+              writeStartedAt: new Date(writeStartMs).toISOString(),
+              hostAcceptedAt: receipt.acceptedAt,
+              scheduledDelayMs: packet.delayAfterMs ?? 0,
+              gapSincePreviousTxMs: previousWriteStartMs === null ? null : writeStartMs - previousWriteStartMs,
+            });
+            previousWriteStartMs = writeStartMs;
             this.trace.record("tx.packet.hostAccepted", { planId: authorized.plan.id, packetIndex: packet.index, byteLength: receipt.byteLength, attempt });
             // Executor-owned pacing: honor the packet's declared inter-write
             // delay (skipped after the final packet).
@@ -63,7 +94,11 @@ export class TransmissionExecutor {
       const protocolAcknowledged = expectation.type === "none" ? null : response !== null;
       const deviceStateVerified = response !== null && expectation.type === "notification" && expectation.fulfillsOperation;
       this.trace.record("tx.completed", { planId: authorized.plan.id, hostAccepted: true, protocolAcknowledged, deviceStateVerified });
-      return { planId: authorized.plan.id, receipts, completedAt, hostAccepted: true, protocolAcknowledged, deviceStateVerified, response, responseTimedOut };
+      return {
+        planId: authorized.plan.id, receipts, packetTimings, completedAt,
+        hostAccepted: true, protocolAcknowledged, deviceStateVerified, response, responseTimedOut,
+        finalWriteAcceptedAt: packetTimings[packetTimings.length - 1]?.hostAcceptedAt ?? null,
+      };
     } finally {
       armed?.cancel();
       this.#running = false;

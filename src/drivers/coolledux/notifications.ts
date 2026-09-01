@@ -29,6 +29,28 @@ export function decodeCoolLedUxNotification(packet: Uint8Array): DecodedNotifica
       unknownTailHex: packetHex(payload.slice(3)),
     };
   }
+  // Stored-program upload receipts. Upstream (coolledux-ble@4f5656d)
+  // documents that notify traffic during uploads is NOT a reliable per-chunk
+  // acknowledgement and defines no payload semantics for it, so decoding here
+  // is structural: raw bytes are named by position, never as success/failure.
+  if (opcode === 0x02 && payload.length === 2) {
+    const statusRaw = payload[1] ?? 0;
+    return {
+      family: "CoolLEDUX", kind: "program-announce-receipt", opcode,
+      summary: `Stored-program announce receipt (status raw 0x${statusRaw.toString(16).padStart(2, "0")}; semantics unmapped).`,
+      payloadHex, status: statusRaw, fields: { statusRaw },
+    };
+  }
+  if (opcode === 0x03 && payload.length === 5) {
+    const reservedRaw = payload[1] ?? 0;
+    const chunkIndex = ((payload[2] ?? 0) << 8) | (payload[3] ?? 0);
+    const statusRaw = payload[4] ?? 0;
+    return {
+      family: "CoolLEDUX", kind: "program-chunk-receipt", opcode,
+      summary: `Stored-program chunk receipt for index ${chunkIndex} (status raw 0x${statusRaw.toString(16).padStart(2, "0")}; not a reliable per-chunk acknowledgement).`,
+      payloadHex, status: statusRaw, fields: { reservedRaw, chunkIndex, statusRaw },
+    };
+  }
   const value = payload[1];
   return {
     family: "CoolLEDUX", kind: "command-response", opcode,

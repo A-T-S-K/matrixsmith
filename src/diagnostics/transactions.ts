@@ -6,10 +6,17 @@ import type { DecodedNotification } from "../drivers/types";
 export type TransactionSource = "operation" | "probe" | "diagnostic" | "gatt-read" | "external-import";
 
 export interface TransactionPacket {
+  /** TX: actual write-start wall-clock time. RX: notification arrival time. */
   readonly timestamp: string;
   readonly direction: "TX" | "RX";
   readonly hex: string;
   readonly endpoint?: GattEndpoint;
+  /** TX only: when the host accepted the write. */
+  readonly hostAcceptedAt?: string;
+  /** TX only: the pacing the plan requested after this packet. */
+  readonly scheduledDelayMs?: number;
+  /** TX only: measured gap since the previous packet's write start. */
+  readonly gapSincePreviousTxMs?: number;
 }
 
 export interface ProtocolTransaction {

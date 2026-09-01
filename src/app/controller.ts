@@ -441,7 +441,17 @@ export class MatrixController {
   #recordTransaction(plan: TransmissionPlan, result: ExecutionResult | null, startedAt: string, notificationStart: number, source: TransactionSource, diagnosticRunIdValue: string | null, error: string | null): void {
     const completedAt = result?.completedAt ?? new Date().toISOString();
     const endpoint = plan.packets[0]?.endpoint ?? null;
-    const tx = plan.packets.map((packet) => ({ timestamp: startedAt, direction: "TX" as const, hex: packet.hex, endpoint: packet.endpoint }));
+    const timingByIndex = new Map((result?.packetTimings ?? []).map((timing) => [timing.index, timing]));
+    // Real per-write timestamps: every packet keeps its measured write time,
+    // never the transaction's start time or the plan's requested pacing.
+    const tx = plan.packets.map((packet) => {
+      const timing = timingByIndex.get(packet.index);
+      return {
+        timestamp: timing?.writeStartedAt ?? startedAt, direction: "TX" as const, hex: packet.hex, endpoint: packet.endpoint,
+        ...(timing ? { hostAcceptedAt: timing.hostAcceptedAt, scheduledDelayMs: timing.scheduledDelayMs } : {}),
+        ...(timing?.gapSincePreviousTxMs !== null && timing?.gapSincePreviousTxMs !== undefined ? { gapSincePreviousTxMs: timing.gapSincePreviousTxMs } : {}),
+      };
+    });
     const rx = this.session.notifications.slice(notificationStart).map((record) => ({ timestamp: record.timestamp, direction: "RX" as const, hex: record.rawHex, ...(endpoint ? { endpoint } : {}) }));
     this.#transactions.push({ id: transactionId(), startedAt, completedAt, durationMs: duration(startedAt, completedAt), sessionSource: this.session.source, source, driverId: plan.driverId, profileId: plan.profileId, operation: plan.operation.type, safety: { risk: plan.risk, persistence: plan.persistence, validation: plan.validation }, endpoint, packets: [...tx, ...rx], decodedResponse: result?.response ?? null, hostAccepted: result?.hostAccepted ?? false, protocolAcknowledged: result?.protocolAcknowledged ?? null, deviceStateVerified: result?.deviceStateVerified ?? false, responseTimedOut: result?.responseTimedOut ?? false, error, findings: result?.response ? [result.response.summary] : [], observationIds: [], diagnosticRunId: diagnosticRunIdValue });
   }
