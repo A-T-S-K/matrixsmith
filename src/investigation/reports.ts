@@ -363,7 +363,15 @@ function experimentsText(experiments: readonly ExperimentRun[], progress: CorePl
       lines.push(`- ${attempt.validity === "valid" ? "valid" : attempt.validity === "invalid" ? "INVALID" : "in progress"}`);
       if (attempt.invalidationReason) lines.push(`- reason: ${attempt.invalidationReason}`);
       if (attempt.validity === "invalid") lines.push("- excluded from conclusions");
-      if (attempt.timing) lines.push(...describeAttempt(attempt.timing).slice(1).map((line) => `- ${line.trim()}`));
+      // describeAttempt restates the validity and reason; those are already
+      // above, so only its measurement detail is carried through here.
+      if (attempt.timing) {
+        lines.push(...describeAttempt(attempt.timing)
+          .slice(1)
+          .map((line) => line.trim())
+          .filter((line) => !line.startsWith("Reason:") && !line.startsWith("Excluded"))
+          .map((line) => `- ${line}`));
+      }
       lines.push("");
     }
     return lines.join("\n").trimEnd();

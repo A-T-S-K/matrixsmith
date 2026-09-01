@@ -105,9 +105,26 @@ export function evaluateCorePlan(
   };
 }
 
-/** The milestone a guided test belongs to, for labelling a run. */
-export function stepForTest(plan: CorePlan | null, testId: string): CorePlanStep | null {
-  return plan?.steps.find((step) => step.testIds.includes(testId)) ?? null;
+/**
+ * The milestone a guided test is serving right now.
+ *
+ * A test can appear in more than one milestone — the baseline timing run
+ * answers both "does it render" and "does it hold still" — so the milestone
+ * that matters is the first one still outstanding. Labelling by the first
+ * milestone that merely mentions the test would tell a user they are on
+ * "Test 1 of 6" while the plan has already moved past it.
+ */
+export function stepForTest(plan: CorePlan | null, testId: string, progress?: CorePlanProgress | null): CorePlanStep | null {
+  const candidates = plan?.steps.filter((step) => step.testIds.includes(testId)) ?? [];
+  if (candidates.length === 0) return null;
+  if (progress) {
+    const outstanding = candidates.find((step) => {
+      const state = progress.steps.find((entry) => entry.step.id === step.id)?.state;
+      return state === "current" || state === "pending";
+    });
+    if (outstanding) return outstanding;
+  }
+  return candidates[0] ?? null;
 }
 
 /** Position among the non-skipped milestones, for "Test X of Y". */

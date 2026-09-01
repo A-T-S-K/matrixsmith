@@ -42,11 +42,16 @@ function answerRemaining(store: MatrixStore): void {
 }
 
 describe("core plan progress", () => {
-  it("numbers the experiment by its milestone, not by how many times anything ran", async () => {
+  it("numbers the experiment by the milestone it is currently serving", async () => {
     const store = await connectedStore();
     store.startGuidedTest("coolledux-graffiti-timing");
     await store.confirmGuidedTransfer();
-    expect(flow(store).corePosition).toMatchObject({ position: 1, total: 6 });
+    const progress = store.getSnapshot().coreProgress!;
+    const current = progress.steps.find((step) => step.state === "current")!;
+    // The baseline timing run serves more than one milestone; the label must
+    // follow the outstanding one, not the first that merely mentions the test.
+    expect(flow(store).corePosition).toMatchObject({ position: current.position, total: progress.total });
+    expect(flow(store).corePosition!.stepTitle).toBe(current.title);
   }, 30000);
 
   it("advances to the next distinct milestone after a conclusion", async () => {

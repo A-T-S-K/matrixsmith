@@ -6,7 +6,7 @@ import { StatusBadge } from "../components/StatusBadge";
 import { analyzeStoredProgramUpload, describeUploadAnalysis } from "../../diagnostics/upload-analysis";
 import { decodeCoolLedUxNotification } from "../../drivers/coolledux/notifications";
 
-export function DevelopView({ snapshot, store }: { readonly snapshot: AppSnapshot; readonly store: MatrixStore }): JSX.Element { const [section, setSection] = useState("transactions"); return <section class="view develop-view"><div class="view-heading"><div><p class="eyebrow">PROTOCOL WORKBENCH</p><h1>Develop</h1><p>Decoded activity first, exact bytes always available underneath.</p></div><div class="safety-copy"><StatusBadge tone="good">Safety policy active</StatusBadge><span>Verified controls are available. Experimental, persistent, destructive, firmware, and arbitrary operations remain restricted.</span></div></div><nav class="subnav" aria-label="Develop sections">{[["candidates","Protocol candidates"],["tools","Family probes & tests"],["gatt","GATT explorer"],["transactions","Transactions"],["raw","Raw events"],["evidence","Evidence / observations"]].map(([id,label]) => <button class={section === id ? "active" : ""} onClick={() => setSection(id!)}>{label}</button>)}</nav>{section === "candidates" && <CandidateSection snapshot={snapshot} store={store}/>} {section === "tools" && <ToolSection snapshot={snapshot} store={store}/>} {section === "gatt" && <GattSection snapshot={snapshot} store={store}/>} {section === "transactions" && <TransactionSection snapshot={snapshot} store={store}/>} {section === "raw" && <RawSection snapshot={snapshot} store={store}/>} {section === "evidence" && <EvidenceSection snapshot={snapshot} store={store}/>}</section>; }
+export function DevelopView({ snapshot, store }: { readonly snapshot: AppSnapshot; readonly store: MatrixStore }): JSX.Element { const [section, setSection] = useState("transactions"); return <section class="view develop-view"><div class="view-heading"><div><p class="eyebrow">PROTOCOL WORKBENCH</p><h1>Develop</h1><p>Decoded activity first, exact bytes always available underneath.</p></div><div class="safety-copy"><StatusBadge tone="good">Safety policy active</StatusBadge><span>Verified controls are available. Experimental, persistent, destructive, firmware, and arbitrary operations remain restricted.</span></div></div><nav class="subnav" aria-label="Develop sections">{[["candidates","Protocol candidates"],["tools","Family probes & tests"],["gatt","GATT explorer"],["transactions","Transactions"],["raw","Raw events"],["evidence","Evidence / observations"],["orchestration","Guided orchestration"]].map(([id,label]) => <button class={section === id ? "active" : ""} onClick={() => setSection(id!)}>{label}</button>)}</nav>{section === "candidates" && <CandidateSection snapshot={snapshot} store={store}/>} {section === "tools" && <ToolSection snapshot={snapshot} store={store}/>} {section === "gatt" && <GattSection snapshot={snapshot} store={store}/>} {section === "transactions" && <TransactionSection snapshot={snapshot} store={store}/>} {section === "raw" && <RawSection snapshot={snapshot} store={store}/>} {section === "evidence" && <EvidenceSection snapshot={snapshot} store={store}/>} {section === "orchestration" && <OrchestrationSection snapshot={snapshot}/>}</section>; }
 
 function CandidateSection({ snapshot, store }: { snapshot: AppSnapshot; store: MatrixStore }): JSX.Element { return <section><div class="section-heading"><h2>Protocol candidates</h2><p>Session evidence and safe actions, with numeric match details kept secondary.</p></div><div class="candidate-grid">{snapshot.candidates.map((candidate) => <article class="candidate-card"><div><h3>{candidate.family}</h3><StatusBadge tone={candidate.state.startsWith("VERIFIED") ? "good" : candidate.state.startsWith("Rejected") ? "bad" : "warn"}>{candidate.state}</StatusBadge></div><p>{candidate.summary}</p>{candidate.canIdentify ? <button class="primary" onClick={() => void store.identify()}>Run safe identification</button> : candidate.id === "coolledx" && candidate.state === "Candidate" ? <p class="notice">No verified read-only discriminator available.</p> : null}<details><summary>Match details</summary><p>Score: {candidate.score}</p><ul>{candidate.reasons.map((reason) => <li>{reason}</li>)}{candidate.contradictions.map((reason) => <li>Contradiction: {reason}</li>)}</ul></details></article>)}</div></section>; }
 function ToolSection({ snapshot, store }: { snapshot: AppSnapshot; store: MatrixStore }): JSX.Element { return <section><div class="section-heading"><h2>Family probes & tests</h2><p>Constrained semantic workflows; raw transport is not exposed.</p></div><div class="tool-grid">{snapshot.diagnosticTools.map((tool) => <article class="tool-card"><span class={`tool-kind ${tool.kind}`}>{tool.kind}</span><h3>{tool.label}</h3><p>{tool.explanation}</p><button class="secondary" disabled={!tool.available || snapshot.busy !== null} title={tool.unavailableReason} onClick={() => void store.runDiagnostic(tool.id)}>Run</button></article>)}</div></section>; }
@@ -43,3 +43,45 @@ function UploadAnalysis({ transaction, chunkCount }: { transaction: ProtocolTran
 }
 
 function Copy({ value, store }: { value: string; store: MatrixStore }): JSX.Element { return <button class="copy" title="Copy" aria-label="Copy to clipboard" onClick={(event) => { event.preventDefault(); event.stopPropagation(); void store.copy(value); }}>Copy</button>; }
+
+
+/**
+ * Guided orchestration state, for diagnosing workflow bugs.
+ *
+ * Developer tooling only: the guided path never shows run ids or execution
+ * fingerprints. From the outside a retry and a loop look identical — the same
+ * picture reappears — so this shows the identities that actually distinguish
+ * them.
+ */
+function OrchestrationSection({ snapshot }: { snapshot: AppSnapshot }): JSX.Element {
+  const debug = snapshot.orchestration;
+  return <section>
+    <div class="section-heading"><h2>Guided orchestration</h2><p>Experiment, attempt, and transfer identities behind the guided workflow.</p></div>
+    <dl class="state-grid">
+      <div><dt>Investigation</dt><dd>{debug.investigationId ?? "none"}</dd></div>
+      <div><dt>Core step</dt><dd>{debug.corePlanStepId ?? "none"}</dd></div>
+      <div><dt>Cycle guard</dt><dd>{debug.cycling ? "CYCLE DETECTED" : "clear"}</dd></div>
+      <div><dt>Unclassified duplicates</dt><dd>{debug.unclassifiedDuplicates}</dd></div>
+    </dl>
+    <div class="section-heading"><h3>Experiments</h3></div>
+    {debug.experiments.length === 0 ? <p class="empty">No guided experiments in this session.</p> : <div class="run-list">
+      {debug.experiments.map((run) => <details class="run">
+        <summary><span>{run.definitionId}</span><small>{run.status} · {run.attempts.length} attempt(s)</small></summary>
+        <dl class="state-grid">
+          <div><dt>Run id</dt><dd><code>{run.experimentRunId}</code></dd></div>
+          <div><dt>Core step</dt><dd>{run.corePlanStepId ?? "none"}</dd></div>
+          <div><dt>Execution fingerprint</dt><dd><code>{run.fingerprintKey}</code></dd></div>
+        </dl>
+        <ol>{run.attempts.map((attempt) => <li><strong>Attempt {attempt.attemptNumber}</strong><span>{attempt.reason} · {attempt.validity} · <code>{attempt.attemptId}</code></span></li>)}</ol>
+      </details>)}
+    </div>}
+    <div class="section-heading"><h3>Transfers</h3></div>
+    {debug.transfers.length === 0 ? <p class="empty">No guided transfers in this session.</p> : <ol class="observation-list">
+      {debug.transfers.map((transfer) => <li><span>{transfer.reason} · CRC {transfer.programCrc32 ?? "unknown"} · attempt <code>{transfer.attemptId}</code> · {transfer.transactionIds.length} transaction(s)</span></li>)}
+    </ol>}
+    <div class="section-heading"><h3>Recommendation trail</h3></div>
+    {debug.recommendationTrail.length === 0 ? <p class="empty">No recommendations taken yet.</p> : <ol class="observation-list">
+      {debug.recommendationTrail.map((entry) => <li><span>{entry.testId} <small>(evidence at the time: {entry.evidenceCount})</small></span></li>)}
+    </ol>}
+  </section>;
+}

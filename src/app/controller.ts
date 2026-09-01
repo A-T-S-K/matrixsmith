@@ -664,7 +664,7 @@ export class MatrixController {
     const test = this.guidedTest(testId);
     const operation = this.guidedTestOperation(testId);
     const parameters = operation.type === "ShowDiagnostic" && operation.parameters ? { ...operation.parameters } : {};
-    const step = stepForTest(this.corePlan(), testId);
+    const step = stepForTest(this.corePlan(), testId, this.corePlanProgress());
     const run: ExperimentRun = {
       experimentRunId: newId("experiment"),
       definitionId: testId,

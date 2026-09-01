@@ -106,6 +106,39 @@ export interface AppSnapshot {
   readonly coreProgress: CoreProgressView | null;
   /** Set when the engine's recommendation sequence looks like a loop. */
   readonly cycleWarning: string | null;
+  /** Developer-only orchestration trace. Never shown on the guided path. */
+  readonly orchestration: OrchestrationDebugView;
+}
+
+/**
+ * What the orchestration layer currently believes.
+ *
+ * Workflow bugs of this kind are close to undiagnosable from the outside —
+ * the visible symptom is "the same picture came back" with nothing to
+ * distinguish a retry from a loop. This surfaces the identities that decide
+ * that, under Developer tools.
+ */
+export interface OrchestrationDebugView {
+  readonly investigationId: string | null;
+  readonly corePlanStepId: string | null;
+  readonly experiments: readonly {
+    readonly experimentRunId: string;
+    readonly definitionId: string;
+    readonly status: string;
+    readonly corePlanStepId: string | null;
+    readonly fingerprintKey: string;
+    readonly attempts: readonly { readonly attemptId: string; readonly attemptNumber: number; readonly reason: string; readonly validity: string }[];
+  }[];
+  readonly transfers: readonly {
+    readonly transferId: string;
+    readonly attemptId: string;
+    readonly reason: string;
+    readonly programCrc32: string | null;
+    readonly transactionIds: readonly string[];
+  }[];
+  readonly recommendationTrail: readonly { readonly testId: string; readonly evidenceCount: number }[];
+  readonly cycling: boolean;
+  readonly unclassifiedDuplicates: number;
 }
 
 export interface CoreProgressView {
@@ -1239,7 +1272,8 @@ export class MatrixStore {
       rasterStrategyLabel: this.controller.session.validatedRasterStrategy ? RASTER_STRATEGY_LABELS[this.controller.session.validatedRasterStrategy] : null,
       symptoms: SYMPTOM_ROWS,
       coreProgress: this.#coreProgressView(),
-      cycleWarning: this.controller.recommendationCycle.cycling ? this.controller.recommendationCycle.detail : null });
+      cycleWarning: this.controller.recommendationCycle.cycling ? this.controller.recommendationCycle.detail : null,
+      orchestration: this.#orchestrationView() });
   }
 
   #claimGroups(): readonly ClaimGroupView[] {
@@ -1360,11 +1394,33 @@ export class MatrixStore {
   #corePositionFor(testId: string): GuidedFlowState["corePosition"] {
     const progress = this.#coreProgressView();
     const plan = this.controller.corePlan();
-    const step = stepForTest(plan, testId);
+    const step = stepForTest(plan, testId, this.controller.corePlanProgress());
     if (!progress || !step) return null;
     const entry = progress.steps.find((candidate) => candidate.id === step.id);
     if (!entry?.position) return null;
     return { position: entry.position, total: progress.total, stepTitle: entry.title };
+  }
+
+  #orchestrationView(): OrchestrationDebugView {
+    return {
+      investigationId: this.controller.investigation?.id ?? null,
+      corePlanStepId: this.controller.corePlanProgress()?.current?.step.id ?? null,
+      experiments: this.controller.experiments.map((run) => ({
+        experimentRunId: run.experimentRunId, definitionId: run.definitionId, status: run.status,
+        corePlanStepId: run.corePlanStepId, fingerprintKey: run.fingerprint.key,
+        attempts: run.attempts.map((attempt) => ({
+          attemptId: attempt.attemptId, attemptNumber: attempt.attemptNumber,
+          reason: attempt.reason, validity: attempt.validity,
+        })),
+      })),
+      transfers: this.controller.transfers.map((transfer) => ({
+        transferId: transfer.transferId, attemptId: transfer.attemptId, reason: transfer.reason,
+        programCrc32: transfer.fingerprint.programCrc32, transactionIds: transfer.transactionIds,
+      })),
+      recommendationTrail: this.controller.recommendationTrail.map((entry) => ({ testId: entry.testId, evidenceCount: entry.evidenceCount })),
+      cycling: this.controller.recommendationCycle.cycling,
+      unclassifiedDuplicates: this.controller.transferSummary().unclassifiedDuplicates,
+    };
   }
 
   #coreProgressView(): CoreProgressView | null {
