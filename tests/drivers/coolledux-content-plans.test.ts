@@ -62,13 +62,36 @@ describe("CoolLEDUX content plans", () => {
     expect(() => coolLedUxDriver.plan({ type: "ShowGif", gifBytes: gif, width: 64, height: 16 }, context)).toThrow(/exceeds/);
   });
 
-  it("keeps content capabilities experimental and persistent", () => {
+  it("keeps every content capability persistent, whatever its confidence", () => {
     const capabilities = coolLedUxDriver.capabilities(iledHat31aeProfile);
     for (const id of ["static-frame", "text", "animation", "gif"] as const) {
       const capability = capabilities.find((value) => value.id === id);
-      expect(capability?.validation).toBe("experimental");
       expect(capability?.risk).toBe("persistent");
       expect(capability?.persistence).toBe("persistent");
+    }
+  });
+
+  it("presents each capability at the confidence its evidence supports", () => {
+    const byId = new Map(coolLedUxDriver.capabilities(iledHat31aeProfile).map((capability) => [capability.id, capability]));
+    // Physically demonstrated on this panel.
+    expect(byId.get("static-frame")?.validation).toBe("verified");
+    expect(byId.get("static-frame")?.evidenceConfidence).toBe("observed");
+    expect(byId.get("animation")?.validation).toBe("verified");
+    // Rides on that verified substrate, but has not been looked at yet, so it
+    // is corroborated rather than directly observed.
+    expect(byId.get("text")?.validation).toBe("verified");
+    expect(byId.get("text")?.evidenceConfidence).toBe("corroborated");
+    // Never demonstrated here at all.
+    expect(byId.get("gif")?.validation).toBe("experimental");
+    expect(byId.get("power")?.validation).toBe("experimental");
+    expect(byId.get("power")?.live).toBe(false);
+  });
+
+  it("keeps an uncharacterized CoolLEDUX profile's content experimental", () => {
+    const generic = { ...iledHat31aeProfile, id: "coolledux-unknown" };
+    const byId = new Map(coolLedUxDriver.capabilities(generic).map((capability) => [capability.id, capability]));
+    for (const id of ["static-frame", "text", "animation", "gif"] as const) {
+      expect(byId.get(id)?.validation).toBe("experimental");
     }
   });
 });

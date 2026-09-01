@@ -52,20 +52,41 @@ function resolveIledHatProfile(fingerprint: DeviceFingerprint): DeviceProfile | 
   return matchesKnownProfile(ILEDHAT_SIGNATURE, fingerprint) ? iledHat31aeProfile : null;
 }
 
+/**
+ * What this driver can do for a profile, at the confidence the evidence
+ * actually supports.
+ *
+ * Presenting every stored-program path as generically "experimental" was
+ * accurate while nothing had been measured. On the characterized iLedHat it
+ * understates what is known: the static substrate, its encoder and the
+ * animation path were all physically verified. It would be equally wrong to
+ * overstate — an image and a line of text ride on a verified substrate, but
+ * neither has been looked at on the panel, so they are marked as resting on
+ * verified prerequisites rather than as directly demonstrated.
+ */
 export function coolLedUxCapabilities(profile: DeviceProfile): readonly Capability[] {
   const exact = profile.id === ILEDHAT_PROFILE_ID;
-  // Content capabilities are experimental + persistent: source-verified on
-  // other CoolLEDUX hardware, compiled and testable offline here, and gated
-  // behind the guided hardware-validation workflow for live transmission.
-  const contentShared = { supported: true, live: exact, risk: "persistent" as const, persistence: "persistent" as const, evidenceConfidence: "corroborated" as const, validation: "experimental" as const, evidenceRefs: ["coolledux-ble@4f5656d"] };
+  const characterized = exact && profile.quirks?.preferredRasterStrategy !== undefined && profile.quirks.preferredRasterStrategy !== "unresolved";
+  const iledHatRefs = ["iledhat-physical-2026-09-01"];
+  const persistent = { risk: "persistent" as const, persistence: "persistent" as const };
+  // Directly demonstrated on the panel: the substrate itself.
+  const demonstrated = characterized
+    ? { evidenceConfidence: "observed" as const, validation: "verified" as const, evidenceRefs: [...iledHatRefs, "coolledux-ble@4f5656d"] }
+    : { evidenceConfidence: "corroborated" as const, validation: "experimental" as const, evidenceRefs: ["coolledux-ble@4f5656d"] };
+  // Rides on that substrate; not itself smoke-tested on the panel yet.
+  const viaSubstrate = characterized
+    ? { evidenceConfidence: "corroborated" as const, validation: "verified" as const, evidenceRefs: [...iledHatRefs, "coolledux-ble@4f5656d"] }
+    : { evidenceConfidence: "corroborated" as const, validation: "experimental" as const, evidenceRefs: ["coolledux-ble@4f5656d"] };
   return [
     { id: "device-info", label: "Device information", supported: true, live: exact, risk: "read-only", persistence: "none", evidenceConfidence: "observed", validation: exact ? "verified" : "experimental", evidenceRefs: ["iledhat-coolledux-probe", "coolledux-ble@4f5656d"] },
     { id: "brightness", label: "Brightness", supported: true, live: exact, risk: "transient", persistence: "unknown", evidenceConfidence: "corroborated", validation: exact ? "verified" : "experimental", evidenceRefs: ["iledhat-coolledux-brightness", "coolledux-ble@4f5656d"] },
+    // Untested on this panel and unchanged: source-confirmed upstream only.
     { id: "power", label: "Power", supported: true, live: false, risk: "transient", persistence: "unknown", evidenceConfidence: "corroborated", validation: "experimental", evidenceRefs: ["coolledux-ble@4f5656d"] },
-    { id: "static-frame", label: "Static frame (stored program)", ...contentShared },
-    { id: "text", label: "Rendered text (stored program)", ...contentShared },
-    { id: "animation", label: "Animation (stored program)", ...contentShared },
-    { id: "gif", label: "GIF (stored program)", ...contentShared },
+    { id: "static-frame", label: characterized ? "Static frame (verified one-frame Animation route)" : "Static frame (stored program)", supported: true, live: exact, ...persistent, ...demonstrated },
+    { id: "animation", label: "Animation (stored program)", supported: true, live: exact, ...persistent, ...demonstrated },
+    { id: "text", label: characterized ? "Rendered text (via the verified static route)" : "Rendered text (stored program)", supported: true, live: exact, ...persistent, ...viaSubstrate },
+    // GIF depends on a decoder this panel has never been observed running.
+    { id: "gif", label: "GIF (stored program)", supported: true, live: exact, ...persistent, evidenceConfidence: "corroborated", validation: "experimental", evidenceRefs: ["coolledux-ble@4f5656d"] },
   ];
 }
 
