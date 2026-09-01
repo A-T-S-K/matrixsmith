@@ -91,3 +91,88 @@ describe("recommendation engine", () => {
     expect(ranked.map((r) => r.testId)).not.toContain("coolledux-animation-static-pair");
   });
 });
+
+/**
+ * §Native-static-first characterization order for the current iLedHat
+ * evidence (see docs/architecture.md). These lock the expected walk:
+ * baseline timing → stayTime=0 → black/channels → animation fallback only
+ * once Graffiti is conclusively non-viable.
+ */
+describe("native-static-first ordering", () => {
+  const session = (claimId: string, status = "verified", extra: object = {}): ClaimEvidence =>
+    ({ claimId, status, scope: "current-session", provenance: "observed", summary: "session", ...extra } as ClaimEvidence);
+
+  it("recommends the native Graffiti baseline timing test first, not the Animation fallback", () => {
+    const top = recommendNextTest({ goal: developGoal, evidence: baseline, availabilities: availabilities(baseline), completedTests: [] });
+    expect(top!.testId).toBe("coolledux-graffiti-timing");
+  });
+
+  it("recommends the stayTime=0 discriminator after baseline movement", () => {
+    const evidence: ClaimEvidence[] = [...baseline,
+      session("graffiti.playback-stability", "unresolved"),
+    ];
+    const top = recommendNextTest({
+      goal: developGoal, evidence,
+      availabilities: availabilities(evidence, ["coolledux-graffiti-timing"]),
+      completedTests: [completedTest("coolledux-graffiti-timing", "partial")],
+    });
+    expect(top!.testId).toBe("coolledux-graffiti-staytime");
+  });
+
+  it("advances to native channel characterization when both timing variants move", () => {
+    const evidence: ClaimEvidence[] = [...baseline,
+      session("graffiti.playback-stability", "rejected"),
+    ];
+    const completed = ["coolledux-graffiti-timing", "coolledux-graffiti-staytime"];
+    const ranked = rankRecommendations({
+      goal: developGoal, evidence,
+      availabilities: availabilities(evidence, completed),
+      completedTests: [completedTest("coolledux-graffiti-timing", "partial"), completedTest("coolledux-graffiti-staytime", "partial")],
+    });
+    // With Graffiti conclusively unstable, the pursued strategy becomes the
+    // Animation fallback; its first open requirement is the channel map —
+    // needed for correct rendering regardless of path — so the pixel test
+    // outranks sending the fallback raster itself.
+    expect(ranked[0]!.testId).toBe("coolledux-pixel-channels");
+  });
+
+  it("walks black semantics before channels when stayTime=0 holds still", () => {
+    const evidence: ClaimEvidence[] = [...baseline,
+      session("graffiti.playback-stability", "verified", { metrics: { visibleStaticHoldMs: 16000 } }),
+    ];
+    const completed = ["coolledux-graffiti-timing", "coolledux-graffiti-staytime"];
+    const top = recommendNextTest({
+      goal: developGoal, evidence,
+      availabilities: availabilities(evidence, completed),
+      completedTests: [completedTest("coolledux-graffiti-timing", "partial"), completedTest("coolledux-graffiti-staytime")],
+    });
+    expect(top!.testId).toBe("coolledux-graffiti-black");
+  });
+
+  it("does not recommend the Animation fallback while Graffiti viability is still open", () => {
+    const ranked = rankRecommendations({ goal: developGoal, evidence: baseline, availabilities: availabilities(baseline), completedTests: [] });
+    const timing = ranked.find((recommendation) => recommendation.testId === "coolledux-graffiti-timing")!;
+    const fallback = ranked.find((recommendation) => recommendation.testId === "coolledux-animation-static")!;
+    expect(timing.score).toBeGreaterThan(fallback.score);
+    // The fallback also ranks below the native black and channel tests.
+    const black = ranked.find((recommendation) => recommendation.testId === "coolledux-graffiti-black")!;
+    expect(black.score).toBeGreaterThan(fallback.score);
+  });
+
+  it("recommends the Animation fallback raster once Graffiti is non-viable and channels are characterized", () => {
+    const evidence: ClaimEvidence[] = [...baseline,
+      session("graffiti.playback-stability", "rejected"),
+      session("pixel.channel-map"),
+      session("pixel.encoder-correctness"),
+      session("pixel.fourth-channel", "rejected"),
+      session("pixel.white-channel", "rejected"),
+    ];
+    const completed = ["coolledux-graffiti-timing", "coolledux-graffiti-staytime", "coolledux-pixel-channels"];
+    const top = recommendNextTest({
+      goal: developGoal, evidence,
+      availabilities: availabilities(evidence, completed),
+      completedTests: completed.map((testId) => completedTest(testId)),
+    });
+    expect(top!.testId).toBe("coolledux-animation-static");
+  });
+});

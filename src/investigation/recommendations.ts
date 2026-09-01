@@ -3,6 +3,8 @@ import { claimDefinition, resolveClaims } from "./claims";
 import type { GuidedTestAvailability, GuidedTestCategory } from "./tests";
 import type { CompletedGuidedTest, InvestigationGoal } from "./investigation";
 import { SYMPTOM_FOCUS_CLAIMS } from "./investigation";
+import { evaluateStaticViability, STRATEGY_PREFERENCE } from "./static-viability";
+import type { RasterStrategy } from "../core/raster-strategy";
 
 /**
  * Deterministic, inspectable next-test recommendation engine. No AI, no
@@ -58,10 +60,31 @@ const CATEGORY_WEIGHT: Readonly<Record<GuidedTestCategory, number>> = {
  */
 const USABILITY_CLAIMS: readonly ClaimId[] = ["static.strategy", "stored-program.upload", "brightness.control", "transport.bluetooth", "protocol.coolledux"];
 
+/**
+ * Claims that exist only to prove one specific static strategy. Tests
+ * targeting a strategy LATER in the native-first preference order than the
+ * currently pursued strategy are fallbacks: heavily deprioritized until the
+ * pursued strategy is conclusively non-viable.
+ */
+const STRATEGY_SPECIFIC_CLAIMS: Readonly<Partial<Record<ClaimId, RasterStrategy>>> = Object.freeze({
+  "graffiti.playback-stability": "graffiti",
+  "graffiti.black-semantics": "graffiti",
+  "animation.static-single-frame": "animation-single-frame",
+  "animation.static-identical-pair": "animation-identical-frames",
+});
+
+/** The pursued strategy's first open viability requirement is the next-highest-value discriminator. */
+const FIRST_OPEN_REQUIREMENT_BOOST = 60;
+const FALLBACK_STRATEGY_PENALTY = 50;
+const REPEATED_TEST_PENALTY = 25;
+
 export function rankRecommendations(input: RecommendationInput): readonly Recommendation[] {
   const claims = resolveClaims(input.evidence);
   const byId = new Map(claims.map((claim) => [claim.id, claim]));
   const passedTestIds = new Set(input.completedTests.filter((test) => test.status === "passed").map((test) => test.testId));
+  const completedTestIds = new Set(input.completedTests.map((test) => test.testId));
+  const assessment = evaluateStaticViability(input.evidence);
+  const pursuedIndex = assessment.pursued ? STRATEGY_PREFERENCE.indexOf(assessment.pursued) : STRATEGY_PREFERENCE.length;
   const focusList = input.goal?.symptomId ? SYMPTOM_FOCUS_CLAIMS[input.goal.symptomId] : [];
   const focusClaims = new Set(focusList);
   const primaryFocus = focusList[0] ?? null;
@@ -88,15 +111,27 @@ export function rankRecommendations(input: RecommendationInput): readonly Recomm
     // An advanced test that is the discriminator for a usability blocker is
     // temporarily treated as recommended.
     const effectiveCategory: GuidedTestCategory = unblocksUsability && availability.test.category === "advanced" ? "recommended" : availability.test.category;
+    // Native-static-first ordering: the pursued strategy's first open
+    // viability requirement is the best next discriminator, and tests that
+    // only prove a LATER (fallback) strategy wait until the pursued one is
+    // conclusively non-viable.
+    const firstOpenBoost = assessment.nextOpenRequirement !== null && targets.includes(assessment.nextOpenRequirement) ? FIRST_OPEN_REQUIREMENT_BOOST : 0;
+    const isFallbackStrategyTest = targets.some((claimId) => {
+      const strategy = STRATEGY_SPECIFIC_CLAIMS[claimId];
+      return strategy !== undefined && STRATEGY_PREFERENCE.indexOf(strategy) > pursuedIndex;
+    });
     const score = informationValue + CATEGORY_WEIGHT[effectiveCategory] + focusBoost + (unblocksUsability ? 25 : 0)
-      + (availability.test.risk === "read-only" ? 5 : 0);
+      + (availability.test.risk === "read-only" ? 5 : 0)
+      + firstOpenBoost
+      - (isFallbackStrategyTest ? FALLBACK_STRATEGY_PENALTY : 0)
+      - (completedTestIds.has(availability.test.id) ? REPEATED_TEST_PENALTY : 0);
     scored.push({
       id: `recommend:${availability.test.id}`,
       kind: "guided-test",
       testId: availability.test.id,
       title: availability.test.title,
       description: availability.test.about.question,
-      why: buildWhy(availability, targets, byId, focusClaims),
+      why: buildWhy(availability, targets, byId, focusClaims, firstOpenBoost > 0 ? assessment.pursued : null),
       estimatedObservationTime: availability.test.about.estimatedObservationTime,
       risk: availability.test.risk,
       consequence: availability.test.consequence,
@@ -118,8 +153,9 @@ function claimDefinitionUnblocks(claimId: ClaimId, blockers: ReadonlySet<ClaimId
   return false;
 }
 
-function buildWhy(availability: GuidedTestAvailability, targets: readonly ClaimId[], byId: ReadonlyMap<ClaimId, ClaimState>, focusClaims: ReadonlySet<ClaimId>): string {
+function buildWhy(availability: GuidedTestAvailability, targets: readonly ClaimId[], byId: ReadonlyMap<ClaimId, ClaimState>, focusClaims: ReadonlySet<ClaimId>, pursuedStrategy: RasterStrategy | null): string {
   const parts: string[] = [availability.test.about.whyRelevant];
+  if (pursuedStrategy) parts.push(`This is the next open requirement of the ${pursuedStrategy === "graffiti" ? "native static-image" : pursuedStrategy} path currently being characterized.`);
   const unresolved = targets.filter((claimId) => byId.get(claimId)?.status === "unresolved");
   if (unresolved.length > 0) parts.push(`Resolves currently-contradicted evidence for: ${unresolved.map((claimId) => claimDefinition(claimId).label).join(", ")}.`);
   const focused = targets.filter((claimId) => focusClaims.has(claimId));
