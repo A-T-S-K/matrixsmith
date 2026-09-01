@@ -87,6 +87,8 @@ export interface ClaimDefinition {
   readonly category: ClaimCategory;
   /** Claims that must not be rejected for this claim to be meaningful. */
   readonly prerequisites: readonly ClaimId[];
+  /** Broader claims that resolving this one helps decide (e.g. playback stability informs the static strategy). */
+  readonly contributesTo?: readonly ClaimId[];
   readonly description: string;
 }
 
@@ -101,15 +103,15 @@ export const CLAIM_DEFINITIONS: readonly ClaimDefinition[] = Object.freeze([
   { id: "raster.tiling", label: "Raster tiling", category: "content", prerequisites: ["stored-program.upload"], description: "Tiled 8-column segments reconstruct the full canvas." },
   { id: "raster.orientation", label: "Orientation", category: "content", prerequisites: ["raster.tiling"], description: "Corners and axes land where the logical framebuffer places them." },
   { id: "graffiti.initial-render", label: "Static-image initial render", category: "content", prerequisites: ["stored-program.upload"], description: "A Graffiti program initially renders the intended raster." },
-  { id: "graffiti.playback-stability", label: "Static-image stability", category: "content", prerequisites: ["graffiti.initial-render"], description: "A Graffiti raster stays still instead of scrolling or cycling." },
-  { id: "graffiti.black-semantics", label: "Static-image black", category: "content", prerequisites: ["graffiti.initial-render"], description: "How the Graffiti path renders a literal 0x0000 pixel on this exact device." },
+  { id: "graffiti.playback-stability", label: "Static-image stability", category: "content", prerequisites: ["graffiti.initial-render"], contributesTo: ["static.strategy"], description: "A Graffiti raster stays still instead of scrolling or cycling." },
+  { id: "graffiti.black-semantics", label: "Static-image black", category: "content", prerequisites: ["graffiti.initial-render"], contributesTo: ["static.strategy"], description: "How the Graffiti path renders a literal 0x0000 pixel on this exact device." },
   { id: "graffiti.color-mapping", label: "Static-image colors", category: "content", prerequisites: ["graffiti.initial-render"], description: "Graffiti pixel colors map to the intended channels." },
   { id: "animation.frames", label: "Animation frames", category: "content", prerequisites: ["stored-program.upload"], description: "Animation programs decode into distinct frames." },
   { id: "animation.timing", label: "Animation timing", category: "content", prerequisites: ["animation.frames"], description: "Per-frame delays play at approximately the declared durations." },
   { id: "animation.tile-sync", label: "Animation tile sync", category: "content", prerequisites: ["animation.frames"], description: "All tiles switch frames together with no lagging strip." },
   { id: "animation.autonomous-loop", label: "Autonomous playback", category: "content", prerequisites: ["animation.frames"], description: "Animation keeps looping without further Bluetooth traffic. Distinct from power-cycle persistence." },
   { id: "animation.black-semantics", label: "Animation black", category: "content", prerequisites: ["animation.frames"], description: "How the Animation path renders a literal 0x0000 pixel on this exact device." },
-  { id: "animation.static-single-frame", label: "Static raster via Animation", category: "content", prerequisites: ["animation.frames"], description: "A one-frame Animation program renders a stable static raster." },
+  { id: "animation.static-single-frame", label: "Static raster via Animation", category: "content", prerequisites: ["animation.frames"], contributesTo: ["static.strategy"], description: "A one-frame Animation program renders a stable static raster." },
   { id: "pixel.channel-map", label: "Pixel channel mapping", category: "content", prerequisites: ["stored-program.upload"], description: "Which nibbles of the 16-bit pixel word drive which physical channels." },
   { id: "pixel.white-channel", label: "White channel", category: "content", prerequisites: ["pixel.channel-map"], description: "Whether the unused high nibble drives a dedicated physical emitter." },
   { id: "pixel.color-calibration", label: "Color calibration", category: "optional", prerequisites: ["pixel.channel-map"], description: "Whether rendered colors, including white, look visually correct." },

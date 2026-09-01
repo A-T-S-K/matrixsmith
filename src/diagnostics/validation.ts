@@ -101,7 +101,9 @@ export const ANIMATION_VALIDATION: ContentValidationWorkflow = Object.freeze<Con
     { id: "frames", prompt: "Do two distinct frames alternate (corner pattern, then inverted colors)?", validates: ["animation"], required: true },
     { id: "timing", prompt: "Does each frame hold for roughly one second?", validates: ["animation"], required: true },
     { id: "tiles", prompt: "Do all tiles change frames together, with no strip lagging behind?", validates: ["animation"], required: true },
-    { id: "loop", prompt: "Does the animation keep looping on its own without further Bluetooth traffic?", validates: ["animation", "persistence"], required: false },
+    // Autonomous looping is NOT power-cycle persistence: this question only
+    // ever validates the animation area itself.
+    { id: "loop", prompt: "Does the animation keep looping on its own without further Bluetooth traffic?", validates: ["animation"], required: false },
   ],
   primaryAreas: ["animation"],
 });

@@ -98,10 +98,11 @@ export function computeSupportMatrix(input: SupportInput): readonly SupportArea[
     (() => { const s = capabilityState(capability("device-info"), hasDriver); return area("device-state", s.state, s.evidence); })(),
     (() => { const s = capabilityState(capability("brightness"), hasDriver); return area("brightness", s.state, s.evidence); })(),
     (() => {
+      // Power-cycle persistence is never inferred from a content upload or
+      // autonomous looping; only an explicit persistence validation counts.
       const fromValidation = validationState(input, "persistence");
       if (fromValidation) return area("persistence", fromValidation.state, fromValidation.evidence);
-      if (staticValidated) return area("persistence", "Experimental", "Stored program accepted this session; long-term behavior unknown");
-      return area("persistence", "Unknown", "Persistence behavior not established");
+      return area("persistence", "Unknown", "Power-cycle persistence not established (autonomous looping does not prove it)");
     })(),
     contentArea("static-frame", "static-frame"),
     contentArea("pixel-orientation", null),

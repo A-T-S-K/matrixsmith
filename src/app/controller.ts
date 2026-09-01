@@ -31,6 +31,8 @@ import {
 } from "../investigation/investigation";
 import { evaluateTestAvailability, type GuidedTestAvailability, type GuidedTestDefinition } from "../investigation/tests";
 import type { ObservationValue } from "../investigation/observations";
+import { rankRecommendations, type Recommendation } from "../investigation/recommendations";
+import { allContentGates, contentPathGate, type ContentGate, type ContentPathId } from "../investigation/gating";
 
 export class MatrixController {
   readonly session = new MatrixSession();
@@ -342,6 +344,25 @@ export class MatrixController {
     const evidence = [...this.baselineClaimEvidence(), ...(this.#investigation?.claimEvidence ?? [])];
     const completed = this.#investigation?.completedTests.map((test) => test.testId) ?? [];
     return this.guidedTestDefinitions().map((test) => evaluateTestAvailability(test, evidence, completed));
+  }
+
+  /** Ranked deterministic next-test recommendations for the current evidence and goal. */
+  recommendations(): readonly Recommendation[] {
+    return rankRecommendations({
+      goal: this.#investigation?.goal ?? null,
+      evidence: [...this.baselineClaimEvidence(), ...(this.#investigation?.claimEvidence ?? [])],
+      availabilities: this.guidedTests(),
+      completedTests: this.#investigation?.completedTests ?? [],
+    });
+  }
+
+  /** Path-specific content gates derived from the atomic claims. */
+  contentGates(): readonly ContentGate[] {
+    return allContentGates(this.claims());
+  }
+
+  contentGate(path: ContentPathId): ContentGate {
+    return contentPathGate(path, this.claims());
   }
 
   guidedTest(testId: string): GuidedTestDefinition {
