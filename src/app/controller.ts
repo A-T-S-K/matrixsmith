@@ -617,9 +617,31 @@ export class MatrixController {
     catch { return []; }
   }
 
+  /**
+   * Results this investigation actually executed, as opposed to ones it
+   * inherited as history.
+   *
+   * A CompletedGuidedTest is report evidence forever. It is NOT proof that
+   * anything ran on the display in front of us: resuming a saved record binds
+   * it to the current device, and on a different physical unit its
+   * orchestration is reset. A result whose run is gone was executed
+   * elsewhere, and letting it satisfy `requiresCompletedTests` — or suppress
+   * a recommendation — would mean one panel's work standing in for another's.
+   */
+  executedTests(): readonly CompletedGuidedTest[] {
+    const runs = new Set(this.orchestration.experiments.map((run) => run.experimentRunId));
+    return (this.#investigation?.completedTests ?? []).filter((test) => Boolean(test.experimentRunId) && runs.has(test.experimentRunId!));
+  }
+
+  /** Every result on record, executed here or inherited. For reports. */
+  recordedTests(): readonly CompletedGuidedTest[] {
+    return this.#investigation?.completedTests ?? [];
+  }
+
   guidedTests(): readonly GuidedTestAvailability[] {
     const evidence = [...this.baselineClaimEvidence(), ...(this.#investigation?.claimEvidence ?? [])];
-    const completed = this.#investigation?.completedTests.map((test) => test.testId) ?? [];
+    // Scheduling asks what has run HERE, never what the record remembers.
+    const completed = this.executedTests().map((test) => test.testId);
     return this.guidedTestDefinitions().map((test) => evaluateTestAvailability(test, evidence, completed));
   }
 
@@ -631,7 +653,7 @@ export class MatrixController {
       goal: this.#investigation?.goal ?? null,
       evidence,
       availabilities: this.guidedTests(),
-      completedTests: this.#investigation?.completedTests ?? [],
+      completedTests: this.executedTests(),
       reopenedTestIds: this.reopenedTestIds(),
       currentCoreTestIds: progress?.current?.step.testIds ?? [],
       coreTestIds: progress?.steps.filter((entry) => entry.state !== "skipped").flatMap((entry) => entry.step.testIds) ?? [],
@@ -835,7 +857,7 @@ export class MatrixController {
   corePlanProgress(): CorePlanProgress | null {
     const plan = this.corePlan();
     if (!plan) return null;
-    return evaluateCorePlan(plan, this.allClaimEvidence(), this.#investigation?.completedTests ?? []);
+    return evaluateCorePlan(plan, this.allClaimEvidence(), this.executedTests());
   }
 
   /**
@@ -993,7 +1015,7 @@ export class MatrixController {
    * it is not a dead end either.
    */
   retryableExperimentIds(): readonly string[] {
-    return retryableIncompleteTestIds(this.#investigation?.completedTests ?? []);
+    return retryableIncompleteTestIds(this.executedTests());
   }
 
   /**
@@ -1032,6 +1054,12 @@ export class MatrixController {
     }));
     const resolvedOperation = this.guidedTestOperation(testId);
     const parameters = resolvedOperation.type === "ShowDiagnostic" && resolvedOperation.parameters ? { ...resolvedOperation.parameters } : undefined;
+    // Every result belongs to an experiment run. Opening one here rather than
+    // relying on the caller keeps the link total: a result with no run cannot
+    // be told apart from one inherited from another device, and scheduling
+    // depends on exactly that distinction.
+    const run = this.beginExperiment(testId);
+    const resolution = interpretation.resolution ?? "settled";
     const completed: CompletedGuidedTest = {
       testId, title: test.title, startedAt, completedAt,
       status: interpretation.status, observations: [...values],
@@ -1042,9 +1070,13 @@ export class MatrixController {
       // What this run means for the PLAN, which is not always what its status
       // means for the hardware: an "inconclusive" because the observation ran
       // out of time is a measurement to repeat, not a question answered.
-      resolution: interpretation.resolution ?? "settled",
+      resolution,
+      experimentRunId: run.experimentRunId,
     };
     this.#investigation = recordCompletedTest(this.ensureInvestigation(), completed, evidence, completedAt);
+    // Settled here, from the interpretation, so the run's resolution and the
+    // result's can never disagree about whether the plan may move on.
+    this.settleExperiment(run.experimentRunId, interpretation.status, interpretation.summary, resolution);
     this.#deriveSessionRasterStrategy(testId);
     this.trace.record("guided-test.recorded", { testId, status: interpretation.status, claimUpdates: evidence.length });
     return completed;
@@ -1074,6 +1106,7 @@ export class MatrixController {
   abandonGuidedTest(testId: string, values: readonly ObservationValue[], transactionIds: readonly string[], startedAt = new Date().toISOString(), attempts: readonly ObservationAttempt[] = []): CompletedGuidedTest {
     const test = this.guidedTest(testId);
     if (transactionIds.length === 0) throw new Error("Nothing was transmitted; close the test instead of abandoning it.");
+    const run = this.beginExperiment(testId);
     const completedAt = new Date().toISOString();
     const resolvedOperation = this.guidedTestOperation(testId);
     const parameters = resolvedOperation.type === "ShowDiagnostic" && resolvedOperation.parameters ? { ...resolvedOperation.parameters } : undefined;
@@ -1089,8 +1122,10 @@ export class MatrixController {
       ...(parameters ? { parameters } : {}),
       ...(attempts.length > 0 ? { attempts: [...attempts] } : {}),
       resolution: "abandoned",
+      experimentRunId: run.experimentRunId,
     };
     this.#investigation = recordCompletedTest(this.ensureInvestigation(), completed, [], completedAt);
+    this.settleExperiment(run.experimentRunId, "abandoned", completed.summary, "abandoned");
     this.trace.record("guided-test.abandoned", { testId, transactionCount: transactionIds.length });
     return completed;
   }

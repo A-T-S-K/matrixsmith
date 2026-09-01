@@ -1116,11 +1116,9 @@ export class MatrixStore {
       if (!flow.timerSpec && flow.attemptId) {
         this.controller.settleAttempt(flow.attemptId, { validity: "valid", observations: values, timing: null });
       }
+      // The controller settles the run from the interpretation itself, so the
+      // result's resolution and its run's cannot disagree.
       flow.result = this.controller.recordGuidedTestObservations(flow.testId, values, flow.transactionIds, flow.startedAt, flow.attempts);
-      // The resolution, not the status, decides whether the plan may move on.
-      // A run that stopped short of the required observation window stays
-      // repeatable as the same numbered test instead of retiring as answered.
-      this.controller.settleExperiment(flow.experimentRunId, flow.result.status, flow.result.summary, completedTestResolution(flow.result));
       flow.stage = "result";
       this.#stopTimerTicks();
       this.#persistInvestigation();
@@ -1253,8 +1251,7 @@ export class MatrixStore {
       // say the observation stopped rather than silently losing the timeline.
       if (flow.timerSpec && !flow.timerStopped) this.#completeAttempt("incomplete");
       else if (flow.attemptId) this.controller.settleAttempt(flow.attemptId, { validity: "invalid", failureKind: "observation-incomplete", invalidationReason: "Observation stopped before completion." });
-      const abandoned = this.controller.abandonGuidedTest(flow.testId, Object.values(flow.values), flow.transactionIds, flow.startedAt, flow.attempts);
-      this.controller.settleExperiment(flow.experimentRunId, abandoned.status, abandoned.summary, "abandoned");
+      this.controller.abandonGuidedTest(flow.testId, Object.values(flow.values), flow.transactionIds, flow.startedAt, flow.attempts);
       this.#persistInvestigation();
       this.#info = "Observation stopped. The test was recorded as incomplete — the transmitted content and automatic capture remain as evidence, and its report is available.";
     } catch (error) {

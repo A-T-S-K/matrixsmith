@@ -119,6 +119,10 @@ function sanitizeCompletedTest(test: CompletedGuidedTest): CompletedGuidedTest {
     // a result with no history the moment the session was resumed.
     ...(test.attempts && test.attempts.length > 0 ? { attempts: test.attempts.map(sanitizeObservationAttempt) } : {}),
     ...(test.resolution ? { resolution: test.resolution } : {}),
+    // The run linkage is what separates a result this investigation executed
+    // from one it inherited; losing it on save would make every restored
+    // result look historical.
+    ...(test.experimentRunId ? { experimentRunId: test.experimentRunId } : {}),
   };
 }
 

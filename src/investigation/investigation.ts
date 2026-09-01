@@ -57,6 +57,20 @@ export interface CompletedGuidedTest {
    */
   readonly attempts?: readonly ObservationAttempt[];
   /**
+   * The ExperimentRun that produced this result.
+   *
+   * One result belongs to exactly one run; one run can produce several
+   * results when a measurement was repeated. The link is explicit rather than
+   * inferred from testId, and it is what distinguishes a test THIS
+   * investigation executed from one it merely inherited as history — a
+   * distinction scheduling depends on, since a run recorded against another
+   * physical display must not satisfy a prerequisite here.
+   *
+   * Absent on imported or pre-linkage records, which are historical by
+   * definition.
+   */
+  readonly experimentRunId?: string | null;
+  /**
    * What this run means for the plan, as distinct from what it means for the
    * hardware. An "inconclusive" run because the person watched for seven of
    * the required fifteen seconds is `retryable-incomplete`: the experiment is
