@@ -53,6 +53,15 @@ export interface ReportData {
   readonly importedEvidence: readonly { readonly provenance: string; readonly transactionCount: number; readonly warnings: readonly string[] }[];
   readonly liveConnected: boolean;
   readonly source: string;
+  /**
+   * True when a guided investigation holds richer evidence than this report
+   * can see. This generator predates the atomic-claim model and derives its
+   * support table from capabilities and legacy validations only, so during an
+   * investigation it will honestly say "Not tested" for areas the
+   * investigation has actually characterized. Rather than let those two
+   * views quietly contradict each other, the report says so.
+   */
+  readonly investigationActive?: boolean;
 }
 
 export function reportDataFromBundle(bundle: DiagnosticBundle): ReportData {
@@ -67,7 +76,15 @@ export function reportDataFromBundle(bundle: DiagnosticBundle): ReportData {
 }
 
 export function generateMarkdownReport(data: ReportData, options: ReportOptions = DEFAULT_REPORT_OPTIONS): string {
-  const lines: string[] = ["# MatrixSmith Device Report", "", `- Generated: ${data.createdAt}`, `- MatrixSmith: ${data.matrixsmithVersion}`, `- Session source: ${data.source}`, `- Identifying information: ${options.includeIdentifiers ? "included by user choice" : "excluded by default"}`, ""];
+  const lines: string[] = ["# MatrixSmith Low-Level Device Report", "", `- Generated: ${data.createdAt}`, `- MatrixSmith: ${data.matrixsmithVersion}`, `- Session source: ${data.source}`, `- Identifying information: ${options.includeIdentifiers ? "included by user choice" : "excluded by default"}`, ""];
+  if (data.investigationActive) {
+    section(lines, "Scope of this report",
+      "This is the low-level device view: capabilities, transactions and legacy validations. "
+      + "A guided investigation is in progress, and its atomic-claim evidence is NOT reflected here — "
+      + "the support table and suggested tests below can therefore show areas as \"Not tested\" that the "
+      + "investigation has already characterized. Use the Investigation report for what has actually been "
+      + "established, what remains open, and the current next step.");
+  }
   section(lines, "Goal / question", options.goal.trim() || "Not provided.");
   if (options.includeSummary) section(lines, "Executive summary", executiveSummary(data));
   section(lines, "Support status", supportTable(data));

@@ -37,6 +37,16 @@ import { stepForTest } from "../investigation/core-plan";
 import { forgetInvestigationHistory, latestInvestigationFor, saveInvestigation, toHistoricalInvestigation } from "../storage/investigations";
 
 export type WorkspaceView = "control" | "diagnose" | "develop";
+
+/**
+ * Which report a share action means.
+ *
+ * The real session exported "MatrixSmith Device Report" — a low-level view
+ * that said "Observations: None recorded" while the investigation held a full
+ * physical characterization. Share must follow what the user is actually
+ * doing, not whichever generator happened to be wired to the button.
+ */
+export type ReportKind = "investigation" | "device" | "forensic";
 export type TransactionFilter = "all" | "txrx" | "queries" | "probes" | "diagnostics" | "errors";
 
 export type { SupportArea, SupportState } from "../diagnostics/support";
@@ -69,6 +79,10 @@ export interface AppSnapshot {
   readonly reportOpen: boolean;
   readonly reportOptions: ReportOptions;
   readonly reportMarkdown: string;
+  /** Which report the share dialog is showing. */
+  readonly reportKind: ReportKind;
+  /** True when an investigation is active, making the semantic report the default. */
+  readonly investigationReportAvailable: boolean;
   readonly transactionFilter: TransactionFilter;
   readonly transactionSearch: string;
   readonly lastImport: ImportSummary | null;
@@ -346,6 +360,7 @@ export class MatrixStore {
   #info: string | null = null;
   #previouslyAuthorized: { id: string; name: string }[] = [];
   #reportOpen = false;
+  #reportKind: ReportKind | null = null;
   #reportOptions: ReportOptions = DEFAULT_REPORT_OPTIONS;
   #transactionFilter: TransactionFilter = "all";
   #transactionSearch = "";
@@ -387,6 +402,7 @@ export class MatrixStore {
   goHome(): void { this.#page = "home"; this.#emit(); }
   clearMessage(): void { this.#error = null; this.#info = null; this.#emit(); }
   openReport(): void { this.#reportOpen = true; this.#emit(); }
+  setReportKind(kind: ReportKind): void { this.#reportKind = kind; this.#emit(); }
   closeReport(): void { this.#reportOpen = false; this.#emit(); }
   setReportOptions(options: ReportOptions): void { this.#reportOptions = options; this.#emit(); }
   setTransactionFilter(value: TransactionFilter): void { this.#transactionFilter = value; this.#emit(); }
@@ -428,6 +444,24 @@ export class MatrixStore {
     this.#emit();
   }
   exportBundle(): string { return this.controller.exportBundle(); }
+  /** Investigation work makes the semantic report the default artifact. */
+  #effectiveReportKind(): ReportKind {
+    if (this.#reportKind) return this.#reportKind;
+    return this.controller.investigation ? "investigation" : "device";
+  }
+
+  #reportMarkdownForKind(): string {
+    try {
+      switch (this.#effectiveReportKind()) {
+        case "investigation": return this.controller.investigationReportMarkdown();
+        case "forensic": return this.controller.forensicReportMarkdown();
+        case "device": return this.markdown();
+      }
+    } catch (error) {
+      return `Report unavailable: ${error instanceof Error ? error.message : String(error)}`;
+    }
+  }
+
   markdown(): string {
     // The active investigation supplies the report question when the user
     // hasn't typed one, so pasted reports always carry the actual goal.
@@ -1186,7 +1220,13 @@ export class MatrixStore {
     const capabilities = driver && profile ? driver.capabilities(profile) : [];
     const transactions = filterTransactions(this.controller.transactions, this.#transactionFilter, this.#transactionSearch);
     const liveConnected = session.source === "live" && this.transport.state === "connected";
-    this.#snapshot = Object.freeze({ page: this.#page, view: this.#view, connection: this.transport.state, source: session.source, liveConnected, busy: this.#busy, error: this.#error, info: this.#info, bluetoothSupported: "bluetooth" in navigator, previouslyAuthorized: this.#previouslyAuthorized, device: fingerprint ? { name: fingerprint.name ?? "Unnamed display", connectionLabel: session.source === "imported" ? "Offline report" : this.transport.state === "connected" ? "Connected" : this.transport.state, protocol: driver?.family ?? (session.selection?.ambiguous ? "Ambiguous protocol" : "Unknown protocol"), support: driver ? "Supported" : session.selection?.ambiguous ? "Identification required" : "Support unknown", liveGeometry: fingerprint.manuallyConfirmedGeometry ? `${fingerprint.manuallyConfirmedGeometry.width}×${fingerprint.manuallyConfirmedGeometry.height} · manually confirmed` : "Unknown", profileGeometry: profile ? `${profile.width}×${profile.height} · ${profile.id}` : "Unknown", advertisementGeometry: "Not derived in this session", profileId: profile?.id ?? null } : null, deviceState: { brightness: typeof info?.fields.brightnessRaw === "number" ? info.fields.brightnessRaw : null, power: info ? info.fields.powerOn === true ? "On" : `Raw ${String(info.fields.powerRaw)}` : "Unknown", payloadHex: info?.payloadHex ?? null }, capabilities, support: computeSupportMatrix({ connected: Boolean(fingerprint), live: liveConnected, resolvedDriverId: driver?.id ?? null, capabilities, validations: this.controller.validations }), recommended: recommendedAction(Boolean(fingerprint), Boolean(driver), session.selection?.ambiguous ?? false, liveConnected, this.controller.validations), diagnosticTools: this.controller.diagnosticTools(), diagnosticRuns: this.controller.diagnosticRuns, candidates: (session.selection?.matches ?? []).map((match) => ({ id: match.driverId, family: this.controller.registry.drivers.find((d) => d.id === match.driverId)?.family ?? match.driverId, state: match.driverId === driver?.id ? "VERIFIED ON THIS SESSION" : match.score <= 0 ? "Rejected for this profile" : "Candidate", summary: match.driverId === "coolledux" ? match.driverId === driver?.id ? session.protocolResolution?.summary ?? "Resolved by evidence." : "Shared FFF0/F1 transport" : match.contradictions[0] ?? "Shared FFF0/F1 transport; no verified read-only discriminator available", score: match.score, reasons: match.reasons, contradictions: match.contradictions, canIdentify: match.driverId === "coolledux" && !driver && this.transport.state === "connected" })), gatt: (fingerprint?.services ?? []).map((service) => ({ uuid: service.uuid, primary: service.isPrimary, characteristics: service.characteristics.map((c) => ({ serviceUuid: service.uuid, uuid: c.uuid, properties: Object.entries(c.properties).filter(([, enabled]) => enabled).map(([key]) => key), canRead: c.properties.read, canSubscribe: c.properties.notify || c.properties.indicate, subscribed: this.#subscriptions.has(endpointKey({ serviceUuid: service.uuid, characteristicUuid: c.uuid })) })) })), transactions, rawEvents: this.controller.trace.events, observations: this.controller.observations, reportOpen: this.#reportOpen, reportOptions: this.#reportOptions, reportMarkdown: fingerprint ? this.markdown() : "", transactionFilter: this.#transactionFilter, transactionSearch: this.#transactionSearch, lastImport: this.#lastImport,
+    this.#snapshot = Object.freeze({ page: this.#page, view: this.#view, connection: this.transport.state, source: session.source, liveConnected, busy: this.#busy, error: this.#error, info: this.#info, bluetoothSupported: "bluetooth" in navigator, previouslyAuthorized: this.#previouslyAuthorized, device: fingerprint ? { name: fingerprint.name ?? "Unnamed display", connectionLabel: session.source === "imported" ? "Offline report" : this.transport.state === "connected" ? "Connected" : this.transport.state, protocol: driver?.family ?? (session.selection?.ambiguous ? "Ambiguous protocol" : "Unknown protocol"), support: driver ? "Supported" : session.selection?.ambiguous ? "Identification required" : "Support unknown", liveGeometry: fingerprint.manuallyConfirmedGeometry ? `${fingerprint.manuallyConfirmedGeometry.width}×${fingerprint.manuallyConfirmedGeometry.height} · manually confirmed` : "Unknown", profileGeometry: profile ? `${profile.width}×${profile.height} · ${profile.id}` : "Unknown", advertisementGeometry: "Not derived in this session", profileId: profile?.id ?? null } : null, deviceState: { brightness: typeof info?.fields.brightnessRaw === "number" ? info.fields.brightnessRaw : null, power: info ? info.fields.powerOn === true ? "On" : `Raw ${String(info.fields.powerRaw)}` : "Unknown", payloadHex: info?.payloadHex ?? null }, capabilities, support: computeSupportMatrix({ connected: Boolean(fingerprint), live: liveConnected, resolvedDriverId: driver?.id ?? null, capabilities, validations: this.controller.validations }), recommended: recommendedAction(Boolean(fingerprint), Boolean(driver), session.selection?.ambiguous ?? false, liveConnected, this.controller.validations), diagnosticTools: this.controller.diagnosticTools(), diagnosticRuns: this.controller.diagnosticRuns, candidates: (session.selection?.matches ?? []).map((match) => ({ id: match.driverId, family: this.controller.registry.drivers.find((d) => d.id === match.driverId)?.family ?? match.driverId, state: match.driverId === driver?.id ? "VERIFIED ON THIS SESSION" : match.score <= 0 ? "Rejected for this profile" : "Candidate", summary: match.driverId === "coolledux" ? match.driverId === driver?.id ? session.protocolResolution?.summary ?? "Resolved by evidence." : "Shared FFF0/F1 transport" : match.contradictions[0] ?? "Shared FFF0/F1 transport; no verified read-only discriminator available", score: match.score, reasons: match.reasons, contradictions: match.contradictions, canIdentify: match.driverId === "coolledux" && !driver && this.transport.state === "connected" })), gatt: (fingerprint?.services ?? []).map((service) => ({ uuid: service.uuid, primary: service.isPrimary, characteristics: service.characteristics.map((c) => ({ serviceUuid: service.uuid, uuid: c.uuid, properties: Object.entries(c.properties).filter(([, enabled]) => enabled).map(([key]) => key), canRead: c.properties.read, canSubscribe: c.properties.notify || c.properties.indicate, subscribed: this.#subscriptions.has(endpointKey({ serviceUuid: service.uuid, characteristicUuid: c.uuid })) })) })), transactions, rawEvents: this.controller.trace.events, observations: this.controller.observations, reportOpen: this.#reportOpen, reportOptions: this.#reportOptions,
+      // Only generated while the dialog is open: it is the most expensive
+      // thing a snapshot can do, and it was previously rebuilt on every
+      // 100ms timer tick during an observation.
+      reportMarkdown: fingerprint && this.#reportOpen ? this.#reportMarkdownForKind() : "",
+      reportKind: this.#effectiveReportKind(),
+      investigationReportAvailable: this.controller.investigation !== null, transactionFilter: this.#transactionFilter, transactionSearch: this.#transactionSearch, lastImport: this.#lastImport,
       content: this.#contentState(profile), pendingSend: this.#pendingSend?.view ?? null,
       validationWorkflows: this.#validationWorkflowViews(),
       validationFlow: this.#validationFlow ? { ...this.#validationFlow, preview: [...this.#validationFlow.preview], questions: [...this.#validationFlow.questions], answers: { ...this.#validationFlow.answers }, transactionIds: [...this.#validationFlow.transactionIds] } : null,
@@ -1388,7 +1428,7 @@ export class MatrixStore {
     }));
   }
 
-  #reportData(): ReportData { const session = this.controller.session; const fingerprint = session.fingerprint; if (!fingerprint) throw new Error("No device evidence is available for a report."); const driver = session.selection?.selected; return { createdAt: new Date().toISOString(), matrixsmithVersion: "0.1.0", fingerprint, profile: session.profile, selectedDriver: driver?.id ?? null, driverMatches: session.selection?.matches ?? [], capabilities: driver && session.profile ? driver.capabilities(session.profile) : [], transactions: this.controller.transactions, diagnosticRuns: this.controller.diagnosticRuns, observations: this.controller.observations, trace: this.controller.trace.events, protocolResolution: session.protocolResolution, validations: this.controller.validations, contentCompilations: this.controller.contentCompilations, importedEvidence: this.controller.importedEvidence, liveConnected: session.source === "live" && this.transport.state === "connected", source: session.source }; }
+  #reportData(): ReportData { const session = this.controller.session; const fingerprint = session.fingerprint; if (!fingerprint) throw new Error("No device evidence is available for a report."); const driver = session.selection?.selected; return { createdAt: new Date().toISOString(), matrixsmithVersion: "0.1.0", fingerprint, profile: session.profile, selectedDriver: driver?.id ?? null, driverMatches: session.selection?.matches ?? [], capabilities: driver && session.profile ? driver.capabilities(session.profile) : [], transactions: this.controller.transactions, diagnosticRuns: this.controller.diagnosticRuns, observations: this.controller.observations, trace: this.controller.trace.events, protocolResolution: session.protocolResolution, validations: this.controller.validations, contentCompilations: this.controller.contentCompilations, importedEvidence: this.controller.importedEvidence, liveConnected: session.source === "live" && this.transport.state === "connected", source: session.source, investigationActive: this.controller.investigation !== null }; }
 }
 
 function hexToRgb(hex: string): { r: number; g: number; b: number } {

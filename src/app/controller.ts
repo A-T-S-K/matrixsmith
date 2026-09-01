@@ -888,6 +888,10 @@ export class MatrixController {
       nextRecommendation: this.recommendations()[0] ?? null,
       driverCandidates: this.session.selection?.matches ?? [],
       regionsByTest: new Map(this.guidedTestDefinitions().map((test) => [test.id, this.guidedTestRegions(test.id)])),
+      coreProgress: this.corePlanProgress(),
+      experiments: this.#experiments,
+      transfers: this.#transfers,
+      cycleDetail: this.#cycleVerdict.cycling ? this.#cycleVerdict.detail : null,
     });
   }
 

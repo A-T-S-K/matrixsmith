@@ -9,6 +9,8 @@ import { formatDuration, observationValueSummary, type ObservationValue } from "
 import { approximateSeconds, describeAttempt } from "./timing";
 import type { Recommendation } from "./recommendations";
 import type { DiagnosticRegion } from "./regions";
+import type { CorePlanProgress } from "./core-plan";
+import { classifyTransfers, TRANSFER_REASON_LABELS, type ExperimentRun, type TransferRecord } from "./orchestration";
 import { evaluateStaticViability, MINIMUM_STATIC_HOLD_MS } from "./static-viability";
 
 /**
@@ -101,6 +103,14 @@ export interface InvestigationReportInput {
   readonly driverCandidates: readonly { readonly driverId: string; readonly score: number; readonly reasons: readonly string[]; readonly contradictions: readonly string[] }[];
   /** Labelled zones per test id, so observations name a place rather than repeat a prompt. */
   readonly regionsByTest?: ReadonlyMap<string, readonly DiagnosticRegion[]>;
+  /** Where the bounded core plan stands, so progress and loops are visible. */
+  readonly coreProgress?: CorePlanProgress | null;
+  /** Semantic experiment runs, with their attempts. */
+  readonly experiments?: readonly ExperimentRun[];
+  /** Every guided transmission and why it happened. */
+  readonly transfers?: readonly TransferRecord[];
+  /** The current engine's next step — the single source of truth for "what next?". */
+  readonly cycleDetail?: string | null;
 }
 
 export function generateInvestigationReport(input: InvestigationReportInput): string {
@@ -115,6 +125,17 @@ export function generateInvestigationReport(input: InvestigationReportInput): st
   section("Objective", investigation
     ? `${investigation.goal.kind === "troubleshoot" ? "Troubleshooting" : "Guided development"}: ${investigation.goal.description}${investigation.goal.symptomId ? ` (symptom: ${investigation.goal.symptomId})` : ""}`
     : "Characterize and develop support for this display.");
+  if (input.coreProgress) section("Investigation progress", coreProgressText(input.coreProgress));
+  if (input.cycleDetail) section("Workflow warning", `MatrixSmith detected a recommendation loop: ${input.cycleDetail}`);
+  section("Next step", input.nextRecommendation
+    ? `${input.nextRecommendation.title} — ${input.nextRecommendation.why} (~${input.nextRecommendation.estimatedObservationTime})`
+    : input.coreProgress?.complete
+      ? "Core characterization is complete. Remaining work is optional characterization."
+      : "No further test is currently recommended.");
+  if (input.experiments && input.experiments.length > 0) {
+    section("Experiments and attempts", experimentsText(input.experiments, input.coreProgress ?? null));
+  }
+  if (input.transfers && input.transfers.length > 0) section("Diagnostic transfer summary", transferSummaryText(input.transfers));
   section("Device identity", deviceText(device));
   section("Advertisement / manufacturer evidence", advertisementText(device));
   section("Transport / GATT", gattText(device.fingerprint));
@@ -298,6 +319,84 @@ function physicalTimingText(completed: CompletedGuidedTest, transactions: readon
     ...(attempts.length > 0 ? ["", `**Attempts (${attempts.length}; ${attempts.length - invalid.length} valid)**`, ...attempts.flatMap((attempt) => describeAttempt(attempt).map((line) => `- ${line}`))] : []),
     ...(invalid.length > 0 ? ["", "Invalid attempts are recorded above for completeness. They establish nothing about the hardware: a missed or mistimed mark means the measurement failed, not that the display behaved differently."] : []),
   ].join("\n");
+}
+
+/** The bounded plan, including what was skipped and why. */
+function coreProgressText(progress: CorePlanProgress): string {
+  const lines: string[] = [`Core plan: ${progress.completed} / ${progress.total} complete${progress.complete ? " — COMPLETE" : ""}`, ""];
+  let position = 0;
+  for (const entry of progress.steps) {
+    if (entry.state !== "skipped") position += 1;
+    const label = entry.state === "skipped" ? "SKIPPED" : entry.state.toUpperCase();
+    lines.push(`${entry.state === "skipped" ? "–" : `${position}.`} ${entry.step.title} — ${label}${entry.skipReason ? ` — not needed because ${entry.skipReason}` : ""}`);
+  }
+  return lines.join("\n");
+}
+
+/**
+ * Experiments with their attempts.
+ *
+ * The distinction this section exists to preserve: three attempts at one
+ * experiment are one experiment. Flattening them into unrelated transmissions
+ * is what made a retry-heavy session unreadable.
+ */
+function experimentsText(experiments: readonly ExperimentRun[], progress: CorePlanProgress | null): string {
+  const positions = new Map<string, number>();
+  let position = 0;
+  for (const entry of progress?.steps ?? []) {
+    if (entry.state === "skipped") continue;
+    position += 1;
+    positions.set(entry.step.id, position);
+  }
+  const blocks = experiments.map((run) => {
+    const number = run.corePlanStepId ? positions.get(run.corePlanStepId) : undefined;
+    const heading = `### ${number ? `Test ${number} of ${progress?.total ?? "?"} — ` : ""}${run.title}`;
+    const lines: string[] = [heading, ""];
+    if (run.variant) lines.push(`Variant: ${run.variant}`);
+    lines.push(`Status: ${run.status}${run.conclusion ? ` — ${run.conclusion}` : ""}`);
+    if (run.reopenReason) lines.push(`Reopened deliberately: ${run.reopenReason}`);
+    lines.push(`Execution identity: \`${run.fingerprint.key}\`${run.fingerprint.programCrc32 ? ` (program CRC ${run.fingerprint.programCrc32})` : ""}`);
+    lines.push("");
+    for (const attempt of run.attempts) {
+      lines.push(`Attempt ${attempt.attemptNumber}`);
+      lines.push(`- transfer reason: ${TRANSFER_REASON_LABELS[attempt.reason]}`);
+      lines.push(`- ${attempt.validity === "valid" ? "valid" : attempt.validity === "invalid" ? "INVALID" : "in progress"}`);
+      if (attempt.invalidationReason) lines.push(`- reason: ${attempt.invalidationReason}`);
+      if (attempt.validity === "invalid") lines.push("- excluded from conclusions");
+      if (attempt.timing) lines.push(...describeAttempt(attempt.timing).slice(1).map((line) => `- ${line.trim()}`));
+      lines.push("");
+    }
+    return lines.join("\n").trimEnd();
+  });
+  return blocks.join("\n\n");
+}
+
+/**
+ * Repeated payloads, classified.
+ *
+ * Identical bytes are expected when a human asks to measure the same thing
+ * again, so a repeat is only flagged when its stated reason claims novelty the
+ * bytes contradict.
+ */
+function transferSummaryText(transfers: readonly TransferRecord[]): string {
+  const summary = classifyTransfers(transfers);
+  const lines: string[] = [`Total diagnostic transfers: ${summary.total}`, ""];
+  for (const [reason, count] of Object.entries(summary.byReason)) {
+    if (count > 0) lines.push(`- ${TRANSFER_REASON_LABELS[reason as keyof typeof TRANSFER_REASON_LABELS]}: ${count}`);
+  }
+  lines.push(`- Unclassified duplicate transfers: ${summary.unclassifiedDuplicates}`);
+  if (summary.repeatedExecutions.length > 0) {
+    lines.push("", "Repeated payloads:");
+    for (const group of summary.repeatedExecutions) {
+      const reasons = Object.entries(group.byReason).map(([reason, count]) => `${count} × ${TRANSFER_REASON_LABELS[reason as keyof typeof TRANSFER_REASON_LABELS] ?? reason}`).join(", ");
+      lines.push(`- \`${group.testId}\`${group.programCrc32 ? ` (CRC ${group.programCrc32})` : ""}: ${group.transfers} transfers — ${reasons}`);
+    }
+    lines.push("", "Repeated identical payloads are expected when a measurement is retried; only unclassified duplicates indicate a workflow problem.");
+  }
+  if (summary.unclassifiedDuplicates > 0) {
+    lines.push("", `POSSIBLE WORKFLOW ISSUE: ${summary.unclassifiedDuplicates} transmission(s) repeated an execution while claiming to be a new experiment.`);
+  }
+  return lines.join("\n");
 }
 
 function deviceText(device: DeviceReportContext): string {

@@ -10,7 +10,7 @@ import { ScriptedCoolLedUxDevice } from "../helpers/scripted-device";
 import infoCc from "../fixtures/iledhat/coolledux-device-info-cc.json";
 
 const EXPECTED_HEADINGS = [
-  "# MatrixSmith Device Report", "## Goal / question", "## Executive summary", "## Support status",
+  "# MatrixSmith Low-Level Device Report", "## Goal / question", "## Executive summary", "## Support status",
   "## Device fingerprint", "## GATT", "## Advertisement / manufacturer evidence", "## Driver resolution",
   "## Device state", "## Capabilities", "## Diagnostic runs", "## Protocol transactions", "## Observations",
   "## Verified facts", "## Inferred facts", "## Unknowns", "## Rejected hypotheses", "## Suggested next tests",
