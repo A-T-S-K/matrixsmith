@@ -8,6 +8,7 @@ import type { DiagnosticRun } from "./workflows";
 import type { ProtocolTransaction } from "./transactions";
 import type { SessionValidationResult } from "./validation";
 import type { ContentCompilationRecord } from "./content-evidence";
+import type { Investigation } from "../investigation/investigation";
 
 export interface ImportedEvidenceSummary {
   readonly provenance: string;
@@ -38,6 +39,8 @@ export interface DiagnosticBundle {
   readonly validations?: readonly SessionValidationResult[];
   readonly contentCompilations?: readonly ContentCompilationRecord[];
   readonly importedEvidence?: readonly ImportedEvidenceSummary[];
+  /** The active guided investigation, when one exists (added post-v2; optional and migration-safe). */
+  readonly investigation?: Investigation | null;
 }
 
 /** The historical v1 shape, kept as a named type for fixtures and tests. */
@@ -57,6 +60,7 @@ export interface CreateBundleInput {
   readonly validations?: readonly SessionValidationResult[];
   readonly contentCompilations?: readonly ContentCompilationRecord[];
   readonly importedEvidence?: readonly ImportedEvidenceSummary[];
+  readonly investigation?: Investigation | null;
 }
 
 export function createDiagnosticBundle(input: CreateBundleInput): DiagnosticBundle {
@@ -77,6 +81,7 @@ export function createDiagnosticBundle(input: CreateBundleInput): DiagnosticBund
     validations: structuredClone(input.validations ?? []),
     contentCompilations: structuredClone(input.contentCompilations ?? []),
     importedEvidence: structuredClone(input.importedEvidence ?? []),
+    investigation: input.investigation ? structuredClone(input.investigation) : null,
   };
 }
 
@@ -111,6 +116,7 @@ export function parseDiagnosticBundle(json: string): DiagnosticBundle {
     validations: (value.validations ?? []) as DiagnosticBundle["validations"],
     contentCompilations: (value.contentCompilations ?? []) as DiagnosticBundle["contentCompilations"],
     importedEvidence: (value.importedEvidence ?? []) as DiagnosticBundle["importedEvidence"],
+    investigation: (isObject(value.investigation) ? value.investigation : null) as DiagnosticBundle["investigation"],
   };
   return migrated;
 }

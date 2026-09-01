@@ -32,6 +32,7 @@ import {
 import { evaluateTestAvailability, type GuidedTestAvailability, type GuidedTestDefinition } from "../investigation/tests";
 import type { ObservationValue } from "../investigation/observations";
 import { rankRecommendations, type Recommendation } from "../investigation/recommendations";
+import { generateForensicAppendix, generateInvestigationReport, generateTestReport } from "../investigation/reports";
 import { allContentGates, contentPathGate, type ContentGate, type ContentPathId } from "../investigation/gating";
 
 export class MatrixController {
@@ -428,6 +429,63 @@ export class MatrixController {
     return completed;
   }
 
+  // ---- Investigation reports ---------------------------------------------
+
+  #deviceReportContext(): import("../investigation/reports").DeviceReportContext {
+    return {
+      fingerprint: this.session.fingerprint,
+      profile: this.session.profile,
+      matrixsmithVersion: "0.1.0",
+      liveConnected: this.session.source === "live" && this.transport.state === "connected",
+    };
+  }
+
+  #notificationDecoder(): ((bytes: Uint8Array) => DecodedNotification | null) | null {
+    const driver = this.session.selection?.selected;
+    const fingerprint = this.session.fingerprint;
+    if (!driver?.decodeNotification || !fingerprint) return null;
+    return (bytes) => driver.decodeNotification!(bytes, { profile: this.session.profile, fingerprint, source: this.session.source });
+  }
+
+  /** Scoped report for one completed guided test (the latest run of it). */
+  testReportMarkdown(testId: string): string {
+    const investigation = this.#investigation;
+    const completed = [...(investigation?.completedTests ?? [])].reverse().find((test) => test.testId === testId);
+    if (!completed) throw new Error(`No completed run of guided test ${testId} to report.`);
+    const test = this.guidedTest(testId);
+    const priorEvidence = [...this.baselineClaimEvidence(), ...(investigation?.claimEvidence ?? [])].filter((entry) => entry.testId !== testId);
+    const compilation = this.#contentCompilations.find((record) => record.transactionId !== undefined && completed.transactionIds.includes(record.transactionId)) ?? null;
+    return generateTestReport({
+      device: this.#deviceReportContext(), test, completed, priorEvidence,
+      why: test.about.whyRelevant, transactions: this.#transactions, compilation,
+      decoder: this.#notificationDecoder(), nextRecommendation: this.recommendations()[0] ?? null,
+    });
+  }
+
+  /** Full investigation report, sufficient for an AI to implement or repair support. */
+  investigationReportMarkdown(): string {
+    return generateInvestigationReport({
+      device: this.#deviceReportContext(),
+      investigation: this.#investigation,
+      baselineEvidence: this.baselineClaimEvidence(),
+      tests: this.guidedTestDefinitions(),
+      transactions: this.#transactions,
+      compilations: this.#contentCompilations,
+      nextRecommendation: this.recommendations()[0] ?? null,
+      driverCandidates: this.session.selection?.matches ?? [],
+    });
+  }
+
+  /** Investigation report plus the full packet/timing forensic appendix. */
+  forensicReportMarkdown(): string {
+    return generateForensicAppendix({
+      base: this.investigationReportMarkdown(),
+      transactions: this.#transactions,
+      decoder: this.#notificationDecoder(),
+      compilations: this.#contentCompilations,
+    });
+  }
+
   recordObservation(summary: string, confidence: ManualObservation["confidence"] = "observed"): ManualObservation {
     if (!summary.trim()) throw new Error("Observation cannot be empty.");
     const observation = { id: `observation:${Date.now()}:${this.#observations.length}`, recordedAt: new Date().toISOString(), summary: summary.trim(), confidence } as const;
@@ -455,6 +513,7 @@ export class MatrixController {
       validations: this.#validations,
       contentCompilations: this.#contentCompilations,
       importedEvidence: this.#importedEvidence,
+      investigation: this.#investigation,
     });
     return serializeDiagnosticBundle(bundle);
   }
@@ -470,6 +529,10 @@ export class MatrixController {
     this.#validations.splice(0, this.#validations.length, ...(bundle.validations ?? []));
     this.#contentCompilations.splice(0, this.#contentCompilations.length, ...(bundle.contentCompilations ?? []));
     this.#importedEvidence.splice(0, this.#importedEvidence.length, ...(bundle.importedEvidence ?? []));
+    // Imported investigations are historical evidence, not the current session.
+    this.#investigation = bundle.investigation
+      ? { ...bundle.investigation, claimEvidence: bundle.investigation.claimEvidence.map((entry) => entry.scope === "current-session" ? { ...entry, scope: "previous-local-session" as const } : entry) }
+      : null;
     return bundle;
   }
 
