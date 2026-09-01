@@ -68,7 +68,7 @@ describe("T0/T1/T2 static timing model", () => {
     ], []);
     expect(completed.status).toBe("inconclusive");
     const stability = claimEvidence(controller, "graffiti.playback-stability")[0];
-    expect(stability?.status).toBe("unresolved");
+    expect(stability?.status).toBe("unknown");
     expect(stability?.metrics?.visibleStaticHoldMs).toBe(8000);
   });
 
@@ -79,7 +79,7 @@ describe("T0/T1/T2 static timing model", () => {
       { kind: "boolean", fieldId: "moved", value: "no" },
     ], []);
     expect(completed.status).toBe("inconclusive");
-    expect(claimEvidence(controller, "graffiti.playback-stability")[0]?.status).toBe("unresolved");
+    expect(claimEvidence(controller, "graffiti.playback-stability")[0]?.status).toBe("unknown");
   });
 
   it("never verifies stability from a user-estimated duration", async () => {
@@ -90,7 +90,7 @@ describe("T0/T1/T2 static timing model", () => {
       { kind: "boolean", fieldId: "moved", value: "no" },
       { kind: "duration", fieldId: "observation-end", milliseconds: 60000, measuredBy: "user-estimate" },
     ], []);
-    expect(claimEvidence(controller, "graffiti.playback-stability")[0]?.status).toBe("unresolved");
+    expect(claimEvidence(controller, "graffiti.playback-stability")[0]?.status).toBe("unknown");
   });
 
   it("rejects stability only at the stayTime=0 discriminator", async () => {

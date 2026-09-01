@@ -218,14 +218,27 @@ function interpretTiming(values: readonly ObservationValue[], stayTime: number):
     rejected.push("The raster did not initially render correctly.");
     updates.push({ claimId: "graffiti.initial-render", status: "rejected", summary: `The tiled raster failed to render correctly ${parameterNote}.` });
   }
-  const tilesIssue = booleanAnswer(values, "tiles-present") === "no" || booleanAnswer(values, "seams") === "yes";
+  // Tiling and orientation are recorded symmetrically. Only recording
+  // problems meant one bad answer left the claim contradicted forever: a
+  // later clean observation had nothing to say, so the claim - and any plan
+  // milestone depending on it - could never recover.
+  const tilesPresent = booleanAnswer(values, "tiles-present");
+  const seams = booleanAnswer(values, "seams");
+  const tilesIssue = tilesPresent === "no" || seams === "yes";
   if (tilesIssue) {
     rejected.push("Tile sections were missing or misaligned during this observation.");
     updates.push({ claimId: "raster.tiling", status: "unresolved", summary: `Tile sections were reported missing or misaligned ${parameterNote}; tiling needs recharacterization.` });
+  } else if (tilesPresent === "yes" && seams === "no") {
+    established.push("All tile sections were present and aligned.");
+    updates.push({ claimId: "raster.tiling", status: "verified", summary: `All tile sections observed present and aligned with no seams ${parameterNote}.` });
   }
-  if (booleanAnswer(values, "orientation-correct") === "no") {
+  const orientation = booleanAnswer(values, "orientation-correct");
+  if (orientation === "no") {
     rejected.push("The image orientation was wrong during this observation.");
     updates.push({ claimId: "raster.orientation", status: "unresolved", summary: `Orientation was reported wrong ${parameterNote}; orientation needs recharacterization.` });
+  } else if (orientation === "yes") {
+    established.push("The image was the right way up and not mirrored.");
+    updates.push({ claimId: "raster.orientation", status: "verified", summary: `Orientation observed correct — not rotated or mirrored ${parameterNote}.` });
   }
   let status: GuidedTestInterpretation["status"];
   let summary: string;
@@ -251,8 +264,11 @@ function interpretTiming(values: readonly ObservationValue[], stayTime: number):
       unknowns.push(heldMs !== null
         ? `Only ${approximateSeconds(heldMs)} of stillness was observed — below the ${MINIMUM_STATIC_HOLD_MS / 1000}s threshold, so stability stays unverified.`
         : "Stability cannot be verified without a timed observation window.");
+      // Not contradicted — just not measured for long enough. Recording an
+      // incomplete measurement as a contradiction would outrank a later,
+      // sufficient one and leave the claim permanently stuck.
       updates.push({
-        claimId: "graffiti.playback-stability", status: "unresolved",
+        claimId: "graffiti.playback-stability", status: "unknown",
         summary: heldMs !== null
           ? `Static for the measured ${formatDuration(heldMs)} ${parameterNote}; observation stopped before the required ${MINIMUM_STATIC_HOLD_MS / 1000}s window.`
           : `"Did not move" reported without a measured window ${parameterNote}; not accepted as verification.`,
@@ -296,7 +312,7 @@ function interpretTiming(values: readonly ObservationValue[], stayTime: number):
     status = "inconclusive";
     summary = "Movement behavior was not observed conclusively.";
     unknowns.push("Whether the raster remains static is still unknown.");
-    updates.push({ claimId: "graffiti.playback-stability", status: "unresolved", summary: `Observation inconclusive ${parameterNote}.` });
+    updates.push({ claimId: "graffiti.playback-stability", status: "unknown", summary: `Observation inconclusive ${parameterNote}.` });
   }
   return {
     status, established, rejected, unknowns, summary, claimUpdates: updates,

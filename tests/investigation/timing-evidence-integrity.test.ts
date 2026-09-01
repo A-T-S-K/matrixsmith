@@ -40,6 +40,8 @@ describe("timing evidence integrity", () => {
   }, 30000);
 
   it("does not verify stability when the observation stopped short of the window", async () => {
+    // Undecided, not contradicted: stopping early is an incomplete
+    // measurement, and must not outrank a later sufficient one.
     const controller = await connectedController();
     controller.recordGuidedTestObservations("coolledux-graffiti-timing", [
       { kind: "boolean", fieldId: "initial-correct", value: "yes" },
@@ -47,7 +49,7 @@ describe("timing evidence integrity", () => {
       { kind: "boolean", fieldId: "moved", value: "no" },
       timer("observation-end", 5200),
     ], []);
-    expect(evidenceFor(controller, "graffiti.playback-stability")[0]?.status).toBe("unresolved");
+    expect(evidenceFor(controller, "graffiti.playback-stability")[0]?.status).toBe("unknown");
   }, 30000);
 
   it("a discarded attempt contributes no observations, so it can neither verify nor reject", async () => {
