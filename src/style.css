@@ -469,7 +469,9 @@ main { width: min(1200px, 100%); margin: 0 auto; padding: 0 1rem 2rem; }
 
 /* ---- Annotated region map ---- */
 .region-map { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--s2); min-width: 0; }
-.region-map-stage { position: relative; display: block; width: 100%; }
+/* The map scales with its column, but an unbounded 2:1 canvas eats a tablet
+   viewport before the question is reached. */
+.region-map-stage { position: relative; display: block; width: 100%; max-width: 26rem; }
 .region-map-stage canvas { display: block; }
 .region-map-stage .frame-preview { display: block; }
 .region-map-overlay { position: absolute; inset: 0; pointer-events: none; }
@@ -555,10 +557,16 @@ main { width: min(1200px, 100%); margin: 0 auto; padding: 0 1rem 2rem; }
 .result-tertiary button { padding: 0; border: 0; background: none; color: var(--fg-quiet); font-size: var(--text-sm); text-decoration: underline; min-height: var(--target-sm); }
 
 /* ---- Desktop: use the width instead of stretching the phone column ---- */
-@media (min-width: 60rem) {
+/* Observation goes side-by-side as soon as there is room for a readable
+   question column beside the visual — tablets included. */
+@media (min-width: 48rem) {
   .spatial-observe { grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); align-items: start; gap: var(--s5); }
   .spatial-visual { position: static; }
   .timed-observe { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; gap: var(--s5); }
+  .region-map-stage { max-width: 100%; }
+}
+
+@media (min-width: 60rem) {
   .view.investigate { grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); align-items: start; column-gap: var(--s6); }
   .view-title, .goal-line, .next-action { grid-column: 1; }
   .know-strip, .recent-result, .previous-investigation, .troubleshoot-link, .troubleshoot-open { grid-column: 2; }

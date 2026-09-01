@@ -894,11 +894,21 @@ export class MatrixStore {
     if (index >= 0) this.setGuidedStep(index);
   }
 
-  /** Questions the human answers: timer-filled fields are never re-asked. */
+  /**
+   * Questions the human answers.
+   *
+   * Timer-filled fields are never re-asked — the value was measured, so asking
+   * would only invite an estimate. A question about a region is dropped when
+   * that region is not part of THIS run: some diagnostics include extra zones
+   * only once earlier evidence justifies them, and asking about a zone that
+   * is not on the display would produce an invented observation.
+   */
   #observationSteps(flow: GuidedFlowInternal): readonly ObservationStepView[] {
     const driven = timerDrivenFieldIds(flow.timerSpec);
+    const present = new Set(flow.regions.map((region) => region.id));
     return flow.observationSpecs
       .filter((spec) => !driven.has(spec.id) && spec.kind !== "duration")
+      .filter((spec) => spec.regionId === undefined || present.has(spec.regionId))
       .map((spec) => ({
         spec,
         regionId: spec.regionId ?? null,
@@ -1181,7 +1191,7 @@ export class MatrixStore {
       consequence: flow.consequence, category: flow.category, risk: flow.risk,
       planSummary: flow.planSummary, previews: [...flow.previews], regions: [...flow.regions],
       observationSpecs: [...flow.observationSpecs], values: { ...flow.values },
-      observationsReady: observationsComplete(flow.observationSpecs, Object.values(flow.values)),
+      observationsReady: observationsComplete(steps.map((step) => step.spec), Object.values(flow.values)),
       timerSpec: flow.timerSpec, timerElapsedMs: elapsed, phaseElapsedMs, currentPhase,
       timerPhaseIndex: flow.timerPhaseIndex, timerStopped: flow.timerStopped,
       transferProgress: flow.transferProgress, transactionIds: [...flow.transactionIds],
