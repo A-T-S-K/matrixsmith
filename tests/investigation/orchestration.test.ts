@@ -3,7 +3,7 @@ import { MatrixController } from "../../src/app/controller";
 import { TraceRecorder } from "../../src/diagnostics/trace";
 import { MatrixStore } from "../../src/ui/store";
 import { knownIledHatFingerprint } from "../helpers/fixtures";
-import { ScriptedCoolLedUxDevice } from "../helpers/scripted-device";
+import { uncharacterizedStore } from "../helpers/uncharacterized-device";
 import { classifyTransfers, buildExecutionFingerprint } from "../../src/investigation/orchestration";
 import { detectRecommendationCycle } from "../../src/investigation/recommendations";
 
@@ -15,11 +15,9 @@ import { detectRecommendationCycle } from "../../src/investigation/recommendatio
  * timing observation, with no way afterwards to tell which were which.
  */
 async function connectedStore(): Promise<MatrixStore> {
-  const transport = new ScriptedCoolLedUxDevice(knownIledHatFingerprint());
-  const store = new MatrixStore(new MatrixController(transport, new TraceRecorder()), transport);
-  await store.connect();
-  await store.identify();
-  return store;
+  // The guided journey is what these protect, so they start from a device
+  // with open questions — see tests/helpers/uncharacterized-device.
+  return (await uncharacterizedStore()).store;
 }
 
 const flow = (store: MatrixStore) => store.getSnapshot().guidedFlow!;

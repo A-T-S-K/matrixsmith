@@ -2,12 +2,16 @@ import { describe, expect, it } from "vitest";
 import { rankRecommendations, recommendNextTest } from "../../src/investigation/recommendations";
 import { evaluateTestAvailability, type GuidedTestAvailability } from "../../src/investigation/tests";
 import { ILEDHAT_GUIDED_TESTS } from "../../src/drivers/coolledux/guided-tests";
-import { coolLedUxBaselineClaimEvidence } from "../../src/drivers/coolledux/claims";
-import { iledHat31aeProfile } from "../../src/profiles/iledhat-31ae-32x16";
 import type { ClaimEvidence } from "../../src/investigation/claims";
 import type { CompletedGuidedTest, InvestigationGoal } from "../../src/investigation/investigation";
+import { uncharacterizedCoolLedUxEvidence } from "../helpers/evidence";
 
-const baseline = coolLedUxBaselineClaimEvidence(iledHat31aeProfile);
+/**
+ * These are all statements about how characterization is ORDERED, so they
+ * start from a device whose static substrate is still open. The shipped
+ * iLedHat profile is now productionized and cannot stand in for one.
+ */
+const baseline = uncharacterizedCoolLedUxEvidence();
 
 function availabilities(evidence: readonly ClaimEvidence[], completed: readonly string[] = []): readonly GuidedTestAvailability[] {
   return ILEDHAT_GUIDED_TESTS.map((test) => evaluateTestAvailability(test, evidence, completed));

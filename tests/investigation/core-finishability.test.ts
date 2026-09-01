@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { MatrixController } from "../../src/app/controller";
 import { TraceRecorder } from "../../src/diagnostics/trace";
 import { knownIledHatFingerprint } from "../helpers/fixtures";
-import { ScriptedCoolLedUxDevice } from "../helpers/scripted-device";
+import { uncharacterizedController } from "../helpers/uncharacterized-device";
 import type { ObservationValue } from "../../src/investigation/observations";
 import { MINIMUM_STATIC_HOLD_MS } from "../../src/investigation/static-viability";
 
@@ -20,9 +20,10 @@ import { MINIMUM_STATIC_HOLD_MS } from "../../src/investigation/static-viability
 const MAX_DISTINCT_CORE_EXPERIMENTS = 7;
 
 async function controller(): Promise<MatrixController> {
-  const transport = new ScriptedCoolLedUxDevice(knownIledHatFingerprint());
-  const instance = new MatrixController(transport, new TraceRecorder());
-  await instance.connect();
+  // Finishability is a property of characterizing an UNKNOWN device. Run
+  // against the productionized iLedHat these would pass without walking
+  // anywhere, because its plan is already complete on connect.
+  const { controller: instance } = await uncharacterizedController();
   await instance.runDiagnostic("coolledux-identify");
   instance.ensureInvestigation();
   return instance;
@@ -122,6 +123,9 @@ describe("core plan finishability", () => {
       "coolledux-pixel-channels": channelsMapped,
     });
     expect(complete).toBe(true);
+    // A plan that was already complete would satisfy everything below without
+    // walking anywhere; these paths must actually run experiments.
+    expect(distinct.length).toBeGreaterThan(0);
     expect(distinct.length).toBeLessThanOrEqual(MAX_DISTINCT_CORE_EXPERIMENTS);
     expect(new Set(distinct).size).toBe(distinct.length);
   }, 60000);
@@ -134,6 +138,9 @@ describe("core plan finishability", () => {
       "coolledux-pixel-channels": channelsMapped,
     });
     expect(complete).toBe(true);
+    // A plan that was already complete would satisfy everything below without
+    // walking anywhere; these paths must actually run experiments.
+    expect(distinct.length).toBeGreaterThan(0);
     expect(distinct.length).toBeLessThanOrEqual(MAX_DISTINCT_CORE_EXPERIMENTS);
     expect(new Set(distinct).size).toBe(distinct.length);
   }, 60000);
@@ -147,6 +154,9 @@ describe("core plan finishability", () => {
       "coolledux-pixel-channels": channelsMapped,
     });
     expect(complete).toBe(true);
+    // A plan that was already complete would satisfy everything below without
+    // walking anywhere; these paths must actually run experiments.
+    expect(distinct.length).toBeGreaterThan(0);
     expect(distinct.length).toBeLessThanOrEqual(MAX_DISTINCT_CORE_EXPERIMENTS);
     expect(new Set(distinct).size).toBe(distinct.length);
   }, 60000);
@@ -161,6 +171,9 @@ describe("core plan finishability", () => {
       "coolledux-pixel-channels": channelsMapped,
     });
     expect(complete).toBe(true);
+    // A plan that was already complete would satisfy everything below without
+    // walking anywhere; these paths must actually run experiments.
+    expect(distinct.length).toBeGreaterThan(0);
     expect(distinct.length).toBeLessThanOrEqual(MAX_DISTINCT_CORE_EXPERIMENTS);
     expect(new Set(distinct).size).toBe(distinct.length);
   }, 60000);

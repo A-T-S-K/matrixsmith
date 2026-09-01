@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { coolLedUxDriver } from "../../src/drivers/coolledux";
 import { compileAnimationStaticFrame, compileGraffitiFrame, encodeRawWordRegion } from "../../src/drivers/coolledux/content";
 import { iledHat31aeProfile } from "../../src/profiles/iledhat-31ae-32x16";
-import { ILEDHAT_QUIRKS } from "../../src/core/quirks";
+import { COOLLEDUX_DEFAULT_QUIRKS, ILEDHAT_QUIRKS } from "../../src/core/quirks";
 import { isRasterStrategy } from "../../src/core/raster-strategy";
 import { knownIledHatFingerprint } from "../helpers/fixtures";
 import { orientationPattern } from "../../src/render/patterns";
@@ -42,14 +42,27 @@ describe("raster strategy routing", () => {
 });
 
 describe("profile quirks", () => {
-  it("ships the iLedHat quirks with honest unknowns", () => {
+  it("ships the physically characterized iLedHat quirks", () => {
     expect(iledHat31aeProfile.quirks).toBe(ILEDHAT_QUIRKS);
-    expect(ILEDHAT_QUIRKS.graffitiBlack.state).toBe("unknown");
+    // Observed on this panel, not inherited: 0x0000 really is off here, so
+    // the upstream 0x0004 workaround must never be substituted.
+    expect(ILEDHAT_QUIRKS.graffitiBlack).toEqual({ state: "true-black", basis: "observed" });
     expect(ILEDHAT_QUIRKS.animationBlack).toEqual({ state: "true-black", basis: "observed" });
-    expect(ILEDHAT_QUIRKS.whiteChannel.state).toBe("unknown");
-    expect(ILEDHAT_QUIRKS.preferredRasterStrategy).toBe("unresolved");
+    // The high nibble was swept and drove nothing; there is no fourth channel
+    // for a white emitter to live in.
+    expect(ILEDHAT_QUIRKS.whiteChannel).toEqual({ state: "absent", basis: "observed" });
+    expect(ILEDHAT_QUIRKS.preferredRasterStrategy).toBe("animation-single-frame");
     expect(ILEDHAT_QUIRKS.unexplained.colorModeRaw).toBe(3);
-    expect(ILEDHAT_QUIRKS.channelMap.state).toBe("rgb444-hypothesis");
+    expect(ILEDHAT_QUIRKS.channelMap.state).toBe("verified-rgb444");
+  });
+
+  it("drops Graffiti as a normal static candidate after physically rejecting it", () => {
+    expect(ILEDHAT_QUIRKS.rasterStrategyCandidates).toEqual(["animation-single-frame", "animation-identical-frames"]);
+    // Still implemented for diagnostics and for profiles whose evidence
+    // supports it — the DEFAULT quirks are deliberately untouched.
+    expect(COOLLEDUX_DEFAULT_QUIRKS.rasterStrategyCandidates).toContain("graffiti");
+    expect(COOLLEDUX_DEFAULT_QUIRKS.graffitiBlack.state).toBe("white-sentinel");
+    expect(COOLLEDUX_DEFAULT_QUIRKS.preferredRasterStrategy).toBe("unresolved");
   });
 
   it("keeps quirks immutable at runtime", () => {

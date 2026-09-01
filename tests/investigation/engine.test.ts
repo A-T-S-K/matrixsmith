@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { MatrixController } from "../../src/app/controller";
+import { claimState } from "../../src/investigation/claims";
+import { evaluateStaticViability } from "../../src/investigation/static-viability";
+import { uncharacterizedCoolLedUxEvidence } from "../helpers/evidence";
 import { TraceRecorder } from "../../src/diagnostics/trace";
 import { parseHexBytes } from "../../src/discovery/advertisement";
 import { knownIledHatFingerprint } from "../helpers/fixtures";
@@ -28,9 +31,9 @@ describe("guided test engine", () => {
     const byId = new Map(tests.map((entry) => [entry.test.id, entry]));
     expect(byId.get("coolledux-graffiti-black")?.available).toBe(true);
     expect(byId.get("coolledux-animation-static")?.available).toBe(true);
-    // Color/white requires a verified channel map, which is still unresolved.
-    expect(byId.get("coolledux-color-white")?.available).toBe(false);
-    expect(byId.get("coolledux-color-white")?.unmetPrerequisites[0]?.claimId).toBe("pixel.channel-map");
+    // The channel map is a shipped profile fact now, so the optional colour
+    // work is available — it is simply never automatic.
+    expect(byId.get("coolledux-color-white")?.available).toBe(true);
     // The stayTime comparison requires the baseline measurement first.
     expect(byId.get("coolledux-graffiti-staytime")?.available).toBe(false);
     expect(byId.get("coolledux-graffiti-staytime")?.missingCompletedTests).toEqual(["coolledux-graffiti-timing"]);
@@ -55,7 +58,11 @@ describe("guided test engine", () => {
 
   it("turns black-probe observations into current-session claim evidence", async () => {
     const controller = await connectedController();
-    expect(claimStatus(controller, "graffiti.black-semantics")).toBe("source-supported");
+    // The shipped profile already establishes this from an earlier physical
+    // session; re-running it must produce a fresh CURRENT-SESSION basis
+    // rather than silently reusing the built-in one.
+    const shipped = controller.claims().find((claim) => claim.id === "graffiti.black-semantics");
+    expect(shipped?.decidedBy?.scope).toBe("built-in-profile");
     const values: ObservationValue[] = [
       { kind: "choice", fieldId: "zero-appearance", optionId: "off-black" },
       { kind: "choice", fieldId: "workaround-appearance", optionId: "dim-blue" },
@@ -91,38 +98,33 @@ describe("guided test engine", () => {
     expect(staytime?.available).toBe(true);
   });
 
-  it("derives the session raster strategy from full viability, not one passing test", async () => {
-    const controller = await connectedController();
-    const values: ObservationValue[] = [
-      { kind: "boolean", fieldId: "initial-correct", value: "yes" },
-      { kind: "duration", fieldId: "image-visible", milliseconds: 1400, measuredBy: "matrixsmith-timer" },
-      { kind: "boolean", fieldId: "moved", value: "no" },
-      { kind: "duration", fieldId: "observation-end", milliseconds: 17000, measuredBy: "matrixsmith-timer" },
-      { kind: "boolean", fieldId: "background-off", value: "yes" },
-      { kind: "boolean", fieldId: "tiles-aligned", value: "yes" },
-      { kind: "boolean", fieldId: "flicker", value: "no" },
-    ];
-    const completed = controller.recordGuidedTestObservations("coolledux-animation-static", values, []);
-    expect(completed.status).toBe("passed");
-    expect(claimStatus(controller, "animation.static-single-frame")).toBe("verified");
-    // The passing test alone does NOT make the strategy usable: channel
-    // mapping and encoder correctness are still uncharacterized.
-    expect(controller.session.validatedRasterStrategy).toBeNull();
-    expect(claimStatus(controller, "static.strategy")).toBe("unresolved");
+  it("derives the session raster strategy from full viability, not one passing test", () => {
+    // A device whose substrate is still open: one passing static test is not
+    // enough, because the channel map and encoder are uncharacterized.
+    const open = [...uncharacterizedCoolLedUxEvidence(), {
+      claimId: "animation.static-single-frame", status: "verified", scope: "current-session", provenance: "observed",
+      summary: "held still", metrics: { visibleStaticHoldMs: 17000 },
+    } as const];
+    const partial = evaluateStaticViability(open);
+    expect(partial.selected).toBeNull();
+    expect(claimState("static.strategy", open).status).not.toBe("verified");
 
-    // Once the channel probe confirms the RGB444 hypothesis (channel map +
-    // encoder correctness), the derived viability selects the strategy.
-    const patch = (word: number, optionId: string): ObservationValue => ({ kind: "choice", fieldId: `patch-0x${word.toString(16).padStart(4, "0")}`, optionId });
-    controller.recordGuidedTestObservations("coolledux-pixel-channels", [
-      patch(0x0000, "off"), patch(0x0f00, "red"), patch(0x00f0, "green"), patch(0x000f, "blue"), patch(0x0fff, "tinted-white"),
-      patch(0x1000, "off"), patch(0x2000, "off"), patch(0x4000, "off"), patch(0x8000, "off"), patch(0xf000, "off"), patch(0xffff, "tinted-white"),
-    ], []);
-    expect(controller.session.validatedRasterStrategy).toBe("animation-single-frame");
-    expect(claimStatus(controller, "static.strategy")).toBe("verified");
-    // Normal Use now routes ShowFrame through the derived strategy.
-    const plan = controller.plan({ type: "ShowFrame", frame: (await import("../../src/render/patterns")).orientationPattern(32, 16) });
-    expect(plan.metadata.rasterStrategy).toBe("animation-single-frame");
+    // Adding the channel map and encoder correctness completes it.
+    const complete = [...open,
+      { claimId: "pixel.channel-map", status: "verified", scope: "current-session", provenance: "observed", summary: "RGB444 confirmed" } as const,
+      { claimId: "pixel.encoder-correctness", status: "verified", scope: "current-session", provenance: "observed", summary: "encoder matches" } as const,
+    ];
+    expect(evaluateStaticViability(complete).selected).toBe("animation-single-frame");
   });
+
+  it("derives a usable strategy from the shipped profile with no session work at all", async () => {
+    const controller = await connectedController();
+    // The shipped profile alone derives a usable strategy — no guided test,
+    // no session evidence. This is the productionized path.
+    expect(controller.investigation).toBeNull();
+    expect(claimStatus(controller, "static.strategy")).toBe("verified");
+    expect(controller.staticViability().selected).toBe("animation-single-frame");
+  }, 30000);
 
   it("rejects the white-channel hypothesis when every high-nibble patch is off", async () => {
     const controller = await connectedController();

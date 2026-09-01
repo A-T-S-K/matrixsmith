@@ -71,8 +71,11 @@ describe("investigation report content", () => {
     expect(report).toContain("## Static image strategy assessment");
     expect(report).toContain("### graffiti");
     expect(report).toContain("### animation-single-frame");
-    expect(report).toContain("NOT YET DECIDED");
-    expect(report).toContain("next open requirement: `graffiti.playback-stability`");
+    // Graffiti was physically rejected on this panel and Animation carries
+    // it, so the assessment reads as a decision rather than an open question.
+    expect(report).toContain("NOT VIABLE");
+    expect(report).toContain("VIABLE");
+    expect(report).toContain("Selected usable strategy: animation-single-frame");
   });
 
   it("includes the measured T0/T1/T2 timeline in the scoped test report", async () => {

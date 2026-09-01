@@ -3,7 +3,7 @@ import { MatrixController } from "../../src/app/controller";
 import { TraceRecorder } from "../../src/diagnostics/trace";
 import { MatrixStore } from "../../src/ui/store";
 import { knownIledHatFingerprint } from "../helpers/fixtures";
-import { ScriptedCoolLedUxDevice } from "../helpers/scripted-device";
+import { uncharacterizedStore } from "../helpers/uncharacterized-device";
 import { completedTestResolution } from "../../src/investigation/investigation";
 import { detectRecommendationCycle, isConcludedTest } from "../../src/investigation/recommendations";
 
@@ -18,11 +18,9 @@ import { detectRecommendationCycle, isConcludedTest } from "../../src/investigat
  */
 
 async function connectedStore(): Promise<MatrixStore> {
-  const transport = new ScriptedCoolLedUxDevice(knownIledHatFingerprint());
-  const store = new MatrixStore(new MatrixController(transport, new TraceRecorder()), transport);
-  await store.connect();
-  await store.identify();
-  return store;
+  // Resolution semantics are a property of the guided journey, so these run
+  // against a device whose static substrate is still open.
+  return (await uncharacterizedStore()).store;
 }
 
 const flow = (store: MatrixStore) => store.getSnapshot().guidedFlow!;

@@ -41,26 +41,45 @@ describe("claims-derived support map", () => {
     const groups = store.getSnapshot().claimGroups;
     expect(groups.map((group) => group.category)).toEqual(["core", "content", "optional"]);
     const content = groups.find((group) => group.category === "content")!;
+    // Both were physically settled on this panel — negatively, which is a
+    // real answer and must read as one rather than as an open question.
     const stability = content.claims.find((claim) => claim.id === "graffiti.playback-stability");
-    expect(stability?.status).toBe("unresolved");
-    expect(stability?.glyph).toBe("!");
+    expect(stability?.status).toBe("rejected");
     const whiteChannel = content.claims.find((claim) => claim.id === "pixel.white-channel");
-    expect(whiteChannel?.status).toBe("unknown");
+    expect(whiteChannel?.status).toBe("rejected");
+    // Still genuinely open, and shown as such.
+    const calibration = groups.find((group) => group.category === "optional")!.claims
+      .find((claim) => claim.id === "pixel.color-calibration")
+      ?? content.claims.find((claim) => claim.id === "pixel.color-calibration");
+    expect(calibration?.status).toBe("unresolved");
   });
 });
 
 describe("path-specific content gating in the store", () => {
-  it("blocks image sends while allowing animation on this profile's evidence", async () => {
+  it("opens image, text and animation from this profile's shipped evidence", async () => {
     const { store } = await identifiedStore();
     const gates = store.getSnapshot().contentGates;
     expect(gates.animation.allowed).toBe(true);
-    expect(gates.image.allowed).toBe(false);
-    expect(gates.text.allowed).toBe(false);
+    expect(gates.image.allowed).toBe(true);
+    expect(gates.text.allowed).toBe(true);
+    // GIF depends on a claim this panel has never demonstrated.
     expect(gates.gif.allowed).toBe(false);
+    // A text send reaches the confirmation step rather than being refused —
+    // and still requires that explicit confirmation, because it replaces the
+    // stored display program.
     store.updateContentSettings({ text: "HI" });
     store.requestSendText();
+    expect(store.getSnapshot().error).toBeNull();
+    expect(store.getSnapshot().pendingSend).not.toBeNull();
+    expect(store.getSnapshot().pendingSend!.consequence).toMatch(/replaces/i);
+    store.cancelPendingSend();
+  });
+
+  it("still refuses a GIF send behind its own gate", async () => {
+    const { store } = await identifiedStore();
+    store.requestSendGif();
     expect(store.getSnapshot().pendingSend).toBeNull();
-    expect(store.getSnapshot().error).toMatch(/static-image strategy/i);
+    expect(store.getSnapshot().error).toMatch(/GIF/i);
   });
 
   it("allows an animation send request through its own gate", async () => {

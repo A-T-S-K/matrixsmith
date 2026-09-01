@@ -39,7 +39,9 @@ describe("guided-test safety invariants", () => {
 
   it("blocks guided transfers whose prerequisites are unmet", async () => {
     const { controller } = await identified();
-    await expect(controller.runGuidedTestTransfer("coolledux-color-white", { confirmedConsequence: true, reason: "initial-experiment", attemptId: "attempt:test" })).rejects.toThrow(/pixel\.channel-map/);
+    // The stayTime variant is only meaningful after its baseline has been
+    // measured on this device, so a fresh session cannot transmit it.
+    await expect(controller.runGuidedTestTransfer("coolledux-graffiti-staytime", { confirmedConsequence: true, reason: "initial-experiment", attemptId: "attempt:test" })).rejects.toThrow(/coolledux-graffiti-timing/);
   });
 
   it("defines every guided test against real declared claims and observations", () => {
@@ -88,9 +90,8 @@ describe("profile immutability", () => {
       { kind: "boolean", fieldId: "tiles-aligned", value: "yes" },
     ], []);
     expect(JSON.stringify(iledHat31aeProfile)).toBe(before);
-    expect(iledHat31aeProfile.quirks?.preferredRasterStrategy).toBe("unresolved");
-    // No strategy is selected either: viability still requires channel and
-    // encoder characterization, and profile facts never mutate regardless.
-    expect(controller.session.validatedRasterStrategy).toBeNull();
+    // The shipped preference is a profile FACT and is never rewritten by a
+    // session outcome, whatever that outcome was.
+    expect(iledHat31aeProfile.quirks?.preferredRasterStrategy).toBe("animation-single-frame");
   });
 });

@@ -89,9 +89,16 @@ describe("poisoned local storage", () => {
       const controller = await connectedController();
       controller.adoptInvestigation(stored);
       expect(controller.investigation?.claimEvidence.every((entry) => entry.scope === "previous-local-session")).toBe(true);
-      // No poisoned entry gains operational authority for content gating.
-      expect(controller.contentGate("image").allowed).toBe(false);
-      expect(controller.contentGate("text").allowed).toBe(false);
+      // No poisoned entry gains operational authority. The iLedHat's own
+      // shipped evidence legitimately opens the image and text gates, so the
+      // invariant to hold is that adoption changes NOTHING: the gates are
+      // exactly what the built-in profile alone decides, and no poisoned
+      // entry survives at a scope that could authorize anything.
+      const clean = await connectedController();
+      for (const path of ["image", "text", "animation", "gif"] as const) {
+        expect(controller.contentGate(path).allowed).toBe(clean.contentGate(path).allowed);
+      }
+      expect(controller.operationalTrust().every((trust) => trust.basis === null || trust.basis.scope !== "previous-local-session")).toBe(true);
     });
   }
 
@@ -125,9 +132,12 @@ describe("imported evidence cannot unlock live operation", () => {
     const offline = new MatrixController(new ScriptedCoolLedUxDevice(null), new TraceRecorder());
     offline.importBundle(json);
     expect(offline.investigation?.claimEvidence.every((entry) => entry.scope === "imported-external")).toBe(true);
-    // Imported evidence never satisfies a current/built-in trusted gate that
-    // was earned only in the exporting session…
-    expect(offline.contentGate("image").allowed).toBe(false);
+    // Imported evidence never becomes operational authority: nothing the
+    // bundle asserts appears as a trusted basis…
+    expect(offline.operationalTrust().every((trust) => trust.basis === null || trust.basis.scope !== "imported-external")).toBe(true);
+    // …and GIF, which the shipped profile does not verify, stays gated no
+    // matter what the bundle claims.
+    expect(offline.contentGate("gif").allowed).toBe(false);
     // …and even a gate satisfied by shipped built-in evidence cannot
     // transmit: the safety policy blocks every non-live source.
     const plan = offline.plan({ type: "ShowAnimation", sequence: (await import("../../src/render/patterns")).diagnosticAnimation(32, 16) });

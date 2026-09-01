@@ -94,17 +94,40 @@ describe("atomic claims", () => {
 describe("coolLedUxBaselineClaimEvidence", () => {
   const evidence = coolLedUxBaselineClaimEvidence(iledHat31aeProfile);
 
-  it("reflects the current physical iLedHat evidence honestly", () => {
+  it("reflects the physically characterized iLedHat evidence honestly", () => {
     expect(claimState("brightness.control", evidence).status).toBe("verified");
     expect(claimState("animation.frames", evidence).status).toBe("verified");
     expect(claimState("animation.black-semantics", evidence).status).toBe("verified");
     expect(claimState("graffiti.initial-render", evidence).status).toBe("verified");
-    expect(claimState("graffiti.playback-stability", evidence).status).toBe("unresolved");
-    expect(claimState("graffiti.black-semantics", evidence).status).toBe("source-supported");
-    expect(claimState("pixel.white-channel", evidence).status).toBe("unknown");
+    // Both justified Graffiti configurations were measured and both move:
+    // a conclusive negative, not an open question.
+    expect(claimState("graffiti.playback-stability", evidence).status).toBe("rejected");
+    // The panel's own observation outranks the upstream source-reference
+    // white-sentinel entry, which is retained as provenance.
+    const black = claimState("graffiti.black-semantics", evidence);
+    expect(black.status).toBe("verified");
+    expect(black.decidedBy?.scope).toBe("built-in-profile");
+    expect(black.decidedBy?.details?.zeroBehavior).toBe("true-black");
+    expect(claimState("pixel.fourth-channel", evidence).status).toBe("rejected");
+    expect(claimState("pixel.white-channel", evidence).status).toBe("rejected");
+    expect(claimState("animation.static-single-frame", evidence).status).toBe("verified");
+    expect(claimState("animation.static-identical-pair", evidence).status).toBe("verified");
+    expect(claimState("pixel.channel-map", evidence).status).toBe("verified");
+    expect(claimState("pixel.encoder-correctness", evidence).status).toBe("verified");
+    // Still genuinely open, and deliberately so.
+    expect(claimState("pixel.color-calibration", evidence).status).toBe("unresolved");
     expect(claimState("power-cycle.persistence", evidence).status).toBe("unknown");
-    expect(claimState("static.strategy", evidence).status).toBe("unresolved");
-    expect(claimState("animation.static-single-frame", evidence).status).toBe("unknown");
+    // Allowed through a verified substrate is not the same statement as
+    // physically smoke-tested; these stay unknown until one happens.
+    expect(claimState("image.rendering", evidence).status).toBe("unknown");
+    expect(claimState("text.rendering", evidence).status).toBe("unknown");
+  });
+
+  it("derives a usable static strategy from shipped evidence with no session work", () => {
+    const state = claimState("static.strategy", evidence);
+    expect(state.status).toBe("verified");
+    expect(state.decidedBy).toBeNull();
+    expect(state.derivedSummary).toContain("animation-single-frame");
   });
 
   it("never marks physically untested claims as current-session", () => {
