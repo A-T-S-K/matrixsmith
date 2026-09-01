@@ -48,7 +48,7 @@ function StoppedInvestigation({ snapshot, store }: { snapshot: AppSnapshot; stor
       <strong>Investigation saved</strong>
       <small>{investigation.completedTests.length} test{investigation.completedTests.length === 1 ? "" : "s"} · kept on this device</small>
     </div>
-    <button class="secondary" onClick={() => void store.copyInvestigationReport()}>Copy investigation report</button>
+    <button class="secondary small" onClick={() => void store.copyInvestigationReport()}>Copy report</button>
   </section>;
 }
 

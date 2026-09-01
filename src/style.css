@@ -573,7 +573,11 @@ main { width: min(1200px, 100%); margin: 0 auto; padding: 0 1rem 2rem; }
   .secondary-section { grid-column: 1 / -1; }
 }
 
-.stopped-banner { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); flex-wrap: wrap; padding: var(--s3); border: 1px solid var(--border); border-radius: var(--r2); background: var(--surface-2); }
+/* Stays one row: it reports a finished state, and the next test is still the
+   more likely thing the user wants at the top of the screen. */
+.stopped-banner { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); padding: var(--s2) var(--s3); border: 1px solid var(--border); border-radius: var(--r2); background: var(--surface-2); }
+.stopped-banner > div { min-width: 0; }
+.stopped-banner button { flex: none; }
 .stopped-banner strong { display: block; font-size: var(--text-base); }
 .stopped-banner small { color: var(--fg-quiet); font-size: var(--text-xs); }
 
