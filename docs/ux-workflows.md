@@ -128,3 +128,194 @@ partial observations, no claim conclusions) with its report still available.
 recorded parameters always reflect the actual generated operation — e.g. the
 color/white probe shows its extra 0xF000/0xFFFF bands only when the fourth channel is
 established.
+
+---
+
+# Guided UX redesign (2026-08-31, phase 3)
+
+Phase 2 made the investigation engine capable. This phase closes the gap between
+what MatrixSmith knows and what it shows: the interface had been exposing the
+evidence architecture more or less directly, so a screen answered "here is
+everything MatrixSmith knows and can do" when the user needed "here is the one
+thing to understand and do right now".
+
+The work was done against the running application at real device sizes, not by
+reading JSX. A dev-only simulated device (`src/dev/simulated-device.ts`, loaded
+only under `import.meta.env.DEV` and `?sim`) makes the full guided workflow —
+including transfers and physical-timing stages — drivable in a browser without
+hardware. Several defects in this document were found by measuring the rendered
+page rather than by reading code.
+
+## Principles applied
+
+Drawn from Nielsen Norman Group on progressive disclosure, the GOV.UK Design
+System's "one thing per page" question pattern, and WCAG 2.2 target sizing
+(2.5.8 sets a 24×24 CSS px minimum, with a spacing exception). They are used as
+principles, not as platform mimicry — MatrixSmith is a responsive web app.
+
+1. **One dominant purpose per screen.** Each screen has one primary action.
+   Secondary actions look secondary; utility actions do not get full-width
+   buttons because a button component exists.
+2. **Progressive disclosure, two levels deep at most.** Advanced, forensic and
+   historical material is reachable but never competes with the current task.
+3. **Proximity and recognition over recall.** A question about a place on the
+   panel is rendered beside that place, highlighted and named. The user never
+   scrolls back to reconstruct what a question refers to.
+4. **One thing at a time.** An eleven-zone test is a sequence, not a form.
+5. **Containers must earn their boundary.** Cards are not a spacing primitive;
+   spacing, alignment, type hierarchy and dividers do most of the grouping.
+
+## The UI system
+
+`src/style.css` defines tokens for spacing (`--s1`…`--s8`), page rhythm, a type
+scale, radii, palette, and two touch targets: `--target: 44px` for primary
+actions and `--target-sm: 36px` for utility controls. Both clear the 24px WCAG
+minimum; the intent is that importance, not accessibility, decides which one a
+control gets. Density comes from this scale rather than ad-hoc pixel values.
+
+## Device workspace header
+
+Inside a workspace the device is the context, so the header carries device
+identity, connection state, at most one *actionable* problem, and an overflow
+menu. Branding, geometry, status pills, Share report and Disconnect previously
+consumed roughly a third of a 360px viewport before the user could see what to
+do next; they now live on Home or in the menu.
+
+A status is surfaced only when it blocks the user and something can be done
+about it. "Ambiguous protocol" is a fact with no verb; "Protocol needs
+confirmation → Identify" is the next step.
+
+## Investigate home
+
+Ordered: device → next action → why → compact current state → secondary
+history, troubleshooting, reports and tools. The product no longer describes
+itself on the page that should be describing the display. Reports follow
+context — there is nothing to report on before the first test runs, so report
+access is a disclosure there and becomes prominent at a result and after
+stopping.
+
+Previous work is one line by default. The device-binding question is real —
+MatrixSmith cannot prove two sessions saw the same physical unit — but it is a
+footnote in the details ("Device match not confirmed — this may be a different
+display"), not evidence-system vocabulary on the primary screen.
+
+## Diagnostic regions and spatial observation
+
+Regions used to be named by the raw word that produced them, which put `0x1000`
+in front of the user as the identity of a place. `src/investigation/regions.ts`
+defines a driver-neutral model:
+
+```text
+DiagnosticRegion { id, shortLabel, displayLabel, description, groupId?,
+                   x, y, width, height,
+                   technical { rawWord?, expectedUnderHypothesis?, notes? } }
+```
+
+Questions reference a `regionId`. The UI resolves that link to highlight the
+zone, label it, drive progress, and give assistive technology the
+region↔question relationship. `groupId` lets one question mean several places
+("the four sections", "the joins").
+
+Unknown probes are deliberately not given colour names. "Zone 6 · Extra channel
+A" is honest; calling it "white" would put an assumption in front of the person
+whose observation is the entire point of the test. Raw words stay in
+`technical` — available on demand in the UI, exact in reports.
+
+The guided dialog picks its presentation from what a test declares rather than
+from a hand-set flag, so a test cannot drift out of sync with its own content:
+
+| Declares | Presentation |
+| --- | --- |
+| a measured timeline | `TimedObservation`, then staged follow-up questions |
+| questions naming a region | `SpatialObservation` |
+| neither | `SimpleObservation` |
+
+`SpatialObservation` asks one zone at a time with the map pinned beside the
+question (stacked on mobile, side by side from 48rem). Answering a choice
+advances automatically; Previous/Continue and zone tapping allow free movement,
+and answers persist across navigation. Zone state never depends on colour
+alone — the chip glyph (`▶` active, `✓` answered) and outline weight both
+change, and the active zone carries `aria-current`.
+
+The map shows only the zones the current question is about: a grouped region
+brings its group, an ungrouped set shows all its zones so the numbering stays
+orienting, and a question with no region shows the pattern plain.
+
+## Human-timed physical observation
+
+The previous timing flow assumed the user would tap perfectly while watching a
+separate physical display, and treated one irreversible press as ground truth.
+That assumption is wrong, and it was reported as a real product bug: people
+miss the moment.
+
+`src/investigation/timing.ts` models timing as **repeatable human observation**:
+
+- **T0** — final host-accepted write. Automatic, precise within the
+  browser/transport measurement model.
+- **T1 / T2** — a person watching a panel and tapping a phone. Exact timestamps
+  are retained for forensic output, but nothing presents them as instrument
+  measurements. Reports say `~3.2 s` and label the provenance; `3.237 seconds`
+  would overstate what was measured.
+
+A run holds a sequence of **attempts**, each recording its number, the exact
+parameter set, T0, its marks, validity and invalidation reason. Only a `valid`
+attempt may establish a timing-dependent claim.
+
+- **"I missed it"** invalidates the measurement and discards everything the
+  attempt wrote. This is the load-bearing rule: a missed movement mark must
+  never read as "movement did not occur", and a missed T1 must never read as
+  "the image was never correct".
+- **Undo** is offered only while the next physical event has not happened yet.
+  After the fact, undoing could not recover the original moment, so the UI
+  offers a retry instead of manufacturing precision.
+- **Retry** re-sends the identical experiment — same content, same parameters —
+  as a new attempt. A retry repeats a measurement; a variant changes a
+  controlled variable. Reports preserve that distinction.
+- Persistent retransmission always needs an intentional tap. The retry
+  confirmation is a sentence, not the full pre-transfer warning, because it is
+  the same already-understood test. There is no automatic retry loop.
+
+A **readiness step** precedes transmission so the user is already looking at the
+panel when timing starts, and an optional vibration cue at T0 is
+feature-detected and silent on failure — the observation never depends on it.
+The expected image, the timer and the event buttons stay in one viewport.
+
+Aggregation across attempts is a range and a median. Two or three human
+observations do not justify more, and pretending otherwise would reintroduce
+the false precision this model exists to avoid.
+
+## Create
+
+Four creator panels rendered at once, so a phone showed four sets of controls,
+four previews and four Send buttons for one task. Selecting the content type
+first leaves one set of controls, the preview they affect, and one primary
+Send. A locked type explains itself where it was selected and offers the single
+test that unlocks it.
+
+## Responsive
+
+Mobile is the design target; desktop is designed rather than stretched. From
+48rem, observation becomes master/detail (visual left, question right). From
+60rem, Investigate and Create become two-column with secondary sections
+spanning. Verified at 360×780, 390×844, 768×1024 and 1440×900.
+
+## Defects found by visual inspection
+
+Each of these was invisible in the source and obvious in the rendered page:
+
+- Grid children default to `min-width: auto`, so the 320px zone map pushed the
+  guided dialog wider than the phone. The dialog, body and observation grids
+  now use `minmax(0, 1fr)` and the map canvas fills its container, so the
+  percentage-positioned overlay lines up exactly.
+- The dialog close control was 21×26 CSS px and sat 9px past the right edge of
+  a 360px viewport, because the title block would not shrink.
+- Choice answers had no active state at all — only yes/no/unsure were styled —
+  so a selected colour looked unselected.
+- The orientation raster previewed as solid black, because the region diagram
+  painted only regions carrying a raw word. Diagnostics now declare their own
+  preview.
+- The superseded `.secondary-section` rule was still wrapping every disclosure
+  in its own rounded container underneath the new divider treatment.
+- The colour test asked about high-nibble zones that only exist when those
+  bands are actually sent, so the store now drops questions whose zone is not
+  part of the run being observed.
