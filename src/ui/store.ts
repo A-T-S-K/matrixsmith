@@ -212,6 +212,8 @@ export interface GuidedFlowState {
   readonly stepIndex: number;
   /** Within OBSERVE: watching the timed event, or answering the follow-up questions. */
   readonly observeStage: "timing" | "questions";
+  /** How the question stage renders, once any timing is done. */
+  readonly questionPresentation: "spatial" | "simple";
   // ---- human-timed attempts ----
   readonly attempts: readonly AttemptView[];
   readonly attemptNumber: number;
@@ -1008,9 +1010,9 @@ export class MatrixStore {
     if (!profile || operation.type !== "ShowDiagnostic") return { previews: [], regions: [] };
     try {
       const built = diagnosticContent(operation.diagnosticId).build(profile, operation.parameters);
-      const regions = built.regions.map((region) => regionView(region));
-      const previews = built.regions.length > 0 ? [regionPreviewFrame(profile.width, profile.height, built.regions)] : [diagnosticAnimation(profile.width, profile.height).frames[0]!];
-      return { previews, regions };
+      // The diagnostic itself declares what the panel should show; the UI
+      // never re-derives it, so About and OBSERVE always preview the actual run.
+      return { previews: [built.preview], regions: built.regions.map((region) => regionView(region)) };
     } catch {
       return { previews: [], regions: [] };
     }
@@ -1162,9 +1164,16 @@ export class MatrixStore {
     // A timed test watches first and asks afterwards; everything else is
     // already in its questions stage the moment the transfer lands.
     const observeStage: "timing" | "questions" = flow.timerSpec && !flow.timerStopped ? "timing" : "questions";
+    // The quantity worth summarising is the DERIVED visible static hold —
+    // how long the finished image stayed put — measured between the two human
+    // marks, never the raw elapsed time since the upload.
     const holds = flow.attempts
       .filter((attempt) => attempt.validity === "valid")
-      .map((attempt) => attempt.marks.find((mark) => mark.event.startsWith("movement"))?.elapsedMs)
+      .map((attempt) => {
+        const visible = attempt.marks.find((mark) => mark.event === "visible")?.elapsedMs;
+        const ended = attempt.marks.find((mark) => mark.event.startsWith("movement"))?.elapsedMs;
+        return visible !== undefined && ended !== undefined ? Math.max(0, ended - visible) : undefined;
+      })
       .filter((value): value is number => value !== undefined);
     const aggregate = aggregateAttemptDurations(holds);
     return {
@@ -1179,6 +1188,7 @@ export class MatrixStore {
       result: flow.result,
       nextTest: flow.stage === "result" ? recommendationView(this.controller.recommendations()[0] ?? null) : null,
       presentation: flow.presentation, steps, stepIndex, observeStage,
+      questionPresentation: steps.some((step) => step.regionId !== null) ? "spatial" : "simple",
       attempts: flow.attempts.map((attempt) => ({
         attemptNumber: attempt.attemptNumber, validity: attempt.validity,
         invalidationReason: attempt.invalidationReason, parameters: attempt.parameters,
@@ -1276,8 +1286,11 @@ function recommendationView(recommendation: Recommendation | null): Recommendati
  * plain list.
  */
 function presentationFor(test: { readonly observation: readonly ObservationFieldSpec[]; readonly timer?: unknown }): ObservationPresentation {
-  if (test.observation.some((spec) => spec.regionId !== undefined)) return "spatial";
+  // A measured timeline dominates: the physical event happens once and cannot
+  // wait for a question to be answered first. Region-linked follow-up
+  // questions still get the spatial treatment once the timing is captured.
   if (test.timer) return "timed";
+  if (test.observation.some((spec) => spec.regionId !== undefined)) return "spatial";
   return "simple";
 }
 
@@ -1299,34 +1312,6 @@ function regionView(region: DiagnosticRegion): DiagnosticRegionView {
     expected: region.technical.expectedUnderHypothesis ?? null,
     technicalNotes: region.technical.notes ?? [],
   };
-}
-
-/**
- * Position diagram for raw-word diagnostics. RGB444-predictable words render
- * their hypothesized color; unknown words render mid-gray — the diagram
- * shows POSITIONS, it never promises what an unknown word will look like.
- */
-function regionPreviewFrame(width: number, height: number, regions: readonly DiagnosticRegion[]): Framebuffer {
-  const frame = new Framebuffer(width, height);
-  frame.clear();
-  for (const region of regions) {
-    if (region.technical.rawWord === undefined) continue;
-    const { r, g, b } = regionDiagramColor(region.technical.rawWord);
-    for (let x = region.x; x < Math.min(width, region.x + region.width); x += 1) {
-      for (let y = region.y; y < Math.min(height, region.y + region.height); y += 1) frame.setPixel(x, y, r, g, b);
-    }
-  }
-  return frame;
-}
-
-function regionDiagramColor(rawWord: number): { r: number; g: number; b: number } {
-  const highNibble = (rawWord >> 12) & 0x0f;
-  const r = ((rawWord >> 8) & 0x0f) * 17;
-  const g = ((rawWord >> 4) & 0x0f) * 17;
-  const b = (rawWord & 0x0f) * 17;
-  if (highNibble !== 0 && r === 0 && g === 0 && b === 0) return { r: 120, g: 120, b: 120 };
-  if (rawWord === 0x0004) return { r: 0, g: 0, b: 68 };
-  return { r, g, b };
 }
 
 export function useMatrixSnapshot(store: MatrixStore): AppSnapshot { return useSyncExternalStore(store.subscribe, store.getSnapshot); }

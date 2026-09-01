@@ -10,6 +10,7 @@ import { decodeCoolLedUxNotification } from "./notifications";
 import { COOLLEDUX_OPCODES, encodeBrightness, encodeDeviceInfoQuery, encodePower } from "./protocol";
 import { compileAnimation, compileAnimationStaticFrame, compileGif, compileGraffitiFrame, type CompiledProgram } from "./content";
 import { diagnosticContent, type BuiltDiagnosticContent } from "./diagnostics";
+import type { DiagnosticRegion } from "../../investigation/regions";
 import { coolLedUxGuidedTests } from "./guided-tests";
 import { coolLedUxBaselineClaimEvidence } from "./claims";
 import type { RasterStrategy } from "../../core/raster-strategy";
@@ -32,6 +33,7 @@ export const coolLedUxDriver: MatrixDriver = {
   decodeNotification: decodeCoolLedUxNotification,
   responseMatches: notificationMatchesExpectation,
   guidedTests: coolLedUxGuidedTests,
+  diagnosticRegions: coolLedUxDiagnosticRegions,
   claimEvidence: coolLedUxBaselineClaimEvidence,
 };
 
@@ -206,4 +208,11 @@ function assertGeometry(width: number, height: number, profile: DeviceProfile): 
   if (width !== profile.width || height !== profile.height) {
     throw new Error(`Content is ${width}×${height} but the ${profile.id} profile is ${profile.width}×${profile.height}. Content builders must derive dimensions from the DeviceProfile.`);
   }
+}
+
+/** The labelled zones of a diagnostic operation, or none for other operations. */
+function coolLedUxDiagnosticRegions(operation: MatrixOperation, profile: DeviceProfile): readonly DiagnosticRegion[] {
+  if (operation.type !== "ShowDiagnostic") return [];
+  try { return diagnosticContent(operation.diagnosticId).build(profile, operation.parameters).regions; }
+  catch { return []; }
 }

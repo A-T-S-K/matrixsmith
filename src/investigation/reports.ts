@@ -6,7 +6,9 @@ import { CLAIM_DEFINITIONS, operationalTrust, resolveClaims, type ClaimEvidence,
 import type { CompletedGuidedTest, Investigation } from "./investigation";
 import type { GuidedTestDefinition } from "./tests";
 import { formatDuration, observationValueSummary, type ObservationValue } from "./observations";
+import { approximateSeconds, describeAttempt } from "./timing";
 import type { Recommendation } from "./recommendations";
+import type { DiagnosticRegion } from "./regions";
 import { evaluateStaticViability, MINIMUM_STATIC_HOLD_MS } from "./static-viability";
 
 /**
@@ -35,6 +37,8 @@ export interface TestReportInput {
   readonly compilation: ContentCompilationRecord | null;
   readonly decoder: NotificationDecoder | null;
   readonly nextRecommendation: Recommendation | null;
+  /** Labelled zones of this test's diagnostic, so observations name a place. */
+  readonly regions?: readonly DiagnosticRegion[];
 }
 
 const SCOPE_LABEL: Readonly<Record<ClaimEvidence["scope"], string>> = {
@@ -67,7 +71,11 @@ export function generateTestReport(input: TestReportInput): string {
   section("Automatic observations", automaticObservationsText(input));
   const timing = physicalTimingText(completed, input.transactions);
   if (timing) section("Physical timing", timing);
-  section("Physical observations", listOrNone(completed.observations.map((value) => observationValueSummary(test.observation.find((spec) => spec.id === value.fieldId), value))));
+  section("Physical observations", listOrNone(completed.observations.map((value) => {
+    const spec = test.observation.find((candidate) => candidate.id === value.fieldId);
+    const region = spec?.regionId ? input.regions?.find((candidate) => candidate.id === spec.regionId) : undefined;
+    return observationValueSummary(spec, value, region?.displayLabel);
+  })));
   section("Result", `**${completed.status.toUpperCase()}** — ${completed.summary}`);
   section("What this establishes", listOrNone(completed.established));
   section("What this rejects", listOrNone(completed.rejected));
@@ -91,6 +99,8 @@ export interface InvestigationReportInput {
   readonly compilations: readonly ContentCompilationRecord[];
   readonly nextRecommendation: Recommendation | null;
   readonly driverCandidates: readonly { readonly driverId: string; readonly score: number; readonly reasons: readonly string[]; readonly contradictions: readonly string[] }[];
+  /** Labelled zones per test id, so observations name a place rather than repeat a prompt. */
+  readonly regionsByTest?: ReadonlyMap<string, readonly DiagnosticRegion[]>;
 }
 
 export function generateInvestigationReport(input: InvestigationReportInput): string {
@@ -122,7 +132,7 @@ export function generateInvestigationReport(input: InvestigationReportInput): st
   section("Controls", claimText(["brightness.control", "power.control"]));
   section("Persistence / recovery", claimText(["power-cycle.persistence", "recovery.manual-reset"]));
   section("Tests performed", listOrNone((investigation?.completedTests ?? []).map((test) => `${test.completedAt} — ${test.title} (\`${test.testId}\`): ${test.status.toUpperCase()} — ${test.summary}${test.parameters ? ` [${Object.entries(test.parameters).map(([key, value]) => `${key}=${String(value)}`).join(", ")}]` : ""}`)));
-  section("Structured physical observations", structuredObservationsText(investigation, input.tests));
+  section("Structured physical observations", structuredObservationsText(investigation, input.tests, input.regionsByTest ?? new Map()));
   section("Claims and confidence", claimsTable(claims, allEvidence));
   section("Evidence trust and conflicts", trustAndConflictsText(allEvidence));
   section("Rejected hypotheses", listOrNone(claims.filter((claim) => claim.status === "rejected").map((claim) => formatClaim(claim))));
@@ -242,7 +252,11 @@ function staticStrategyAssessmentText(evidence: readonly ClaimEvidence[], invest
       const t2 = measuredObservationMs(run.observations, "movement-start");
       const end = measuredObservationMs(run.observations, "observation-end");
       const hold = t1 !== null && t2 !== null ? t2 - t1 : t1 !== null && end !== null ? end - t1 : null;
-      lines.push(`- stayTime=${run.parameters?.stayTime ?? "?"} (${run.status}): render latency ${t1 !== null ? formatDuration(t1) : "not measured"}; visible static hold ${hold !== null ? formatDuration(Math.max(0, hold)) : "not measured"}; movement ${t2 !== null ? `began at +${formatDuration(t2)}` : end !== null ? "not observed within the window" : "not measured"}.`);
+      // The comparison is between VALID attempts only; a discarded human
+      // measurement must never dilute or contradict what a good one showed.
+      const attempts = run.attempts ?? [];
+      const discarded = attempts.filter((attempt) => attempt.validity !== "valid").length;
+      lines.push(`- stayTime=${run.parameters?.stayTime ?? "?"} (${run.status}): render latency ${t1 !== null ? approximateSeconds(t1) : "not measured"}; visible static hold ${hold !== null ? approximateSeconds(Math.max(0, hold)) : "not measured"}; movement ${t2 !== null ? `began at +${approximateSeconds(t2)}` : end !== null ? "not observed within the window" : "not measured"}.${discarded > 0 ? ` ${discarded} invalid attempt(s) excluded from this conclusion.` : ""}`);
     }
   }
   return lines.join("\n").trimEnd();
@@ -260,15 +274,29 @@ function physicalTimingText(completed: CompletedGuidedTest, transactions: readon
   if (t1 === null && t2 === null && end === null) return null;
   const relevant = transactions.filter((transaction) => completed.transactionIds.includes(transaction.id));
   const finalWrite = relevant.flatMap((transaction) => transaction.packets.filter((packet) => packet.direction === "TX")).map((packet) => packet.hostAcceptedAt ?? packet.timestamp).sort().at(-1) ?? null;
+  const attempts = completed.attempts ?? [];
+  const invalid = attempts.filter((attempt) => attempt.validity !== "valid");
   return [
+    "**Transport event (automatically measured)**",
     `- Upload final write accepted (T0): ${finalWrite ?? "not captured"}`,
-    ...(t1 !== null ? [`- Full raster visible (T1): +${formatDuration(t1)}`] : []),
-    ...(t2 !== null ? [`- Movement began (T2): +${formatDuration(t2)}`] : []),
-    ...(end !== null ? [`- Observation ended, still static: +${formatDuration(end)}`] : []),
-    ...(t1 !== null ? [`- Render latency (T1 − T0): ${formatDuration(t1)}`] : []),
-    ...(t1 !== null && t2 !== null ? [`- Visible static hold (T2 − T1): ${formatDuration(Math.max(0, t2 - t1))}`] : []),
-    ...(t1 !== null && t2 === null && end !== null ? [`- Visible static hold (still static at stop): ${formatDuration(Math.max(0, end - t1))}`] : []),
-    "- Measurement basis: MatrixSmith timer. T0 is the final host-accepted transport write; human-observed display timing above is distinct from the per-packet transport timing in the transactions/forensic appendix.",
+    "",
+    "**Physical observation (human observed)**",
+    ...(t1 !== null ? [`- Full raster visible (T1): +${formatDuration(t1)} — ${approximateSeconds(t1)}, human observed`] : []),
+    ...(t2 !== null ? [`- Movement began (T2): +${formatDuration(t2)} — ${approximateSeconds(t2)}, human observed`] : []),
+    ...(end !== null ? [`- Observation ended, still static: +${formatDuration(end)} — ${approximateSeconds(end)}, human observed`] : []),
+    "",
+    "**Derived**",
+    ...(t1 !== null ? [`- Render latency (T1 − T0): ${approximateSeconds(t1)} (exact ${formatDuration(t1)})`] : []),
+    ...(t1 !== null && t2 !== null ? [`- Visible static hold (T2 − T1): ${approximateSeconds(Math.max(0, t2 - t1))} (exact ${formatDuration(Math.max(0, t2 - t1))})`] : []),
+    ...(t1 !== null && t2 === null && end !== null ? [`- Visible static hold (still static at stop): ${approximateSeconds(Math.max(0, end - t1))} (exact ${formatDuration(Math.max(0, end - t1))})`] : []),
+    "",
+    // T0 comes off the transport and is precise within that model. T1/T2 are
+    // a person watching a panel and tapping a phone; reporting them to the
+    // millisecond as though a sensor caught the transition would overstate
+    // what was actually measured.
+    "- Measurement basis: T0 is the final host-accepted transport write, measured automatically. T1 and T2 are human observations and carry human reaction delay — the approximate values are the honest reading, and the exact marks are retained for forensic use. Per-packet transport timing lives in the transactions/forensic appendix.",
+    ...(attempts.length > 0 ? ["", `**Attempts (${attempts.length}; ${attempts.length - invalid.length} valid)**`, ...attempts.flatMap((attempt) => describeAttempt(attempt).map((line) => `- ${line}`))] : []),
+    ...(invalid.length > 0 ? ["", "Invalid attempts are recorded above for completeness. They establish nothing about the hardware: a missed or mistimed mark means the measurement failed, not that the display behaved differently."] : []),
   ].join("\n");
 }
 
@@ -345,12 +373,16 @@ function automaticObservationsText(input: TestReportInput): string {
   return lines.join("\n");
 }
 
-function structuredObservationsText(investigation: Investigation | null, tests: readonly GuidedTestDefinition[]): string {
+function structuredObservationsText(investigation: Investigation | null, tests: readonly GuidedTestDefinition[], regionsByTest: ReadonlyMap<string, readonly DiagnosticRegion[]>): string {
   const completed = investigation?.completedTests ?? [];
   if (completed.length === 0) return "None recorded.";
   return completed.map((test) => {
     const definition = tests.find(({ id }) => id === test.testId);
-    return [`### ${test.title}`, "", ...test.observations.map((value) => `- ${observationValueSummary(definition?.observation.find((spec) => spec.id === value.fieldId), value)}`)].join("\n");
+    return [`### ${test.title}`, "", ...test.observations.map((value) => {
+      const spec = definition?.observation.find((candidate) => candidate.id === value.fieldId);
+      const region = spec?.regionId ? regionsByTest.get(test.testId)?.find((candidate) => candidate.id === spec.regionId) : undefined;
+      return `- ${observationValueSummary(spec, value, region?.displayLabel)}`;
+    })].join("\n");
   }).join("\n\n");
 }
 

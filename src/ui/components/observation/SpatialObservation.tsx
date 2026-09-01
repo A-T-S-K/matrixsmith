@@ -19,6 +19,17 @@ export function SpatialObservation({ flow, store }: { readonly flow: GuidedFlowS
   const frame = flow.previews[0];
   const region = step?.regionId ? regions.find((entry) => entry.id === step.regionId) ?? null : null;
   const answered = new Set(flow.steps.filter((entry) => entry.answered && entry.regionId).map((entry) => entry.regionId!));
+  const referenced = new Set(flow.steps.map((entry) => entry.regionId).filter((id): id is string => id !== null));
+  // Show only the zones this question is actually about. A grouped region
+  // ("the four sections", "the joins") brings its group and nothing else;
+  // an ungrouped set shows all its zones so the numbering stays orienting.
+  // With no active region there is nothing to annotate, so the pattern is
+  // shown plain rather than covered in labels the question does not use.
+  const visibleRegions = region
+    ? region.groupId
+      ? regions.filter((entry) => entry.groupId === region.groupId)
+      : regions.filter((entry) => referenced.has(entry.id) && !entry.groupId)
+    : [];
   const spatialSteps = flow.steps.filter((entry) => entry.regionId);
   const positionInSpatial = step?.regionId ? spatialSteps.findIndex((entry) => entry.spec.id === step.spec.id) + 1 : 0;
   const isLast = flow.stepIndex >= flow.steps.length - 1;
@@ -27,15 +38,15 @@ export function SpatialObservation({ flow, store }: { readonly flow: GuidedFlowS
     {frame && <div class="spatial-visual">
       <RegionMap
         frame={frame}
-        regions={regions}
+        regions={visibleRegions}
         activeRegionId={region?.id ?? null}
         answeredRegionIds={answered}
-        onSelect={(regionId) => store.focusRegion(regionId)}
+        onSelect={visibleRegions.length > 1 ? (regionId) => store.focusRegion(regionId) : undefined}
         label={region ? `Diagnostic pattern, ${region.displayLabel} highlighted` : "Diagnostic pattern"}
       />
     </div>}
     <div class="spatial-question">
-      {positionInSpatial > 0 && <p class="step-counter">Zone {positionInSpatial} of {spatialSteps.length}</p>}
+      {positionInSpatial > 0 && <p class="step-counter">Step {positionInSpatial} of {spatialSteps.length}</p>}
       {region && <>
         <h3 id={`region-${region.id}`}>{region.displayLabel}</h3>
         <p class="region-purpose">{region.description}</p>

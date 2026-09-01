@@ -473,6 +473,15 @@ export class MatrixController {
     return driver.guidedTests(profile);
   }
 
+  /** Labelled zones of a guided test's resolved diagnostic, via its driver. */
+  guidedTestRegions(testId: string): readonly import("../investigation/regions").DiagnosticRegion[] {
+    const driver = this.session.selection?.selected;
+    const profile = this.session.profile;
+    if (!driver?.diagnosticRegions || !profile) return [];
+    try { return driver.diagnosticRegions(this.guidedTestOperation(testId), profile); }
+    catch { return []; }
+  }
+
   guidedTests(): readonly GuidedTestAvailability[] {
     const evidence = [...this.baselineClaimEvidence(), ...(this.#investigation?.claimEvidence ?? [])];
     const completed = this.#investigation?.completedTests.map((test) => test.testId) ?? [];
@@ -660,6 +669,7 @@ export class MatrixController {
       device: this.#deviceReportContext(), test, completed, priorEvidence,
       why: test.about.whyRelevant, transactions: this.#transactions, compilation,
       decoder: this.#notificationDecoder(), nextRecommendation: this.recommendations()[0] ?? null,
+      regions: this.guidedTestRegions(testId),
     });
   }
 
@@ -674,6 +684,7 @@ export class MatrixController {
       compilations: this.#contentCompilations,
       nextRecommendation: this.recommendations()[0] ?? null,
       driverCandidates: this.session.selection?.matches ?? [],
+      regionsByTest: new Map(this.guidedTestDefinitions().map((test) => [test.id, this.guidedTestRegions(test.id)])),
     });
   }
 

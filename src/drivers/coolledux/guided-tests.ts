@@ -134,7 +134,7 @@ const STATIC_TIMELINE: GuidedTestTimer = {
   phases: [
     {
       id: "visible",
-      prompt: "MatrixSmith's timer is running. Tap the moment the COMPLETE image is visible.",
+      prompt: "Tap the moment the complete image is visible.",
       fieldId: "image-visible",
       eventLabel: "Full image is visible now",
       eventSets: [{ fieldId: "initial-correct", value: "yes" }],
@@ -143,7 +143,7 @@ const STATIC_TIMELINE: GuidedTestTimer = {
     },
     {
       id: "movement",
-      prompt: "The complete image is visible. Watch it carefully and tap the instant anything shifts.",
+      prompt: "Watch it. Tap the instant anything moves.",
       fieldId: "movement-start",
       eventLabel: "Movement started",
       eventSets: [{ fieldId: "moved", value: "yes" }],
@@ -311,7 +311,7 @@ const graffitiTimingTest: GuidedTestDefinition = {
   about: {
     question: "Does a static image stay still on this display, and if not, exactly when does it start moving?",
     whyRelevant: "The static-image raster previously rendered correctly and then began moving in a cycle. Measuring the onset precisely is the best evidence for what triggers it.",
-    whatMatrixSmithDoes: "Uploads a deterministic high-contrast raster with the baseline playback bytes, then starts a stopwatch the moment the final program packet is accepted. Tap the button as soon as movement starts — MatrixSmith records the exact elapsed time.",
+    whatMatrixSmithDoes: "Uploads a deterministic high-contrast raster with the baseline playback bytes, then starts timing the moment the final program packet is accepted. Your taps are recorded as human observations, so the durations they produce are approximate.",
     whatChangesOnDevice: "The stored display program is replaced with the diagnostic raster.",
     estimatedObservationTime: "Watch for up to 15–20 seconds.",
     possibleOutcomes: [
@@ -319,7 +319,7 @@ const graffitiTimingTest: GuidedTestDefinition = {
       { outcome: "Movement starts after a measurable delay", learns: "The measured onset points at a playback parameter (like stayTime) as the trigger." },
       { outcome: "The image is wrong from the start", learns: "The problem is rendering, not playback timing." },
     ],
-    observeInstructions: "Follow the timer prompts: tap when the full image is visible, then tap the instant anything shifts — or stop once it has stayed completely still for 15 seconds.",
+    observeInstructions: "Tap when the full image is visible, then tap the instant anything moves — or stop once it has stayed completely still for 15 seconds.",
     technicalDetails: [
       "Graffiti stored program, mode=0, speed=0, stayTime=3 — the exact baseline that previously exhibited movement.",
       "The stopwatch starts at the final host-accepted write; the recorded duration is measured by MatrixSmith, not estimated later.",

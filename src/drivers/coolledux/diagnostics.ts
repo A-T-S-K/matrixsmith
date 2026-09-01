@@ -1,5 +1,6 @@
 import { compileAnimationStaticFrame, compileGraffitiFrame, compileGraffitiRawWords, compileAnimationRawWords, type CompiledProgram } from "./content";
 import { orientationPattern } from "../../render/patterns";
+import { Framebuffer } from "../../render/framebuffer";
 import { rawWordHex, type DiagnosticRegion } from "../../investigation/regions";
 
 /**
@@ -29,6 +30,14 @@ export interface DiagnosticParameter {
 
 export interface BuiltDiagnosticContent {
   readonly compiled: CompiledProgram;
+  /**
+   * What the panel is expected to show, for host-side preview only.
+   *
+   * Raw-word probes render their encoded words directly, with words whose
+   * meaning is unknown drawn mid-gray: the preview shows POSITIONS and never
+   * promises what an unprobed value will physically look like.
+   */
+  readonly preview: Framebuffer;
   readonly contentType: "graffiti" | "animation";
   readonly frameCount: number;
   readonly regions: readonly DiagnosticRegion[];
@@ -91,6 +100,30 @@ export function pixelChannelZoneId(word: number): string {
   return zone.id;
 }
 
+/**
+ * Host preview of an encoded raw-word buffer. Words the current hypothesis
+ * predicts render their predicted colour; a word with high-nibble bits and no
+ * RGB content renders mid-gray, because claiming it will be dark would be
+ * exactly the assumption these probes exist to test.
+ */
+function rawWordPreview(words: Uint16Array, width: number, height: number): Framebuffer {
+  const frame = new Framebuffer(width, height);
+  frame.clear();
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const word = words[y * width + x] ?? 0;
+      const r = ((word >> 8) & 0x0f) * 17;
+      const g = ((word >> 4) & 0x0f) * 17;
+      const b = (word & 0x0f) * 17;
+      const highNibble = (word >> 12) & 0x0f;
+      if (highNibble !== 0 && r === 0 && g === 0 && b === 0) frame.setPixel(x, y, 120, 120, 120);
+      else if (word === 0x0004) frame.setPixel(x, y, 0, 0, 68);
+      else frame.setPixel(x, y, r, g, b);
+    }
+  }
+  return frame;
+}
+
 function requireParameter(definition: DiagnosticContentDefinition, parameters: Readonly<Record<string, number>> | undefined, id: string): number {
   const spec = definition.parameters.find((parameter) => parameter.id === id);
   if (!spec) throw new Error(`Diagnostic ${definition.id} has no parameter ${id}.`);
@@ -146,6 +179,7 @@ const graffitiBlackProbe: DiagnosticContentDefinition = {
     }
     return {
       compiled: compileGraffitiRawWords(words, width, height, { mode: 0, speed: 0, stayTime: 3 }),
+      preview: rawWordPreview(words, width, height),
       contentType: "graffiti", frameCount: 1, regions,
       playback: { mode: 0, speed: 0, stayTime: 3 },
     };
@@ -220,6 +254,7 @@ const graffitiTimingProbe: DiagnosticContentDefinition = {
     const frame = orientationPattern(profile.width, profile.height);
     return {
       compiled: compileGraffitiFrame(frame, 8, { mode: 0, speed: 0, stayTime }),
+      preview: frame,
       contentType: "graffiti", frameCount: 1, regions: orientationRegions(profile.width, profile.height),
       playback: { mode: 0, speed: 0, stayTime },
     };
@@ -243,6 +278,7 @@ const animationStaticRaster: DiagnosticContentDefinition = {
     const delayMs = 1000;
     return {
       compiled: compileAnimationStaticFrame(frame, frames === 1 ? "single" : "identical-pair", delayMs),
+      preview: frame,
       contentType: "animation", frameCount: frames, regions: orientationRegions(profile.width, profile.height),
       frameDelaysMs: Array.from({ length: frames }, () => delayMs),
     };
@@ -298,6 +334,7 @@ const pixelChannelProbe: DiagnosticContentDefinition = {
     });
     return {
       compiled: compileAnimationRawWords([words], [60000], width, height),
+      preview: rawWordPreview(words, width, height),
       contentType: "animation", frameCount: 1, regions,
       frameDelaysMs: [60000],
     };
@@ -371,6 +408,7 @@ const colorWhiteProbe: DiagnosticContentDefinition = {
     }
     return {
       compiled: compileAnimationRawWords([words], [60000], width, height),
+      preview: rawWordPreview(words, width, height),
       contentType: "animation", frameCount: 1, regions,
       frameDelaysMs: [60000],
     };

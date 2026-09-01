@@ -75,6 +75,12 @@ export interface MatrixDriver {
   probes?(context: DriverContext): readonly DriverProbe[];
   /** Driver-contributed guided hardware tests (ABOUT → RUN → OBSERVE → RESULT workflows). */
   guidedTests?(profile: DeviceProfile): readonly import("../investigation/tests").GuidedTestDefinition[];
+  /**
+   * Human-facing regions of a diagnostic operation, so questions that name a
+   * region can be labelled for people — in the UI and in reports — without
+   * either layer knowing anything driver-specific.
+   */
+  diagnosticRegions?(operation: MatrixOperation, profile: DeviceProfile): readonly import("../investigation/regions").DiagnosticRegion[];
   /** Baseline atomic-claim evidence this driver ships for a profile. */
   claimEvidence?(profile: DeviceProfile): readonly import("../investigation/claims").ClaimEvidence[];
   plan(operation: MatrixOperation, context: DriverContext): TransmissionPlan;

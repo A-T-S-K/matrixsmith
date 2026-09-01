@@ -87,9 +87,12 @@ describe("investigation report content", () => {
     expect(report).toContain("## Physical timing");
     expect(report).toContain("Full raster visible (T1): +00:01.4");
     expect(report).toContain("Movement began (T2): +00:04.7");
-    expect(report).toContain("Render latency (T1 − T0): 00:01.4");
-    expect(report).toContain("Visible static hold (T2 − T1): 00:03.2");
-    expect(report).toContain("Measurement basis: MatrixSmith timer");
+    expect(report).toContain("Render latency (T1 − T0): ~1.4 s (exact 00:01.4)");
+    expect(report).toContain("Visible static hold (T2 − T1): ~3.2 s (exact 00:03.2)");
+    // T0 is automatic; T1/T2 are human taps and must be reported as such.
+    expect(report).toContain("Transport event (automatically measured)");
+    expect(report).toContain("Physical observation (human observed)");
+    expect(report).toContain("human reaction delay");
   }, 30000);
 
   it("compares stayTime runs side by side once both exist", async () => {

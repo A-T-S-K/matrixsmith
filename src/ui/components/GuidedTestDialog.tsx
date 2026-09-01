@@ -2,7 +2,6 @@ import type { JSX } from "preact";
 import { useState } from "preact/hooks";
 import type { AppSnapshot, GuidedFlowState, MatrixStore } from "../store";
 import { FramePreview } from "./FramePreview";
-import { RegionMap } from "./RegionMap";
 import { StatusBadge } from "./StatusBadge";
 import { SpatialObservation } from "./observation/SpatialObservation";
 import { TimedObservation } from "./observation/TimedObservation";
@@ -109,14 +108,12 @@ function ObserveStage({ flow, store }: { flow: GuidedFlowState; store: MatrixSto
   if (flow.awaitingRetryConfirmation) return <RetryConfirmation flow={flow} store={store}/>;
   const timing = flow.presentation === "timed" && flow.observeStage === "timing";
   return <>
-    {timing
-      ? <TimedObservation flow={flow} store={store}/>
-      : flow.presentation === "spatial"
+    {timing ? <TimedObservation flow={flow} store={store}/> : <>
+      {flow.presentation === "timed" && <TimingRecap flow={flow} store={store}/>}
+      {flow.questionPresentation === "spatial"
         ? <SpatialObservation flow={flow} store={store}/>
-        : <>
-          {flow.presentation === "timed" && <TimingRecap flow={flow} store={store}/>}
-          <SimpleObservation flow={flow} store={store}/>
-        </>}
+        : <SimpleObservation flow={flow} store={store}/>}
+    </>}
     <div class="observe-footer">
       <button class="quiet small" onClick={() => store.abandonGuidedTest()}>Stop observation and save as incomplete</button>
       <p class="fineprint">The diagnostic content was already sent to the display; stopping records this test as incomplete evidence rather than discarding it.</p>
@@ -126,22 +123,15 @@ function ObserveStage({ flow, store }: { flow: GuidedFlowState; store: MatrixSto
 
 /** After a timed run: what was captured, and the option to measure again. */
 function TimingRecap({ flow, store }: { flow: GuidedFlowState; store: MatrixStore }): JSX.Element {
-  const frame = flow.previews[0];
   return <div class="timing-recap">
     <div class="timing-recap-head">
       <div>
         <p class="panel-kicker">TIMING CAPTURED</p>
-        {flow.timingSummary && <strong>{flow.timingSummary} visible before movement</strong>}
+        {flow.timingSummary && <strong>Stayed still for {flow.timingSummary}</strong>}
       </div>
       <button class="secondary small" onClick={() => store.requestTimingRetry()}>Measure again</button>
     </div>
-    {frame && flow.regions.length > 0 && <RegionMap
-      frame={frame}
-      regions={flow.regions.filter((region) => flow.steps.some((step) => step.regionId === region.id || (region.groupId && flow.regions.some((peer) => peer.id === step.regionId && peer.groupId === region.groupId))))}
-      activeRegionId={flow.steps[flow.stepIndex]?.regionId ?? null}
-      label="The image the display should be showing"
-    />}
-    <p class="fineprint">Your marks are recorded as human observations, so the durations are approximate. A few questions about what you saw remain.</p>
+    <p class="fineprint">Your marks are recorded as human observations, so these durations are approximate. A few questions about what you saw remain.</p>
   </div>;
 }
 

@@ -45,8 +45,17 @@ export type ObservationValue =
   | { readonly kind: "number"; readonly fieldId: string; readonly value: number; readonly note?: string }
   | { readonly kind: "note"; readonly fieldId: string; readonly text: string };
 
-export function observationValueSummary(spec: ObservationFieldSpec | undefined, value: ObservationValue): string {
-  const prompt = spec?.prompt ?? value.fieldId;
+/**
+ * One observation as a report line.
+ *
+ * `regionLabel` matters: prompts for spatial questions are deliberately short
+ * ("What color is this zone?") because the UI shows which zone. A report has
+ * no map, so the human zone name is prepended — otherwise every zone in an
+ * eleven-zone test would read identically.
+ */
+export function observationValueSummary(spec: ObservationFieldSpec | undefined, value: ObservationValue, regionLabel?: string): string {
+  const basePrompt = spec?.prompt ?? value.fieldId;
+  const prompt = regionLabel ? `${regionLabel} — ${basePrompt}` : basePrompt;
   switch (value.kind) {
     case "boolean": return `${prompt}: ${value.value}${value.note ? ` — ${value.note}` : ""}`;
     case "choice": {
