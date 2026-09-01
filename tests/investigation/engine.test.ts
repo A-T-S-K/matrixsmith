@@ -124,6 +124,9 @@ describe("guided test engine", () => {
     expect(controller.investigation).toBeNull();
     expect(claimStatus(controller, "static.strategy")).toBe("verified");
     expect(controller.staticViability().selected).toBe("animation-single-frame");
+    // …and normal content actually compiles through it.
+    const plan = controller.plan({ type: "ShowFrame", frame: (await import("../../src/render/patterns")).orientationPattern(32, 16) });
+    expect(plan.metadata.rasterStrategy).toBe("animation-single-frame");
   }, 30000);
 
   it("rejects the white-channel hypothesis when every high-nibble patch is off", async () => {

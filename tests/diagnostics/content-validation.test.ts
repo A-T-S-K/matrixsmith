@@ -72,7 +72,9 @@ describe("guided static-frame validation workflow", () => {
     const { controller } = await liveController();
     await controller.runContentValidation("coolledux-validate-static-frame", { confirmedConsequence: true });
     const record = controller.contentCompilations[0];
-    expect(record?.contentType).toBe("graffiti");
+    // The legacy validation workflow sends a ShowFrame, which now routes
+    // through the profile's preferred static strategy like any other frame.
+    expect(record?.contentType).toBe("animation");
     expect(record?.width).toBe(32);
     expect(record?.height).toBe(16);
     expect(record?.tileCount).toBe(4);

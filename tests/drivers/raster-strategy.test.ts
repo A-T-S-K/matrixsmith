@@ -11,10 +11,18 @@ const fingerprint = knownIledHatFingerprint();
 const frame = orientationPattern(32, 16);
 
 describe("raster strategy routing", () => {
-  it("defaults ShowFrame to the graffiti strategy", () => {
+  it("routes ShowFrame through the profile's own preferred strategy", () => {
+    // No session evidence: the characterized profile's preference decides,
+    // and on this panel Graffiti was physically ruled out.
     const plan = coolLedUxDriver.plan({ type: "ShowFrame", frame }, { profile: iledHat31aeProfile, fingerprint, source: "live" });
+    expect(plan.metadata.rasterStrategy).toBe("animation-single-frame");
+    expect(plan.metadata.contentType).toBe("animation");
+  });
+
+  it("falls back to graffiti only for a profile with no resolved preference", () => {
+    const unresolved = { ...iledHat31aeProfile, id: "coolledux-unresolved", quirks: COOLLEDUX_DEFAULT_QUIRKS };
+    const plan = coolLedUxDriver.plan({ type: "ShowFrame", frame }, { profile: unresolved, fingerprint, source: "live" });
     expect(plan.metadata.rasterStrategy).toBe("graffiti");
-    expect(plan.metadata.contentType).toBe("graffiti");
   });
 
   it("routes ShowFrame through a validated animation-single-frame strategy", () => {

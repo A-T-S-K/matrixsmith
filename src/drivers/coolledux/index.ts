@@ -106,17 +106,47 @@ export function createCoolLedUxPlan(operation: MatrixOperation, context: DriverC
  * come from the profile; nothing assumes 64x16 or a global 32x16.
  */
 /**
- * Compile a static raster through the session's delivery strategy. The
- * default remains Graffiti, but a session that physically validated an
- * Animation-based strategy routes images and text through it instead —
- * "ShowFrame" no longer hardwires one content opcode.
+ * Which strategy a static raster is delivered through.
+ *
+ * Precedence, strongest first:
+ *
+ *   1. a strategy this session physically validated,
+ *   2. the profile's own preferred strategy, once its evidence resolved one,
+ *   3. Graffiti, the upstream default, for profiles with no preference.
+ *
+ * Step 2 is the one that was missing. Falling straight through to Graffiti
+ * meant a panel whose profile says "Graffiti physically does not hold a still
+ * image here, use one-frame Animation" still had every normal image and every
+ * line of text compiled through Graffiti until somebody re-ran the guided
+ * characterization. A profile fact is not worth shipping if normal use does
+ * not consult it.
  */
-function compileStaticRaster(frame: Framebuffer, strategy: RasterStrategy | undefined, context: DriverContext): { compiled: CompiledProgram; strategy: RasterStrategy } {
-  const selected = strategy ?? "graffiti";
+function selectStaticStrategy(context: DriverContext): RasterStrategy {
+  if (context.rasterStrategy) return context.rasterStrategy;
+  const preferred = context.profile.quirks?.preferredRasterStrategy;
+  if (preferred && preferred !== "unresolved") return preferred;
+  return "graffiti";
+}
+
+/**
+ * How a logical black pixel is written on the Graffiti path.
+ *
+ * Session evidence wins, then the profile's own observed semantics, then the
+ * conservative inherited 0x0004 workaround. Requiring a current-session
+ * observation to use a fact the profile already ships meant a characterized
+ * panel had the workaround applied to it anyway — writing a visibly dim blue
+ * where the user asked for black.
+ */
+function graffitiBlackFor(context: DriverContext): import("../../core/quirks").BlackSemantics | null {
+  return context.resolvedBehavior?.graffitiBlack ?? context.profile.quirks?.graffitiBlack ?? null;
+}
+
+function compileStaticRaster(frame: Framebuffer, context: DriverContext): { compiled: CompiledProgram; strategy: RasterStrategy } {
+  const selected = selectStaticStrategy(context);
   switch (selected) {
     case "animation-single-frame": return { compiled: compileAnimationStaticFrame(frame, "single"), strategy: selected };
     case "animation-identical-frames": return { compiled: compileAnimationStaticFrame(frame, "identical-pair"), strategy: selected };
-    case "graffiti": return { compiled: compileGraffitiFrame(frame, undefined, {}, context.resolvedBehavior?.graffitiBlack ?? null), strategy: selected };
+    case "graffiti": return { compiled: compileGraffitiFrame(frame, undefined, {}, graffitiBlackFor(context)), strategy: selected };
   }
 }
 
@@ -131,7 +161,7 @@ function createContentPlan(operation: Extract<MatrixOperation, { type: "ShowFram
   switch (operation.type) {
     case "ShowFrame": {
       assertGeometry(operation.frame.width, operation.frame.height, profile);
-      const routed = compileStaticRaster(operation.frame, context.rasterStrategy, context);
+      const routed = compileStaticRaster(operation.frame, context);
       compiled = routed.compiled;
       rasterStrategyUsed = routed.strategy;
       contentType = routed.strategy === "graffiti" ? "graffiti" : "animation";
@@ -141,7 +171,7 @@ function createContentPlan(operation: Extract<MatrixOperation, { type: "ShowFram
     case "ShowText": {
       if (!operation.frame) throw new Error("ShowText needs a locally rendered Framebuffer; the native text content path is not the primary route.");
       assertGeometry(operation.frame.width, operation.frame.height, profile);
-      const routed = compileStaticRaster(operation.frame, context.rasterStrategy, context);
+      const routed = compileStaticRaster(operation.frame, context);
       compiled = routed.compiled;
       rasterStrategyUsed = routed.strategy;
       contentType = "text";

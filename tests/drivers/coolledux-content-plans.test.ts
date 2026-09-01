@@ -16,7 +16,10 @@ describe("CoolLEDUX content plans", () => {
     expect(plan.persistence).toBe("persistent");
     expect(plan.validation).toBe("experimental");
     expect(plan.packets.length).toBeGreaterThan(2);
-    expect(plan.metadata.contentType).toBe("graffiti");
+    // The characterized profile routes normal static content through
+    // one-frame Animation; Graffiti was physically ruled out on this panel.
+    expect(plan.metadata.contentType).toBe("animation");
+    expect(plan.metadata.rasterStrategy).toBe("animation-single-frame");
     expect(plan.metadata.tileCount).toBe(4);
     expect(plan.metadata.chunkCount).toBe(plan.packets.length - 1);
     expect(plan.recoveryNotes.join(" ")).toContain("replaces the stored display program");
