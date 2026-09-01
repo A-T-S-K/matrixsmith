@@ -36,6 +36,7 @@ import { rankRecommendations, type Recommendation } from "../investigation/recom
 import { generateForensicAppendix, generateInvestigationReport, generateTestReport } from "../investigation/reports";
 import { allContentGates, contentPathGate, type ContentGate, type ContentPathId } from "../investigation/gating";
 import { evaluateStaticViability, type StaticViabilityAssessment } from "../investigation/static-viability";
+import { resolveSessionBehavior } from "../investigation/session-behavior";
 
 export class MatrixController {
   readonly session = new MatrixSession();
@@ -213,7 +214,11 @@ export class MatrixController {
     const fingerprint = this.session.fingerprint;
     const profile = this.session.profile;
     if (!driver || !fingerprint || !profile) throw new Error("A non-ambiguous driver and profile are required to create a plan.");
-    const plan = driver.plan(operation, { profile, fingerprint, source: this.session.source, ...(this.session.validatedRasterStrategy ? { rasterStrategy: this.session.validatedRasterStrategy } : {}) });
+    const plan = driver.plan(operation, {
+      profile, fingerprint, source: this.session.source,
+      ...(this.session.validatedRasterStrategy ? { rasterStrategy: this.session.validatedRasterStrategy } : {}),
+      resolvedBehavior: resolveSessionBehavior(this.allClaimEvidence()),
+    });
     this.trace.record("tx.plan.created", { planId: plan.id, operation: operation.type, packetCount: plan.packets.length });
     return plan;
   }

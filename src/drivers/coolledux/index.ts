@@ -107,12 +107,12 @@ export function createCoolLedUxPlan(operation: MatrixOperation, context: DriverC
  * Animation-based strategy routes images and text through it instead —
  * "ShowFrame" no longer hardwires one content opcode.
  */
-function compileStaticRaster(frame: Framebuffer, strategy: RasterStrategy | undefined): { compiled: CompiledProgram; strategy: RasterStrategy } {
+function compileStaticRaster(frame: Framebuffer, strategy: RasterStrategy | undefined, context: DriverContext): { compiled: CompiledProgram; strategy: RasterStrategy } {
   const selected = strategy ?? "graffiti";
   switch (selected) {
     case "animation-single-frame": return { compiled: compileAnimationStaticFrame(frame, "single"), strategy: selected };
     case "animation-identical-frames": return { compiled: compileAnimationStaticFrame(frame, "identical-pair"), strategy: selected };
-    case "graffiti": return { compiled: compileGraffitiFrame(frame), strategy: selected };
+    case "graffiti": return { compiled: compileGraffitiFrame(frame, undefined, {}, context.resolvedBehavior?.graffitiBlack ?? null), strategy: selected };
   }
 }
 
@@ -127,7 +127,7 @@ function createContentPlan(operation: Extract<MatrixOperation, { type: "ShowFram
   switch (operation.type) {
     case "ShowFrame": {
       assertGeometry(operation.frame.width, operation.frame.height, profile);
-      const routed = compileStaticRaster(operation.frame, context.rasterStrategy);
+      const routed = compileStaticRaster(operation.frame, context.rasterStrategy, context);
       compiled = routed.compiled;
       rasterStrategyUsed = routed.strategy;
       contentType = routed.strategy === "graffiti" ? "graffiti" : "animation";
@@ -137,7 +137,7 @@ function createContentPlan(operation: Extract<MatrixOperation, { type: "ShowFram
     case "ShowText": {
       if (!operation.frame) throw new Error("ShowText needs a locally rendered Framebuffer; the native text content path is not the primary route.");
       assertGeometry(operation.frame.width, operation.frame.height, profile);
-      const routed = compileStaticRaster(operation.frame, context.rasterStrategy);
+      const routed = compileStaticRaster(operation.frame, context.rasterStrategy, context);
       compiled = routed.compiled;
       rasterStrategyUsed = routed.strategy;
       contentType = "text";

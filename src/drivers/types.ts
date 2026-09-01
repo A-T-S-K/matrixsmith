@@ -25,6 +25,12 @@ export interface DriverContext {
    * instead of hardcoding one content opcode.
    */
   readonly rasterStrategy?: import("../core/raster-strategy").RasterStrategy;
+  /**
+   * Behavior established by trusted current-session physical evidence (see
+   * investigation/session-behavior.ts). Consulted beside the immutable
+   * profile quirks during content compilation.
+   */
+  readonly resolvedBehavior?: import("../investigation/session-behavior").SessionResolvedBehavior;
 }
 
 export interface DriverNotificationContext {

@@ -1,7 +1,7 @@
 import type { Framebuffer } from "../../render/framebuffer";
 import type { FrameSequence } from "../../render/frame-sequence";
 import { buildAnnouncePacket, buildDataChunkPackets, crc32Custom, lzssCompress, lzssCompressSafe, UX_CHUNK_DELAY_MS, UX_PACKAGE_SIZE, type DataChunk } from "./wire";
-import { encodeFrameRegion } from "./pixels";
+import { encodeFrameRegion, offColorForBehavior } from "./pixels";
 
 /**
  * CoolLEDUX stored-program content builders: Graffiti (static raw-pixel
@@ -174,9 +174,10 @@ export interface GraffitiPlaybackOptions {
  * Playback options default to the upstream-used values (mode=0, speed=0,
  * stayTime=3); diagnostics may vary exactly one at a time.
  */
-export function compileGraffitiFrame(frame: Framebuffer, tileWidth = DEFAULT_TILE_WIDTH, playback: GraffitiPlaybackOptions = {}): CompiledProgram {
+export function compileGraffitiFrame(frame: Framebuffer, tileWidth = DEFAULT_TILE_WIDTH, playback: GraffitiPlaybackOptions = {}, graffitiBlack?: import("../../core/quirks").BlackSemantics | null): CompiledProgram {
+  const off = offColorForBehavior("graffiti", graffitiBlack);
   const segments = tileColumns(frame.width, tileWidth).map((tile) =>
-    graffitiSegment(encodeFrameRegion(frame, tile.startColumn, tile.width, "graffiti"), tile.width, frame.height, { startColumn: tile.startColumn, ...playback }));
+    graffitiSegment(encodeFrameRegion(frame, tile.startColumn, tile.width, "graffiti", off), tile.width, frame.height, { startColumn: tile.startColumn, ...playback }));
   return compileProgram(segments, "lzss-safe", tileWidth);
 }
 

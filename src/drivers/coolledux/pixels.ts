@@ -49,6 +49,20 @@ export function offColorFor(path: ContentPath): Uint8Array {
   return path === "graffiti" ? PIXEL_OFF_COLOR : ANIMATION_OFF_COLOR;
 }
 
+/**
+ * Off-color selection honoring session-resolved black semantics. The
+ * conservative default (inherited 0x0004 workaround) applies until trusted
+ * current-session evidence establishes this exact device's behavior:
+ * true-black permits literal 0x0000; a directly observed white sentinel
+ * keeps (or sets) its workaround word.
+ */
+export function offColorForBehavior(path: ContentPath, black: import("../../core/quirks").BlackSemantics | null | undefined): Uint8Array {
+  if (path !== "graffiti" || !black) return offColorFor(path);
+  if (black.state === "true-black") return Uint8Array.of(0x00, 0x00);
+  if (black.state === "white-sentinel") return Uint8Array.of((black.workaroundWord >> 8) & 0xff, black.workaroundWord & 0xff);
+  return offColorFor(path);
+}
+
 function isOff(pixel: Rgb): boolean {
   // A pixel every channel of which collapses to 0 through the transfer curve
   // is "off"; encoding it literally would hit the Graffiti white sentinel.
@@ -60,9 +74,9 @@ function isOff(pixel: Rgb): boolean {
  * RGB444 pixel stream used by Graffiti/Animation segments: for x in
  * startColumn..startColumn+width, for y in 0..height, two bytes per pixel.
  */
-export function encodeFrameRegion(frame: Framebuffer, startColumn: number, width: number, path: ContentPath): Uint8Array {
+export function encodeFrameRegion(frame: Framebuffer, startColumn: number, width: number, path: ContentPath, offOverride?: Uint8Array): Uint8Array {
   if (startColumn < 0 || startColumn + width > frame.width) throw new RangeError("Region is outside the framebuffer.");
-  const off = offColorFor(path);
+  const off = offOverride ?? offColorFor(path);
   const out = new Uint8Array(width * frame.height * 2);
   let offset = 0;
   for (let x = startColumn; x < startColumn + width; x += 1) {
