@@ -45,3 +45,12 @@ Choose the least risky transient/read-only experiment supported by provenance. C
 After repeated reviewed hardware evidence, promote the specific profile capability from unverified to experimental to verified. Do not promote the entire family or other profiles by association.
 
 Persistent content operations are supported through a dedicated path: declare the plan `persistent`, attach compiler metadata and per-packet `delayAfterMs` pacing (the executor owns timing), and route live sends through `sendPersistentContent`, which enforces a single-use explicit consequence confirmation. Pair each new persistent capability with a guided validation workflow (`src/diagnostics/validation.ts`) so the first hardware run records structured evidence. Destructive, reset, password, storage erase, OTA, and firmware operations remain blocked and require dedicated policy work. MatrixSmith must not acquire an arbitrary live writer as a reverse-engineering shortcut.
+
+## 9. Contribute guided tests and claims (2026-08-31 revision)
+
+Beyond capabilities and probes, a driver contributes:
+
+- `claimEvidence(profile)` — baseline atomic-claim evidence with honest scopes (`built-in-profile` for facts physically observed on that exact hardware, `source-reference` for upstream-only behavior).
+- `guidedTests(profile)` — `GuidedTestDefinition`s: a user-language title and question, claim prerequisites, a fixed deterministic operation (usually `ShowDiagnostic` with a declared content id and enumerated parameters), structured observation specs, an optional stopwatch, and a conservative `interpret()` that turns observations into claim updates plus establishes/rejects/unknowns. The engine, dialog, recommendation ranking, support map, and reports all render from the definition — no view or recommendation edits are needed for a new test.
+- Fixed diagnostic content builders (e.g. `src/drivers/coolledux/diagnostics.ts`) for any raw-word patterns a test needs. Diagnostic content must be fully determined by the definition: enumerate every allowed parameter value and never expose arbitrary bytes or pixel words.
+- Structured profile quirks (`src/core/quirks.ts`) instead of `if (profile.id === …)` conditionals, with every uncertain field spelled `unknown`.

@@ -38,3 +38,15 @@ Stored-program uploads replace the display's stored content; MatrixSmith never p
 Execution results keep three claims separate: browser/host acceptance, a matching protocol notification, and independently verified device state. Brightness echo establishes protocol acceptance; a following device-info readback can establish the resulting raw brightness.
 
 The experimental unlock is memory-only and clears on disconnect or reload. It cannot bypass driver intent, validation, risk, source, confidence, or endpoint checks.
+
+## Path-specific content gating (2026-08-31 revision)
+
+The broad static-frame gate is replaced by per-path gates derived from atomic claims (`src/investigation/gating.ts`):
+
+- text / image → require `stored-program.upload` and a validated `static.strategy`
+- animation → require verified `animation.frames`, `animation.timing`, `animation.tile-sync`
+- GIF → require verified `gif.playback` on this device
+
+Only `current-session` or `built-in-profile` verification satisfies a gate; previous local sessions and imported evidence inform the investigation but never unlock sends, and a current-session rejection overrides built-in verification. An inconclusive Graffiti validation cannot unlock unrelated content, and a successful Animation never silently proves Graffiti.
+
+Guided hardware tests transmit only fixed driver-defined diagnostic programs (`ShowDiagnostic` with declared ids and enumerated parameter values — e.g. stayTime ∈ {3, 0}); there is no general raw writer and no arbitrary raw-word entry. Persistent guided plans keep `maxAttempts: 1` with no retry conditions; a missing receipt notification never triggers automatic persistent retransmission. Local investigation history persists structured evidence only — never experimental unlocks, persistent-send confirmation tokens, safety bypasses, or content binaries.

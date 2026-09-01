@@ -53,3 +53,42 @@ Share-sensitive identifiers (browser opaque device IDs, imported MAC addresses, 
 - **Probes** — `driver.probes(context)` returns read-only semantic identification probes with serializable response expectations.
 - **Diagnostic tools** — named workflows registered in `src/diagnostics/workflows.ts` and executed by `MatrixController.runDiagnostic`, which records steps, transactions, restoration state, and findings.
 - **Support-status evidence** — capability metadata plus session resolution evidence feed the Diagnose matrix and the report's support table and suggested next tests.
+
+---
+
+# The MatrixSmith product model (2026-08-31 revision)
+
+MatrixSmith has three primary user jobs sharing one Investigation engine, presented through a **device-centered** workspace rather than three equal modes:
+
+```text
+HOME
+  ├─ known/usable display  → DEVICE WORKSPACE
+  │     Create (text / image / animation / GIF, preview, per-path Send)
+  │     Controls (brightness; power when validated)
+  │     Troubleshoot entry
+  │     Developer tools → protocol workbench (secondary)
+  └─ unknown/incomplete display → INVESTIGATION WORKSPACE
+        Guided investigation (default)
+        optional protocol workbench
+```
+
+- **Use / Configure / Create** — the Create view. Task-specific settings live beside their task (image fit next to the image preview, text alignment next to text). Send buttons are gated **per content path** (see safety); a normal user never sees FFF0/CRC/LZSS/packets unless they open technical details.
+- **Develop / Characterize** — the Investigate view. Guided investigation is the primary developer experience: MatrixSmith inspects existing evidence, recommends the highest-information safe test, runs it, asks only for physical observations, updates atomic claims, and prepares copyable reports. The protocol workbench is optional and never required to produce complete evidence.
+- **Debug / Troubleshoot** — symptom-first entry ("Content moves unexpectedly", "The colors look wrong", …). A symptom initializes an Investigation goal whose focus claims bias the recommendation engine; the same guided test engine runs from there and produces support-ready reports.
+
+## The critical test loop
+
+Every guided test is one linear mini-flow, while the overall investigation branches through a dynamic claim-derived support map:
+
+```text
+TEST → AUTOMATIC CAPTURE → PHYSICAL OBSERVATION → STRUCTURED FEEDBACK
+     → EVIDENCE UPDATE → CONCLUSION → REPORT → NEXT TEST
+```
+
+`ABOUT` shows the question, why the test is recommended now, what MatrixSmith will do, what changes on the device, safety/consequence, expected observation time, possible outcomes, and collapsible technical details. `RUN` shows semantic progress (never raw BLE logs first). `OBSERVE` asks only what software cannot see, with structured controls — choices, yes/no/unsure, MatrixSmith-measured stopwatch durations, numbers, optional notes — and an on-screen diagram mapping raw-word diagnostic regions to panel positions. `RESULT` states what was established, rejected, and still unknown, what changed in device support, and prominently offers **Copy test report**, **Continue to next test**, and **Stop testing for now** (stopping saves the investigation locally for resume).
+
+Failures are evidence: "the raster rendered, then moved after a measured 3.2 s" is a PARTIAL result that verifies the initial render, rejects playback stability, and advances the investigation — never a bare "Test failed".
+
+## Reporting is part of the flow
+
+Every test result offers a scoped **test report**; every investigation offers the **investigation report** (sufficient for an AI to implement or fix a driver without the chat history), plus the forensic full report and the canonical JSON bundle. The active investigation supplies the report question automatically.

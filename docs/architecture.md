@@ -55,3 +55,27 @@ A driver is a protocol-family implementation such as CoolLEDX or CoolLEDUX. A pr
 Every write starts as a semantic operation. The plan carries identity, purpose, explicit live intent, risk, validation, exact packets, and a serializable notification expectation. The response waiter is armed before BLE write so fast replies are not lost. Host acceptance, matching response, and state verification remain distinct.
 
 See [ADR 0001](adr/0001-driver-oriented-architecture.md).
+
+## Investigation and claims layer (2026-08-31 revision)
+
+```text
+src/investigation/
+  claims.ts           — atomic claim taxonomy, scoped evidence, deterministic resolution
+  observations.ts     — structured observation model (boolean/choice/duration/number/note)
+  investigation.ts    — first-class Investigation object (goal, tests, evidence, stop/resume)
+  tests.ts            — driver-contributed GuidedTestDefinition contract + availability
+  recommendations.ts  — deterministic, inspectable next-test ranking
+  gating.ts           — path-specific content gates derived from claims
+  reports.ts          — test / investigation / forensic report generators
+  legacy-bridge.ts    — legacy validation areas → atomic claim evidence
+```
+
+**Atomic claims** replace the coarse support model. Each claim (`graffiti.black-semantics`, `animation.autonomous-loop`, `power-cycle.persistence`, …) resolves from scoped evidence — `source-reference`, `built-in-profile`, `current-session`, `previous-local-session`, `imported-external` — with higher-authority scope winning and, within a scope, rejection outranking verification. Session observations never rewrite built-in profile facts; one passing sub-question cannot verify a broad parent; a rejected prerequisite blocks a "verified" presentation; autonomous looping is a different claim from power-cycle persistence.
+
+**Drivers contribute** composable providers instead of UI special cases: `capabilities`, `probes`, `guidedTests(profile)`, `claimEvidence(profile)`, diagnostic content builders, and outcome interpreters. The recommendation engine, guided-test dialog, support map, and reports all render generically from those declarations — adding a test or driver edits no view or recommendation conditionals.
+
+**Raster strategy**: `ShowFrame`/`ShowText` route through the session's validated `RasterStrategy` (`graffiti`, `animation-single-frame`, `animation-identical-frames`) rather than hardcoding one content opcode. Built-in profile quirks (`src/core/quirks.ts`) are immutable structured facts with honest unknowns (Graffiti black unknown, white channel unknown, `colorModeRaw=3` unexplained); session evidence selects the current strategy without mutating them.
+
+**Timing and receipts**: the executor records real per-packet write and host-acceptance timestamps plus measured TX gaps (`PacketTiming`); transactions carry them, and `diagnostics/upload-analysis.ts` structurally correlates announce/chunk receipt notifications with transmitted chunks — raw status bytes verbatim, missing receipts reported as observations (never failures, never retries), matching upstream evidence that these notifications are not reliable acknowledgements.
+
+**Local history** (`src/storage/investigations.ts`) persists whitelisted investigation state only; on resume, session evidence is demoted to `previous-local-session` scope so history never bypasses current-session safety gates.

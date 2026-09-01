@@ -38,3 +38,17 @@ Differences by design: MatrixSmith derives every content dimension from the `Dev
 The source documents brightness across raw 0–255. The iLedHat directly verifies `0x40`; `0xCC` was observed in device-info state before the change. Power and mirror remain dry-run-only because external confirmation on another unit does not establish behavior or persistence on this iLedHat.
 
 Password set and OTA remain unimplemented by policy.
+
+## Focused re-inspection (2026-08-31)
+
+A targeted re-read of the pinned commit (`PROTOCOL.md`, `coolledux/content.py`, `coolledux/colors.py`, `coolledux/wire.py`, `coolledux/commands.py`, `coolledux/ble.py`) for the iLedHat characterization phase established, with provenance "documented upstream" unless noted:
+
+- **stayTime**: appears only in the shared segment header layout and as the default `stay_time=3`; no semantics, units, or special values are documented. (Not addressed upstream beyond the layout.)
+- **mode**: mode 0 is called Static and "MUST be 0" for per-pixel color; mode 2 renders shape-only white. Other values untested upstream; per-mode movement is not documented.
+- **speed**: no unit semantics; upstream notes speed appears irrelevant once mode=0.
+- **Upload notifications**: "echoes most commands back, not a reliable per-chunk ack — don't gate retries on it." `send_packets` is fire-and-forget with fixed 60 ms pacing and never subscribes during uploads. No receipt payload format (e.g. `02 00`, `03 00 00 <index> 00`) is documented upstream; MatrixSmith's structural decoding of the physically observed receipts is its own conservative addition.
+- **Animation timing**: 16-bit BE milliseconds per frame; firmware loops forever; ceiling 65535 ms per frame; no loop-count primitive.
+- **Height stride**: firmware assumes a 16-row stride per segment regardless of declared showHeight (hardware-confirmed upstream).
+- **Post-upload latency**: ~16–20 s on-device delay before playback for tens-of-KB programs (upstream observation).
+- **Advertisement/colorMode**: nothing upstream about advertisement layout, colorModeRaw, value 3, RGBW, or a white channel; `light_color_mode_bytes` (13 03) is an unrelated cycling-gradient command.
+- Upstream protocol origin: reverse-engineered from the decompiled `com.jtkj.led1248` Android app (`CoolledUXUtils`); README links the older-generation `coolledx-driver` PyPI project and the author's `esp32-sign-controller` as the only external references.

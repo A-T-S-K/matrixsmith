@@ -48,3 +48,15 @@ Before sharing, review free-form device names, browser device IDs, notes, displa
 ## Useful device-support bundle
 
 From Home choose **Explore unknown BLE device** to open the inspection chooser (the controller accepts extra service UUID hints; a UI field for them is planned), select the device, inspect permitted GATT, perform only explicit reads, subscribe only to intended notify characteristics, reproduce one labeled behavior, add manual observations, and export. State what Chrome could not enumerate. Web Bluetooth reveals only services granted through chooser filters/`optionalServices`; missing services are not evidence that the peripheral lacks them.
+
+## Guided investigation evidence (2026-08-31 revision)
+
+The diagnostic bundle additionally carries the active `investigation` (goal, completed guided tests with structured observations, and session claim evidence). Importing a bundle demotes its current-session claim evidence to `previous-local-session` scope.
+
+Three report formats exist beyond the classic device report:
+
+- **Test report** (`testReportMarkdown`) — one guided test: question, device, existing relevant evidence with scope labels, why the test ran, exact parameters, safety, protocol operation, compiler/transmission summary, automatic observations (receipt correlation and measured timing), structured physical observations, result, establishes/rejects/unknowns, recommended next discriminator, transaction summaries, a few representative packet exemplars (never a full dump), reproduction info, and an explicit AI task.
+- **Investigation report** (`investigationReportMarkdown`) — everything an AI needs to implement or repair support without the chat history: objective, identity, advertisement/GATT, protocol candidates, per-area claim sections (stored programs, tiling/orientation, black/off per content path, channel mapping, color, animation, static, text/image/GIF, controls, persistence/recovery), all tests and observations, a full claims-and-confidence table with scopes, rejected and open hypotheses, quirks-derived limitations, driver/profile recommendations, and an AI task request.
+- **Forensic appendix** (`forensicReportMarkdown`) — every packet with real per-write timestamps, measured gaps, host-acceptance times, and receipt/timing analysis per stored-program upload.
+
+Stored-program receipts decode structurally (`program-announce-receipt`, `program-chunk-receipt` with `statusRaw` and a structural `chunkIndex`). Status `0x00` is reported as a raw byte observed alongside physically successful uploads — never labeled "success" — and a missing receipt is never treated as a transmission failure or a retry trigger.
