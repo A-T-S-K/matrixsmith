@@ -301,3 +301,38 @@ main { width: min(1200px, 100%); margin: 0 auto; padding: 0 1rem 2rem; }
 .program-summary dt { color: #7ea0bd; font-size: .66rem; text-transform: uppercase; letter-spacing: .08em; }
 .program-summary dd { margin: 0; }
 .packet-collection > summary { cursor: pointer; color: #9fb3c8; font-size: .78rem; padding: .35rem 0; }
+
+/* ---- Guided investigation ---- */
+.stage-steps { display: flex; gap: .5rem; list-style: none; padding: 0; margin: .5rem 0 0; }
+.stage-steps li { font-size: .68rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: #5b7186; padding: .2rem .6rem; border: 1px solid #1c3043; border-radius: 99px; }
+.stage-steps li.active { color: #99f6e4; border-color: #5eead4aa; background: #5eead411; }
+.stage-steps li.done { color: #86efac; border-color: #22c55e55; }
+.guided-question { font-size: 1.02rem; }
+.guided-progress { display: flex; align-items: center; gap: .6rem; font-weight: 650; }
+.spinner { width: 1rem; height: 1rem; border: 2px solid #1c3043; border-top-color: #5eead4; border-radius: 50%; animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.timer-panel { text-align: center; padding: 1rem; }
+.timer-panel .big-value { font-variant-numeric: tabular-nums; font-size: 2rem; display: block; margin: .4rem 0 .7rem; }
+.timer-panel .inline-form { justify-content: center; }
+.choice-buttons { flex-wrap: wrap; }
+.choice-buttons button.active { background: #5eead422; border-color: #5eead4; color: #99f6e4; }
+.result-actions { flex-wrap: wrap; }
+.symptom-grid { grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr)); }
+.symptom-card { text-align: left; padding: .8rem 1rem; border: 1px solid #1c3043; border-radius: .7rem; background: #0a1524; color: #cfe3f5; font-size: .85rem; }
+.symptom-card:hover { border-color: #5eead4aa; }
+.claim-grid { grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr)); }
+.claim-glyph { width: 1.1rem; text-align: center; font-weight: 800; }
+.claim-verified .claim-glyph { color: #86efac; }
+.claim-rejected .claim-glyph { color: #fca5a5; }
+.claim-unresolved .claim-glyph { color: #fcd34d; }
+.claim-unknown .claim-glyph, .claim-source-supported .claim-glyph { color: #5b7186; }
+.resume-panel { border-color: #5eead455; }
+.more-tools { margin-top: 1.4rem; }
+.more-tools > summary { cursor: pointer; color: #9fb3c8; font-weight: 650; margin-bottom: .8rem; }
+.tool-kind.core { background: #22c55e1c; color: #86efac; }
+.tool-kind.recommended { background: #5eead41c; color: #99f6e4; }
+.tool-kind.advanced { background: #a78bfa1c; color: #c4b5fd; }
+.tool-kind.optional { background: #16283a; color: #5b7186; }
+.sidebar nav button.secondary-nav { opacity: .75; }
+.nav-note { display: block; font-size: .6rem; color: #5b7186; letter-spacing: .06em; }
+.guided-dialog .validation-questions input, .guided-dialog .validation-questions textarea { width: 100%; margin-top: .35rem; }

@@ -16,6 +16,17 @@ import { renderText, scrollOffsets } from "../render/font";
 import { diagnosticAnimation } from "../render/patterns";
 import { decodeImageFile, readGifMetadata, type FitMode } from "../render/image";
 import { DEFAULT_CONTENT_SETTINGS, loadContentSettings, saveContentSettings, type ContentSettings } from "../storage/settings";
+import type { ClaimState } from "../investigation/claims";
+import type { ContentGate, ContentPathId } from "../investigation/gating";
+import type { CompletedGuidedTest, SymptomId } from "../investigation/investigation";
+import { SYMPTOM_LABELS } from "../investigation/investigation";
+import type { GuidedTestAbout, GuidedTestTimer } from "../investigation/tests";
+import type { ObservationFieldSpec, ObservationValue } from "../investigation/observations";
+import { observationsComplete } from "../investigation/observations";
+import type { Recommendation } from "../investigation/recommendations";
+import { RASTER_STRATEGY_LABELS } from "../core/raster-strategy";
+import { diagnosticContent, type DiagnosticRegion } from "../drivers/coolledux/diagnostics";
+import { forgetInvestigationHistory, latestInvestigationFor, saveInvestigation, toHistoricalInvestigation } from "../storage/investigations";
 
 export type WorkspaceView = "control" | "diagnose" | "develop";
 export type TransactionFilter = "all" | "txrx" | "queries" | "probes" | "diagnostics" | "errors";
@@ -59,10 +70,106 @@ export interface AppSnapshot {
   readonly validationFlow: ValidationFlowState | null;
   readonly validations: readonly import("../diagnostics/validation").SessionValidationResult[];
   readonly contentCompilations: readonly import("../diagnostics/content-evidence").ContentCompilationRecord[];
+  // ---- Guided investigation ----
+  readonly claimGroups: readonly ClaimGroupView[];
+  readonly contentGates: Readonly<Record<ContentPathId, ContentGate>>;
+  readonly investigation: InvestigationSummaryView | null;
+  readonly guidedTests: readonly GuidedTestView[];
+  readonly nextTest: RecommendationView | null;
+  readonly guidedFlow: GuidedFlowState | null;
+  readonly storedInvestigation: StoredInvestigationView | null;
+  readonly rasterStrategyLabel: string | null;
+  readonly symptoms: readonly { readonly id: SymptomId; readonly label: string }[];
+}
+
+export interface ClaimGroupView {
+  readonly category: "core" | "content" | "optional";
+  readonly label: string;
+  readonly claims: readonly ClaimRowView[];
+}
+
+export interface ClaimRowView {
+  readonly id: string;
+  readonly label: string;
+  readonly status: ClaimState["status"];
+  readonly glyph: string;
+  readonly evidence: string;
+  readonly scopeLabel: string | null;
+}
+
+export interface InvestigationSummaryView {
+  readonly id: string;
+  readonly goalLabel: string;
+  readonly status: "active" | "stopped";
+  readonly completedTests: readonly CompletedGuidedTest[];
+}
+
+export interface GuidedTestView {
+  readonly id: string;
+  readonly title: string;
+  readonly question: string;
+  readonly category: string;
+  readonly estimatedObservationTime: string;
+  readonly available: boolean;
+  readonly reason: string | null;
+  readonly lastStatus: CompletedGuidedTest["status"] | null;
+}
+
+export interface RecommendationView {
+  readonly testId: string;
+  readonly title: string;
+  readonly description: string;
+  readonly why: string;
+  readonly estimatedObservationTime: string;
+  readonly risk: string;
+  readonly category: string;
+}
+
+export interface StoredInvestigationView {
+  readonly savedAt: string;
+  readonly deviceName: string | null;
+  readonly goalLabel: string;
+  readonly testCount: number;
+  readonly matchesProfile: boolean;
+}
+
+export interface DiagnosticRegionView {
+  readonly label: string;
+  readonly rawWordHex: string;
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+  readonly expected: string | null;
+}
+
+export type GuidedFlowStage = "about" | "running" | "observe" | "result";
+
+export interface GuidedFlowState {
+  readonly testId: string;
+  readonly title: string;
+  readonly stage: GuidedFlowStage;
+  readonly about: GuidedTestAbout;
+  readonly consequence: string;
+  readonly category: string;
+  readonly risk: string;
+  readonly planSummary: { readonly packetCount: number; readonly programBytes: number; readonly chunkCount: number; readonly crc32: string; readonly pacingMs: number } | null;
+  readonly previews: readonly Framebuffer[];
+  readonly regions: readonly DiagnosticRegionView[];
+  readonly observationSpecs: readonly ObservationFieldSpec[];
+  readonly values: Readonly<Record<string, ObservationValue>>;
+  readonly observationsReady: boolean;
+  readonly timerSpec: GuidedTestTimer | null;
+  readonly timerElapsedMs: number | null;
+  readonly timerStopped: boolean;
+  readonly transferProgress: string | null;
+  readonly transactionIds: readonly string[];
+  readonly result: CompletedGuidedTest | null;
+  readonly nextTest: RecommendationView | null;
 }
 
 export interface ContentState {
-  /** Live content sends require a passed static-frame validation this session. */
+  /** True when at least one content path is unlocked; per-path gates live in snapshot.contentGates. */
   readonly allowed: boolean;
   readonly allowedReason: string;
   readonly settings: ContentSettings;
@@ -186,7 +293,9 @@ export class MatrixStore {
       await this.controller.connect(mode, serviceHints);
       await this.controller.enableDriverNotifications().catch(() => undefined);
       this.#page = "workspace";
-      this.#view = mode === "registered" ? "diagnose" : "develop";
+      // Known/usable displays open the Device Workspace; unknown or
+      // incomplete hardware naturally enters the guided investigation.
+      this.#view = mode === "inspection" ? "develop" : this.controller.session.selection?.selected ? "control" : "diagnose";
       this.#info = "Display connected. Review the recommended next action.";
     });
   }
@@ -279,25 +388,25 @@ export class MatrixStore {
 
   // ---- Persistent content sends (explicit consequence confirmation) ----
 
-  requestSendText(): void { this.#requestContentSend("Send rendered text", () => {
+  requestSendText(): void { this.#requestContentSend("Send rendered text", "text", () => {
     const profile = this.#requireProfile();
     const frame = this.#renderTextFrame(profile.width, profile.height);
     if (!frame) throw new Error("Enter text before sending.");
     return { plan: this.controller.plan({ type: "ShowText", text: this.#settings.text, frame }), preview: frame, extras: { textContent: this.#settings.text, textRendering: "local bitmap renderer (embedded 5x7 font)" } };
   }); }
 
-  requestSendImage(): void { this.#requestContentSend("Send image", () => {
+  requestSendImage(): void { this.#requestContentSend("Send image", "image", () => {
     const image = this.#imageState;
     if (!image) throw new Error("Choose an image first.");
     return { plan: this.controller.plan({ type: "ShowFrame", frame: image.preview }), preview: image.preview, extras: { sourceDimensions: `${image.sourceWidth}×${image.sourceHeight}`, fitMode: image.fitMode } };
   }); }
 
-  requestSendAnimation(): void { this.#requestContentSend("Send animation", () => {
+  requestSendAnimation(): void { this.#requestContentSend("Send animation", "animation", () => {
     const sequence = this.#buildAnimationSequence();
     return { plan: this.controller.plan({ type: "ShowAnimation", sequence }), preview: sequence.frames[0] ?? null };
   }); }
 
-  requestSendGif(): void { this.#requestContentSend("Send GIF", () => {
+  requestSendGif(): void { this.#requestContentSend("Send GIF", "gif", () => {
     const profile = this.#requireProfile();
     const bytes = this.#gifBytes;
     const meta = this.#gifState;
@@ -320,10 +429,12 @@ export class MatrixStore {
     this.#emit();
   }
 
-  #requestContentSend(label: string, build: () => { plan: TransmissionPlan; preview: Framebuffer | null; extras?: Record<string, string> }): void {
+  #requestContentSend(label: string, path: ContentPathId, build: () => { plan: TransmissionPlan; preview: Framebuffer | null; extras?: Record<string, string> }): void {
     this.#error = null;
     try {
-      if (!this.#contentAllowed().allowed) throw new Error("Content sends are gated until the static framebuffer validation passes on this session. Run it from Diagnose.");
+      if (!this.#liveResolved()) throw new Error("Live content requires a connected, identified physical display.");
+      const gate = this.controller.contentGate(path);
+      if (!gate.allowed) throw new Error(gate.reason);
       const { plan, preview, extras } = build();
       this.#pendingSend = {
         plan,
@@ -410,6 +521,212 @@ export class MatrixStore {
 
   closeValidation(): void { this.#validationFlow = null; this.#emit(); }
 
+  // ---- Guided investigation flow ---------------------------------------
+
+  #guidedFlow: {
+    testId: string; title: string; stage: GuidedFlowStage;
+    about: GuidedTestAbout; consequence: string; category: string; risk: string;
+    planSummary: GuidedFlowState["planSummary"];
+    previews: Framebuffer[]; regions: DiagnosticRegionView[];
+    observationSpecs: ObservationFieldSpec[]; values: Record<string, ObservationValue>;
+    timerSpec: GuidedTestTimer | null; finalWriteAcceptedAt: string | null; timerStopped: boolean;
+    startedAt: string; transferProgress: string | null; transactionIds: string[];
+    result: CompletedGuidedTest | null;
+  } | null = null;
+  #timerInterval: ReturnType<typeof setInterval> | null = null;
+
+  startTroubleshoot(symptomId: SymptomId): void {
+    this.controller.startInvestigation({ kind: "troubleshoot", symptomId, description: SYMPTOM_LABELS[symptomId] });
+    this.#view = "diagnose";
+    this.#info = "Troubleshooting started. MatrixSmith picked the highest-information next test for this symptom.";
+    this.#persistInvestigation();
+    this.#emit();
+  }
+
+  startDevelopInvestigation(): void {
+    this.controller.ensureInvestigation();
+    this.#view = "diagnose";
+    this.#emit();
+  }
+
+  stopInvestigation(): void {
+    this.controller.stopActiveInvestigation();
+    this.#persistInvestigation();
+    this.#info = "Investigation saved locally. Copy the investigation report, or resume any time.";
+    this.#emit();
+  }
+
+  resumeStoredInvestigation(): void {
+    const stored = latestInvestigationFor(this.controller.session.profile?.id ?? null);
+    if (!stored) { this.#error = "No stored investigation found for this display."; this.#emit(); return; }
+    this.controller.adoptInvestigation(toHistoricalInvestigation(stored.investigation));
+    this.#page = "workspace";
+    this.#view = "diagnose";
+    this.#info = "Previous investigation resumed. Its evidence is labeled as a previous local session and does not bypass current-session safety gates.";
+    this.#emit();
+  }
+
+  forgetLocalHistory(): void {
+    forgetInvestigationHistory();
+    this.#info = "Local investigation/device history forgotten.";
+    this.#emit();
+  }
+
+  async reconnectAuthorized(deviceId: string): Promise<void> {
+    await this.#run("Reconnecting display…", async () => {
+      try {
+        await this.controller.reconnectAuthorized(deviceId);
+      } catch {
+        // Chooser fallback: never make success depend on getDevices().
+        await this.controller.connect();
+      }
+      await this.controller.enableDriverNotifications().catch(() => undefined);
+      this.#page = "workspace";
+      this.#view = this.controller.session.selection?.selected ? "control" : "diagnose";
+      this.#info = "Display connected.";
+    });
+  }
+
+  startGuidedTest(testId: string): void {
+    this.#error = null;
+    try {
+      const test = this.controller.guidedTest(testId);
+      const availability = this.controller.guidedTests().find((entry) => entry.test.id === testId);
+      if (availability && !availability.available) throw new Error(availability.reason ?? "This test's prerequisites are not met.");
+      const plan = this.controller.planGuidedTest(testId);
+      const { previews, regions } = this.#guidedTestVisuals(test.operation);
+      this.#guidedFlow = {
+        testId, title: test.title, stage: "about",
+        about: test.about, consequence: test.consequence, category: test.category, risk: test.risk,
+        planSummary: {
+          packetCount: plan.packets.length,
+          programBytes: typeof plan.metadata.programBytes === "number" ? plan.metadata.programBytes : 0,
+          chunkCount: typeof plan.metadata.chunkCount === "number" ? plan.metadata.chunkCount : 0,
+          crc32: typeof plan.metadata.crc32 === "string" ? plan.metadata.crc32 : "unknown",
+          pacingMs: typeof plan.metadata.pacingMs === "number" ? plan.metadata.pacingMs : 0,
+        },
+        previews, regions,
+        observationSpecs: [...test.observation], values: {},
+        timerSpec: test.timer ?? null, finalWriteAcceptedAt: null, timerStopped: false,
+        startedAt: new Date().toISOString(), transferProgress: null, transactionIds: [],
+        result: null,
+      };
+    } catch (error) {
+      this.#error = error instanceof Error ? error.message : String(error);
+    }
+    this.#emit();
+  }
+
+  async confirmGuidedTransfer(): Promise<void> {
+    const flow = this.#guidedFlow;
+    if (!flow || flow.stage !== "about") return;
+    flow.stage = "running";
+    flow.transferProgress = `Uploading diagnostic program (${flow.planSummary?.packetCount ?? "?"} packets at ${flow.planSummary?.pacingMs ?? "?"} ms pacing)…`;
+    await this.#run("Transferring diagnostic content…", async () => {
+      const { transactionIds, finalWriteAcceptedAt } = await this.controller.runGuidedTestTransfer(flow.testId, { confirmedConsequence: true });
+      flow.transactionIds = [...transactionIds];
+      flow.finalWriteAcceptedAt = finalWriteAcceptedAt;
+      flow.stage = "observe";
+      flow.transferProgress = null;
+      if (flow.timerSpec && finalWriteAcceptedAt) this.#startTimerTicks();
+      this.#info = "Diagnostic content transferred. Watch the physical panel now.";
+    });
+    if (flow.stage === "running") { flow.stage = "about"; flow.transferProgress = null; }
+    this.#emit();
+  }
+
+  /** Record the stopwatch: movement observed now, or an explicit still-unchanged stop. */
+  recordGuidedTimer(kind: "event" | "still"): void {
+    const flow = this.#guidedFlow;
+    if (!flow?.timerSpec || !flow.finalWriteAcceptedAt || flow.timerStopped) return;
+    const elapsed = Math.max(0, Date.now() - Date.parse(flow.finalWriteAcceptedAt));
+    flow.values[flow.timerSpec.fieldId] = { kind: "duration", fieldId: flow.timerSpec.fieldId, milliseconds: elapsed, measuredBy: "matrixsmith-timer", ...(kind === "still" ? { note: "no movement observed within this measured period" } : {}) };
+    flow.values.moved = { kind: "boolean", fieldId: "moved", value: kind === "event" ? "yes" : "no" };
+    flow.timerStopped = true;
+    this.#stopTimerTicks();
+    this.#emit();
+  }
+
+  setGuidedObservation(value: ObservationValue): void {
+    const flow = this.#guidedFlow;
+    if (!flow) return;
+    flow.values[value.fieldId] = value;
+    this.#emit();
+  }
+
+  submitGuidedObservations(): void {
+    const flow = this.#guidedFlow;
+    if (!flow || flow.stage !== "observe") return;
+    try {
+      const values = Object.values(flow.values);
+      flow.result = this.controller.recordGuidedTestObservations(flow.testId, values, flow.transactionIds, flow.startedAt);
+      flow.stage = "result";
+      this.#stopTimerTicks();
+      this.#persistInvestigation();
+    } catch (error) {
+      this.#error = error instanceof Error ? error.message : String(error);
+    }
+    this.#emit();
+  }
+
+  async copyTestReport(testId?: string): Promise<void> {
+    const id = testId ?? this.#guidedFlow?.testId;
+    if (!id) return;
+    try { await this.copy(this.controller.testReportMarkdown(id)); }
+    catch (error) { this.#error = error instanceof Error ? error.message : String(error); this.#emit(); }
+  }
+
+  async copyInvestigationReport(): Promise<void> {
+    try { await this.copy(this.controller.investigationReportMarkdown()); }
+    catch (error) { this.#error = error instanceof Error ? error.message : String(error); this.#emit(); }
+  }
+
+  async copyForensicReport(): Promise<void> {
+    try { await this.copy(this.controller.forensicReportMarkdown()); }
+    catch (error) { this.#error = error instanceof Error ? error.message : String(error); this.#emit(); }
+  }
+
+  /** Continue: close this test and immediately open the next recommended one. */
+  continueToNextTest(): void {
+    const next = this.controller.recommendations()[0] ?? null;
+    this.closeGuidedTest();
+    if (next) this.startGuidedTest(next.testId);
+    else { this.#info = "No further test is recommended right now."; this.#emit(); }
+  }
+
+  closeGuidedTest(): void {
+    this.#stopTimerTicks();
+    this.#guidedFlow = null;
+    this.#emit();
+  }
+
+  #startTimerTicks(): void {
+    this.#stopTimerTicks();
+    this.#timerInterval = setInterval(() => this.#emit(), 100);
+  }
+
+  #stopTimerTicks(): void {
+    if (this.#timerInterval !== null) { clearInterval(this.#timerInterval); this.#timerInterval = null; }
+  }
+
+  #persistInvestigation(): void {
+    const investigation = this.controller.investigation;
+    if (investigation) saveInvestigation(investigation);
+  }
+
+  #guidedTestVisuals(operation: import("../core/operations").MatrixOperation): { previews: Framebuffer[]; regions: DiagnosticRegionView[] } {
+    const profile = this.controller.session.profile;
+    if (!profile || operation.type !== "ShowDiagnostic") return { previews: [], regions: [] };
+    try {
+      const built = diagnosticContent(operation.diagnosticId).build(profile, operation.parameters);
+      const regions = built.regions.map((region) => regionView(region));
+      const previews = built.regions.length > 0 ? [regionPreviewFrame(profile.width, profile.height, built.regions)] : [diagnosticAnimation(profile.width, profile.height).frames[0]!];
+      return { previews, regions };
+    } catch {
+      return { previews: [], regions: [] };
+    }
+  }
+
   #findWorkflow(workflowId: string): ContentValidationWorkflow {
     const workflow = this.controller.contentValidationWorkflows().find(({ id }) => id === workflowId);
     if (!workflow) throw new Error("This validation workflow is unavailable for the current session.");
@@ -448,14 +765,20 @@ export class MatrixStore {
     return new FrameSequence(frames, frames.map(() => ({ milliseconds: 120 })));
   }
 
+  #liveResolved(): boolean {
+    const session = this.controller.session;
+    return session.source === "live" && this.transport.state === "connected" && Boolean(session.selection?.selected) && Boolean(session.profile);
+  }
+
   #contentAllowed(): { allowed: boolean; reason: string } {
     const session = this.controller.session;
     const live = session.source === "live" && this.transport.state === "connected";
     if (!live) return { allowed: false, reason: "Live content requires a connected physical display." };
     if (!session.selection?.selected || !session.profile) return { allowed: false, reason: "Run safe identification first." };
-    const validated = this.controller.validations.some((validation) => validation.validatedAreas.includes("static-frame"));
-    if (!validated) return { allowed: false, reason: "Validate the static framebuffer first (Diagnose → Validate static framebuffer). Content stays preview-only until then." };
-    return { allowed: true, reason: "Static framebuffer validated on this session." };
+    const gates = this.controller.contentGates();
+    const anyAllowed = gates.some((gate) => gate.allowed);
+    if (!anyAllowed) return { allowed: false, reason: gates.find((gate) => gate.path === "image")?.reason ?? "No content path is verified on this device yet." };
+    return { allowed: true, reason: "At least one content path is verified; each Send button follows its own path's gate." };
   }
 
   async #run(label: string, action: () => Promise<void>): Promise<void> { this.#busy = label; this.#error = null; this.#emit(); try { await action(); } catch (error) { this.#error = error instanceof Error ? error.message : String(error); } finally { this.#busy = null; this.#emit(); } }
@@ -469,7 +792,96 @@ export class MatrixStore {
       content: this.#contentState(profile), pendingSend: this.#pendingSend?.view ?? null,
       validationWorkflows: this.#validationWorkflowViews(),
       validationFlow: this.#validationFlow ? { ...this.#validationFlow, preview: [...this.#validationFlow.preview], questions: [...this.#validationFlow.questions], answers: { ...this.#validationFlow.answers }, transactionIds: [...this.#validationFlow.transactionIds] } : null,
-      validations: this.controller.validations, contentCompilations: this.controller.contentCompilations });
+      validations: this.controller.validations, contentCompilations: this.controller.contentCompilations,
+      claimGroups: this.#claimGroups(), contentGates: this.#contentGates(),
+      investigation: this.#investigationView(), guidedTests: this.#guidedTestViews(),
+      nextTest: recommendationView(this.controller.recommendations()[0] ?? null),
+      guidedFlow: this.#guidedFlowView(),
+      storedInvestigation: this.#storedInvestigationView(),
+      rasterStrategyLabel: this.controller.session.validatedRasterStrategy ? RASTER_STRATEGY_LABELS[this.controller.session.validatedRasterStrategy] : null,
+      symptoms: SYMPTOM_ROWS });
+  }
+
+  #claimGroups(): readonly ClaimGroupView[] {
+    if (!this.controller.session.selection?.selected) return [];
+    const claims = this.controller.claims();
+    const groups: { category: ClaimGroupView["category"]; label: string }[] = [
+      { category: "core", label: "Core support" },
+      { category: "content", label: "Content" },
+      { category: "optional", label: "Optional" },
+    ];
+    return groups.map((group) => ({
+      category: group.category, label: group.label,
+      claims: claims.filter((claim) => claim.category === group.category).map((claim) => ({
+        id: claim.id, label: claim.label, status: claim.status,
+        glyph: claim.status === "verified" ? "✓" : claim.status === "rejected" ? "✕" : claim.status === "unresolved" ? "!" : claim.status === "source-supported" ? "◦" : "?",
+        evidence: claim.decidedBy?.summary ?? "No evidence recorded.",
+        scopeLabel: claim.decidedBy ? SCOPE_LABELS[claim.decidedBy.scope] : null,
+      })),
+    }));
+  }
+
+  #contentGates(): Readonly<Record<ContentPathId, ContentGate>> {
+    const gates = this.controller.session.selection?.selected ? this.controller.contentGates() : [];
+    const entries = (["text", "image", "animation", "gif"] as const).map((path) => {
+      const gate = gates.find((candidate) => candidate.path === path);
+      return [path, gate ?? { path, allowed: false, reason: "Connect and identify a display first.", missingClaims: [] }] as const;
+    });
+    return Object.fromEntries(entries) as Record<ContentPathId, ContentGate>;
+  }
+
+  #investigationView(): InvestigationSummaryView | null {
+    const investigation = this.controller.investigation;
+    if (!investigation) return null;
+    return {
+      id: investigation.id,
+      goalLabel: investigation.goal.kind === "troubleshoot" ? `Troubleshooting: ${investigation.goal.description}` : "Guided development",
+      status: investigation.status,
+      completedTests: investigation.completedTests,
+    };
+  }
+
+  #guidedTestViews(): readonly GuidedTestView[] {
+    return this.controller.guidedTests().map((entry) => ({
+      id: entry.test.id, title: entry.test.title, question: entry.test.about.question,
+      category: entry.test.category, estimatedObservationTime: entry.test.about.estimatedObservationTime,
+      available: entry.available && this.#liveResolved(), reason: !this.#liveResolved() ? "Requires a live connected display." : entry.reason,
+      lastStatus: this.controller.investigation?.completedTests.filter((test) => test.testId === entry.test.id).at(-1)?.status ?? null,
+    }));
+  }
+
+  #guidedFlowView(): GuidedFlowState | null {
+    const flow = this.#guidedFlow;
+    if (!flow) return null;
+    const elapsed = flow.timerSpec && flow.finalWriteAcceptedAt && !flow.timerStopped && flow.stage === "observe"
+      ? Math.max(0, Date.now() - Date.parse(flow.finalWriteAcceptedAt))
+      : flow.values[flow.timerSpec?.fieldId ?? ""]?.kind === "duration" ? (flow.values[flow.timerSpec!.fieldId] as { milliseconds: number }).milliseconds : null;
+    return {
+      testId: flow.testId, title: flow.title, stage: flow.stage, about: flow.about,
+      consequence: flow.consequence, category: flow.category, risk: flow.risk,
+      planSummary: flow.planSummary, previews: [...flow.previews], regions: [...flow.regions],
+      observationSpecs: [...flow.observationSpecs], values: { ...flow.values },
+      observationsReady: observationsComplete(flow.observationSpecs, Object.values(flow.values)),
+      timerSpec: flow.timerSpec, timerElapsedMs: elapsed, timerStopped: flow.timerStopped,
+      transferProgress: flow.transferProgress, transactionIds: [...flow.transactionIds],
+      result: flow.result,
+      nextTest: flow.stage === "result" ? recommendationView(this.controller.recommendations()[0] ?? null) : null,
+    };
+  }
+
+  #storedInvestigationView(): StoredInvestigationView | null {
+    const profileId = this.controller.session.profile?.id ?? null;
+    const stored = latestInvestigationFor(null);
+    if (!stored) return null;
+    // Hide the resume card once the current investigation already has progress.
+    if ((this.controller.investigation?.completedTests.length ?? 0) > 0 && this.controller.investigation?.id === stored.investigation.id) return null;
+    return {
+      savedAt: stored.savedAt,
+      deviceName: stored.investigation.deviceName,
+      goalLabel: stored.investigation.goal.description || stored.investigation.goal.kind,
+      testCount: stored.investigation.completedTests.length,
+      matchesProfile: profileId !== null && stored.investigation.profileId === profileId,
+    };
   }
   #contentState(profile: { width: number; height: number } | null): ContentState {
     const gate = this.#contentAllowed();
@@ -512,6 +924,61 @@ function summarizeImport(evidence: ImportedEvidence): ImportSummary {
     unparsedLineCount: evidence.unparsedLineCount,
     provenance: evidence.provenance,
   };
+}
+
+const SCOPE_LABELS: Readonly<Record<ClaimState["evidence"][number]["scope"], string>> = {
+  "current-session": "this session",
+  "previous-local-session": "previous local session",
+  "imported-external": "imported evidence",
+  "built-in-profile": "built-in profile",
+  "source-reference": "source reference",
+};
+
+const SYMPTOM_ROWS: readonly { readonly id: SymptomId; readonly label: string }[] = (Object.entries(SYMPTOM_LABELS) as [SymptomId, string][]).map(([id, label]) => ({ id, label }));
+
+function recommendationView(recommendation: Recommendation | null): RecommendationView | null {
+  if (!recommendation) return null;
+  return {
+    testId: recommendation.testId, title: recommendation.title, description: recommendation.description,
+    why: recommendation.why, estimatedObservationTime: recommendation.estimatedObservationTime,
+    risk: recommendation.risk, category: recommendation.category,
+  };
+}
+
+function regionView(region: DiagnosticRegion): DiagnosticRegionView {
+  return {
+    label: region.label,
+    rawWordHex: `0x${region.rawWord.toString(16).padStart(4, "0").toUpperCase()}`,
+    x: region.x, y: region.y, width: region.width, height: region.height,
+    expected: region.expectedUnderRgb444 ?? null,
+  };
+}
+
+/**
+ * Position diagram for raw-word diagnostics. RGB444-predictable words render
+ * their hypothesized color; unknown words render mid-gray — the diagram
+ * shows POSITIONS, it never promises what an unknown word will look like.
+ */
+function regionPreviewFrame(width: number, height: number, regions: readonly DiagnosticRegion[]): Framebuffer {
+  const frame = new Framebuffer(width, height);
+  frame.clear();
+  for (const region of regions) {
+    const { r, g, b } = regionDiagramColor(region.rawWord);
+    for (let x = region.x; x < Math.min(width, region.x + region.width); x += 1) {
+      for (let y = region.y; y < Math.min(height, region.y + region.height); y += 1) frame.setPixel(x, y, r, g, b);
+    }
+  }
+  return frame;
+}
+
+function regionDiagramColor(rawWord: number): { r: number; g: number; b: number } {
+  const highNibble = (rawWord >> 12) & 0x0f;
+  const r = ((rawWord >> 8) & 0x0f) * 17;
+  const g = ((rawWord >> 4) & 0x0f) * 17;
+  const b = (rawWord & 0x0f) * 17;
+  if (highNibble !== 0 && r === 0 && g === 0 && b === 0) return { r: 120, g: 120, b: 120 };
+  if (rawWord === 0x0004) return { r: 0, g: 0, b: 68 };
+  return { r, g, b };
 }
 
 export function useMatrixSnapshot(store: MatrixStore): AppSnapshot { return useSyncExternalStore(store.subscribe, store.getSnapshot); }
