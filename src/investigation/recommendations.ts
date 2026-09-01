@@ -1,5 +1,5 @@
 import type { ClaimEvidence, ClaimId, ClaimState, ClaimStatus } from "./claims";
-import { claimDefinition, resolveClaims } from "./claims";
+import { claimConflicts, claimDefinition, resolveClaims } from "./claims";
 import type { GuidedTestAvailability, GuidedTestCategory } from "./tests";
 import type { CompletedGuidedTest, InvestigationGoal } from "./investigation";
 import { SYMPTOM_FOCUS_CLAIMS } from "./investigation";
@@ -85,6 +85,9 @@ export function rankRecommendations(input: RecommendationInput): readonly Recomm
   const completedTestIds = new Set(input.completedTests.map((test) => test.testId));
   const assessment = evaluateStaticViability(input.evidence);
   const pursuedIndex = assessment.pursued ? STRATEGY_PREFERENCE.indexOf(assessment.pursued) : STRATEGY_PREFERENCE.length;
+  // Historical/imported contradictions of a trusted basis make revalidation
+  // valuable even though the claim still resolves as decided.
+  const conflictedClaims = new Set(claimConflicts(input.evidence).map((conflict) => conflict.claimId));
   const focusList = input.goal?.symptomId ? SYMPTOM_FOCUS_CLAIMS[input.goal.symptomId] : [];
   const focusClaims = new Set(focusList);
   const primaryFocus = focusList[0] ?? null;
@@ -99,10 +102,10 @@ export function rankRecommendations(input: RecommendationInput): readonly Recomm
     if (passedTestIds.has(availability.test.id)) continue;
     const targets = availability.test.targetClaims.filter((claimId) => {
       const status = byId.get(claimId)?.status ?? "unknown";
-      return status !== "verified";
+      return status !== "verified" || conflictedClaims.has(claimId);
     });
     if (targets.length === 0) continue;
-    const informationValue = targets.reduce((total, claimId) => total + STATUS_VALUE[byId.get(claimId)?.status ?? "unknown"], 0);
+    const informationValue = targets.reduce((total, claimId) => total + STATUS_VALUE[byId.get(claimId)?.status ?? "unknown"] + (conflictedClaims.has(claimId) ? 20 : 0), 0);
     const unblocksUsability = targets.some((claimId) => usabilityBlockers.has(claimId) || claimDefinitionUnblocks(claimId, usabilityBlockers));
     // The symptom's FIRST focus claim is its most direct discriminator and
     // outweighs secondary focus claims.
@@ -131,7 +134,7 @@ export function rankRecommendations(input: RecommendationInput): readonly Recomm
       testId: availability.test.id,
       title: availability.test.title,
       description: availability.test.about.question,
-      why: buildWhy(availability, targets, byId, focusClaims, firstOpenBoost > 0 ? assessment.pursued : null),
+      why: buildWhy(availability, targets, byId, focusClaims, firstOpenBoost > 0 ? assessment.pursued : null, conflictedClaims),
       estimatedObservationTime: availability.test.about.estimatedObservationTime,
       risk: availability.test.risk,
       consequence: availability.test.consequence,
@@ -153,9 +156,11 @@ function claimDefinitionUnblocks(claimId: ClaimId, blockers: ReadonlySet<ClaimId
   return false;
 }
 
-function buildWhy(availability: GuidedTestAvailability, targets: readonly ClaimId[], byId: ReadonlyMap<ClaimId, ClaimState>, focusClaims: ReadonlySet<ClaimId>, pursuedStrategy: RasterStrategy | null): string {
+function buildWhy(availability: GuidedTestAvailability, targets: readonly ClaimId[], byId: ReadonlyMap<ClaimId, ClaimState>, focusClaims: ReadonlySet<ClaimId>, pursuedStrategy: RasterStrategy | null, conflictedClaims: ReadonlySet<ClaimId>): string {
   const parts: string[] = [availability.test.about.whyRelevant];
   if (pursuedStrategy) parts.push(`This is the next open requirement of the ${pursuedStrategy === "graffiti" ? "native static-image" : pursuedStrategy} path currently being characterized.`);
+  const conflicted = targets.filter((claimId) => conflictedClaims.has(claimId));
+  if (conflicted.length > 0) parts.push(`Revalidates evidence contradicted by a historical session: ${conflicted.map((claimId) => claimDefinition(claimId).label).join(", ")}.`);
   const unresolved = targets.filter((claimId) => byId.get(claimId)?.status === "unresolved");
   if (unresolved.length > 0) parts.push(`Resolves currently-contradicted evidence for: ${unresolved.map((claimId) => claimDefinition(claimId).label).join(", ")}.`);
   const focused = targets.filter((claimId) => focusClaims.has(claimId));

@@ -176,3 +176,16 @@ describe("native-static-first ordering", () => {
     expect(top!.testId).toBe("coolledux-animation-static");
   });
 });
+
+describe("historical conflict revalidation", () => {
+  it("recommends revalidating a trusted claim contradicted by a previous local session", () => {
+    const evidence: ClaimEvidence[] = [...baseline,
+      { claimId: "graffiti.black-semantics", status: "verified", scope: "current-session", provenance: "observed", summary: "off today" },
+      { claimId: "graffiti.black-semantics", status: "rejected", scope: "previous-local-session", provenance: "observed", summary: "white in an old session" },
+    ];
+    const ranked = rankRecommendations({ goal: developGoal, evidence, availabilities: availabilities(evidence), completedTests: [] });
+    const black = ranked.find((recommendation) => recommendation.testId === "coolledux-graffiti-black");
+    expect(black).toBeDefined();
+    expect(black!.why).toContain("historical session");
+  });
+});
