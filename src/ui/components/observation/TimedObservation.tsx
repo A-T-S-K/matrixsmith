@@ -29,7 +29,6 @@ export function TimedObservation({ flow, store }: { readonly flow: GuidedFlowSta
       <p class="fineprint">This is what the panel should be showing.</p>
     </div>
     <div class="timed-controls">
-      {flow.attemptNumber > 1 && <p class="attempt-badge">Attempt {flow.attemptNumber}</p>}
       <p class="timer-caption">Since upload completed</p>
       <strong class="big-value" role="timer" aria-live="off">{flow.timerElapsedMs !== null ? formatDuration(flow.timerElapsedMs) : "--:--"}</strong>
       {phase && <>

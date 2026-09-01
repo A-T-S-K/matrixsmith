@@ -506,13 +506,38 @@ export class MatrixController {
 
   /** Ranked deterministic next-test recommendations for the current evidence and goal. */
   recommendations(): readonly Recommendation[] {
+    const evidence = [...this.baselineClaimEvidence(), ...(this.#investigation?.claimEvidence ?? [])];
+    const progress = this.corePlanProgress();
     return rankRecommendations({
       goal: this.#investigation?.goal ?? null,
-      evidence: [...this.baselineClaimEvidence(), ...(this.#investigation?.claimEvidence ?? [])],
+      evidence,
       availabilities: this.guidedTests(),
       completedTests: this.#investigation?.completedTests ?? [],
+      reopenedTestIds: this.reopenedTestIds(),
+      currentCoreTestIds: progress?.current?.step.testIds ?? [],
+      coreTestIds: progress?.steps.filter((entry) => entry.state !== "skipped").flatMap((entry) => entry.step.testIds) ?? [],
     });
   }
+
+  /**
+   * Note that a recommendation was actually acted on, and check the sequence
+   * for a loop. Recorded at the point of action rather than of display: what
+   * matters is what the user was sent to do, not what a render computed.
+   */
+  noteRecommendationTaken(testId: string): CycleVerdict {
+    this.#recommendationTrail.push({
+      testId,
+      at: new Date().toISOString(),
+      evidenceCount: (this.#investigation?.claimEvidence ?? []).length,
+    });
+    this.#cycleVerdict = detectRecommendationCycle(this.#recommendationTrail);
+    if (this.#cycleVerdict.cycling) {
+      this.trace.record("guided-test.cycle-detected", { testIds: this.#cycleVerdict.testIds.join(","), detail: this.#cycleVerdict.detail ?? "" });
+    }
+    return this.#cycleVerdict;
+  }
+
+  get recommendationTrail(): readonly RecommendationTrailEntry[] { return this.#recommendationTrail; }
 
   /** Path-specific content gates derived from operationally trusted claims. */
   contentGates(): readonly ContentGate[] {

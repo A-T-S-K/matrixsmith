@@ -276,9 +276,15 @@ function interpretTiming(values: readonly ObservationValue[], stayTime: number):
     // Atomicity: baseline movement leaves the broad stability claim
     // unresolved (another justified configuration may hold still); movement
     // at stayTime=0 exhausts the justified configurations and rejects it.
+    // Status semantics matter here. "unresolved" means contradicted, and it
+    // outranks a later verification — so recording the baseline that way made
+    // the stayTime discriminator unable to settle the question it exists to
+    // settle. Baseline movement is not a contradiction, it is an incomplete
+    // answer: one justified configuration moved and the other is untested.
+    // Only exhausting both configurations rejects the claim.
     updates.push({
       claimId: "graffiti.playback-stability",
-      status: stayTime === 0 ? "rejected" : "unresolved",
+      status: stayTime === 0 ? "rejected" : "unknown",
       summary: `Raster began moving${t2 !== null ? ` at the measured ${formatDuration(t2)} after the final accepted write` : ""}${heldMs !== null ? ` (visible static hold ${formatDuration(heldMs)} from T1)` : ""} ${parameterNote}${motion ? `; motion: ${motion}` : ""}.${stayTime === 0 ? " Both justified Graffiti configurations (stayTime 3 and 0) move; no stable configuration remains." : " stayTime=0 remains the untested discriminator."}`,
       metrics: {
         ...renderMetrics,

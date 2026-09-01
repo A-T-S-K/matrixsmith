@@ -81,9 +81,10 @@ describe("guided test engine", () => {
     expect(completed.established.join(" ")).toContain("full raster appeared correctly");
     expect(completed.rejected.join(" ")).toContain("00:03.2");
     expect(claimStatus(controller, "graffiti.initial-render")).toBe("verified");
-    // Baseline movement leaves the broad stability claim unresolved: the
-    // stayTime=0 discriminator has not yet been exhausted.
-    expect(claimStatus(controller, "graffiti.playback-stability")).toBe("unresolved");
+    // Baseline movement leaves the broad stability claim UNDECIDED: the
+    // stayTime=0 discriminator has not yet been exhausted. Recording it as
+    // contradicted would outrank the discriminator's later verification.
+    expect(claimStatus(controller, "graffiti.playback-stability")).toBe("unknown");
     expect(completed.parameters?.stayTime).toBe(3);
     // The stayTime discriminator becomes available once the baseline exists.
     const staytime = controller.guidedTests().find((entry) => entry.test.id === "coolledux-graffiti-staytime");

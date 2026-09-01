@@ -20,7 +20,13 @@ export function InvestigationView({ snapshot, store }: { readonly snapshot: AppS
     {snapshot.investigation && started && <p class="goal-line">{snapshot.investigation.goalLabel}</p>}
 
     <StoppedInvestigation snapshot={snapshot} store={store}/>
-    <NextAction snapshot={snapshot} store={store}/>
+    {snapshot.cycleWarning && <p class="cycle-warning" role="status">
+      MatrixSmith detected a recommendation loop and stopped advancing automatically. {snapshot.cycleWarning}
+    </p>}
+    {snapshot.coreProgress?.complete
+      ? <CoreComplete snapshot={snapshot} store={store}/>
+      : <NextAction snapshot={snapshot} store={store}/>}
+    <CoreProgress snapshot={snapshot}/>
     <WhatWeKnow snapshot={snapshot}/>
     <RecentResult snapshot={snapshot} store={store}/>
     <PreviousInvestigation snapshot={snapshot} store={store}/>
@@ -31,6 +37,62 @@ export function InvestigationView({ snapshot, store }: { readonly snapshot: AppS
     <details class="secondary-section"><summary>Technical support map</summary><SupportMap snapshot={snapshot}/></details>
     <details class="secondary-section"><summary>Reports</summary><ReportActions store={store}/></details>
     <details class="secondary-section"><summary>Developer tools</summary><DeveloperTools snapshot={snapshot} store={store}/></details>
+  </section>;
+}
+
+/**
+ * Compact, finite progress.
+ *
+ * The point is reassurance rather than detail: guided work is a short list of
+ * milestones with an end, not an open-ended chain. Kept small deliberately —
+ * it should answer "how much is left?" at a glance and then get out of the way.
+ */
+function CoreProgress({ snapshot }: { snapshot: AppSnapshot }): JSX.Element {
+  const progress = snapshot.coreProgress;
+  if (!progress || progress.complete) return <></>;
+  return <section class="core-progress" aria-label="Core characterization progress">
+    <div class="core-progress-head">
+      <strong>{progress.title}</strong>
+      <small>{progress.completed} of {progress.total} complete</small>
+    </div>
+    <div class="core-bar" aria-hidden="true">
+      {progress.steps.filter((step) => step.state !== "skipped").map((step) => <span class={step.state}/>)}
+    </div>
+    <details class="technical-disclosure">
+      <summary>Milestones</summary>
+      <ul class="core-steps">
+        {progress.steps.map((step) => <li class={step.state}>
+          <span class="glyph" aria-hidden="true">{step.state === "complete" ? "✓" : step.state === "current" ? "→" : step.state === "skipped" ? "–" : "○"}</span>
+          <span>
+            {step.position ? `${step.position}. ` : ""}{step.title}
+            {step.state === "skipped" && <> — <em>not needed: {step.skipReason}</em></>}
+          </span>
+        </li>)}
+      </ul>
+    </details>
+  </section>;
+}
+
+/**
+ * Core work is finished, so the product says so and stops.
+ *
+ * Optional characterization is real work with real value, but feeding it
+ * automatically is what made the process feel infinite. Continuing is a
+ * deliberate choice.
+ */
+function CoreComplete({ snapshot, store }: { snapshot: AppSnapshot; store: MatrixStore }): JSX.Element {
+  const strategy = snapshot.rasterStrategyLabel;
+  return <section class="core-complete" aria-labelledby="core-complete-title">
+    <p class="panel-kicker">DONE</p>
+    <h2 id="core-complete-title">Core characterization complete</h2>
+    <p>{strategy
+      ? <>This display can show still images via <strong>{strategy}</strong>.</>
+      : <>No working way to show a still image was found on this display. The investigation report explains what was ruled out and what it would take.</>}</p>
+    <div class="next-action-cta">
+      <button class="primary" onClick={() => store.stopInvestigation()}>Finish</button>
+      <button class="secondary" onClick={() => void store.copyInvestigationReport()}>Copy report</button>
+    </div>
+    {snapshot.nextTest && <p class="fineprint">Optional follow-up is available under “All guided tests” — {snapshot.nextTest.title}.</p>}
   </section>;
 }
 

@@ -25,6 +25,12 @@ export function GuidedTestDialog({ snapshot, store }: { readonly snapshot: AppSn
   return <div class="dialog-backdrop"><section class="report-dialog validation-dialog guided-dialog" role="dialog" aria-modal="true" aria-labelledby="guided-title" onClick={(event) => event.stopPropagation()}>
     <header class="guided-header">
       <div>
+        {/* Where am I, and is this the same test again? Both questions get a
+            plain answer in the header rather than in technical details. */}
+        {(flow.corePosition || flow.attemptNumber > 1) && <p class="run-position">
+          {flow.corePosition && <span class="test-of">Test {flow.corePosition.position} of {flow.corePosition.total}</span>}
+          {flow.attemptNumber > 1 && <span class="attempt-of">Attempt {flow.attemptNumber}</span>}
+        </p>}
         <h1 id="guided-title">{flow.title}</h1>
         <ol class="stage-steps" aria-label="Test progress">{(["about", "running", "observe", "result"] as const).map((stage, index) => <li
           class={flow.stage === stage ? "active" : stageIndex(flow.stage) > index ? "done" : ""}

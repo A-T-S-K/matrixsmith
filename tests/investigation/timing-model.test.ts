@@ -38,7 +38,8 @@ describe("T0/T1/T2 static timing model", () => {
     const render = claimEvidence(controller, "graffiti.initial-render")[0];
     expect(render?.metrics?.renderLatencyMs).toBe(1420);
     const stability = claimEvidence(controller, "graffiti.playback-stability")[0];
-    expect(stability?.status).toBe("unresolved");
+    // Undecided, not contradicted: the other justified configuration is untested.
+    expect(stability?.status).toBe("unknown");
     expect(stability?.metrics?.movementOnsetFromUploadMs).toBe(4650);
     // Hold is measured from T1, never from T0.
     expect(stability?.metrics?.visibleStaticHoldMs).toBe(4650 - 1420);
@@ -99,7 +100,11 @@ describe("T0/T1/T2 static timing model", () => {
       { kind: "boolean", fieldId: "initial-correct", value: "yes" },
       timer("image-visible", 1400), { kind: "boolean", fieldId: "moved", value: "yes" }, timer("movement-start", 4600),
     ], []);
-    expect(controller.claims().find((claim) => claim.id === "graffiti.playback-stability")?.status).toBe("unresolved");
+    // Baseline movement leaves the claim UNDECIDED rather than contradicted:
+    // one justified configuration moved, the other is untested. Recording it
+    // as contradicted would outrank a later verification and stop the
+    // discriminator from settling the question it exists to settle.
+    expect(controller.claims().find((claim) => claim.id === "graffiti.playback-stability")?.status).toBe("unknown");
     // stayTime=0 also moves: both justified configurations exhausted.
     controller.recordGuidedTestObservations("coolledux-graffiti-staytime", [
       { kind: "boolean", fieldId: "initial-correct", value: "yes" },

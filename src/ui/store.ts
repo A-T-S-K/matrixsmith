@@ -33,6 +33,7 @@ import {
   type AttemptValidity, type ObservationAttempt, type PhysicalTimingMark,
 } from "../investigation/timing";
 import type { TransferReason } from "../investigation/orchestration";
+import { stepForTest } from "../investigation/core-plan";
 import { forgetInvestigationHistory, latestInvestigationFor, saveInvestigation, toHistoricalInvestigation } from "../storage/investigations";
 
 export type WorkspaceView = "control" | "diagnose" | "develop";
@@ -87,6 +88,26 @@ export interface AppSnapshot {
   readonly storedInvestigation: StoredInvestigationView | null;
   readonly rasterStrategyLabel: string | null;
   readonly symptoms: readonly { readonly id: SymptomId; readonly label: string }[];
+  /** Bounded core progress, so guided work can say how much is left. */
+  readonly coreProgress: CoreProgressView | null;
+  /** Set when the engine's recommendation sequence looks like a loop. */
+  readonly cycleWarning: string | null;
+}
+
+export interface CoreProgressView {
+  readonly title: string;
+  readonly completed: number;
+  readonly total: number;
+  readonly complete: boolean;
+  readonly currentStepId: string | null;
+  readonly steps: readonly {
+    readonly id: string;
+    readonly position: number | null;
+    readonly title: string;
+    readonly purpose: string;
+    readonly state: "complete" | "current" | "pending" | "skipped";
+    readonly skipReason: string | null;
+  }[];
 }
 
 export interface ClaimGroupView {
@@ -223,6 +244,8 @@ export interface GuidedFlowState {
   /** Set once a valid timed attempt exists, so a confirmation run can be offered. */
   readonly timingSummary: string | null;
   readonly awaitingRetryConfirmation: boolean;
+  /** "Test 3 of 6" — the milestone this experiment belongs to. Retries never move it. */
+  readonly corePosition: { readonly position: number; readonly total: number; readonly stepTitle: string } | null;
 }
 
 export interface ContentState {
@@ -675,6 +698,7 @@ export class MatrixStore {
       const availability = this.controller.guidedTests().find((entry) => entry.test.id === testId);
       if (availability && !availability.available) throw new Error(availability.reason ?? "This test's prerequisites are not met.");
       const run = this.controller.beginExperiment(testId);
+      this.controller.noteRecommendationTaken(testId);
       const plan = this.controller.planGuidedTest(testId);
       // The resolved operation (evidence-aware where declared) drives the
       // preview and region diagram, so About always shows the actual run.
@@ -1173,7 +1197,9 @@ export class MatrixStore {
       guidedFlow: this.#guidedFlowView(),
       storedInvestigation: this.#storedInvestigationView(),
       rasterStrategyLabel: this.controller.session.validatedRasterStrategy ? RASTER_STRATEGY_LABELS[this.controller.session.validatedRasterStrategy] : null,
-      symptoms: SYMPTOM_ROWS });
+      symptoms: SYMPTOM_ROWS,
+      coreProgress: this.#coreProgressView(),
+      cycleWarning: this.controller.recommendationCycle.cycling ? this.controller.recommendationCycle.detail : null });
   }
 
   #claimGroups(): readonly ClaimGroupView[] {
@@ -1282,6 +1308,48 @@ export class MatrixStore {
       canUndoMark: Boolean(flow.timerSpec) && !flow.timerStopped && flow.timerPhaseIndex > 0,
       timingSummary: aggregate ? describeAggregate(aggregate) : null,
       awaitingRetryConfirmation: flow.awaitingRetryConfirmation,
+      corePosition: this.#corePositionFor(flow.testId),
+    };
+  }
+
+  /**
+   * Where this experiment sits in the core plan. Deliberately derived from
+   * the milestone, not from how many times anything ran: three attempts at
+   * Test 2 leave the user on Test 2.
+   */
+  #corePositionFor(testId: string): GuidedFlowState["corePosition"] {
+    const progress = this.#coreProgressView();
+    const plan = this.controller.corePlan();
+    const step = stepForTest(plan, testId);
+    if (!progress || !step) return null;
+    const entry = progress.steps.find((candidate) => candidate.id === step.id);
+    if (!entry?.position) return null;
+    return { position: entry.position, total: progress.total, stepTitle: entry.title };
+  }
+
+  #coreProgressView(): CoreProgressView | null {
+    const progress = this.controller.corePlanProgress();
+    if (!progress) return null;
+    let position = 0;
+    return {
+      title: progress.plan.title,
+      completed: progress.completed,
+      total: progress.total,
+      complete: progress.complete,
+      currentStepId: progress.current?.step.id ?? null,
+      steps: progress.steps.map((entry) => {
+        // Skipped milestones keep their place in the list but not a number,
+        // so "Test 3 of 5" stays true after a branch closes.
+        if (entry.state !== "skipped") position += 1;
+        return {
+          id: entry.step.id,
+          position: entry.state === "skipped" ? null : position,
+          title: entry.step.title,
+          purpose: entry.step.purpose,
+          state: entry.state,
+          skipReason: entry.skipReason,
+        };
+      }),
     };
   }
 

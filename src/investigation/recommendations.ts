@@ -40,6 +40,16 @@ export interface RecommendationInput {
    * never recommended on its own; reopening is always an explicit act.
    */
   readonly reopenedTestIds?: readonly string[];
+  /**
+   * Tests belonging to the current core milestone. The plan decides the
+   * ORDER of core work; scoring still decides which test within a milestone
+   * is the best discriminator. Without this the engine could jump from the
+   * first milestone straight to the fifth because that test happened to
+   * score higher, which is exactly what made progress feel arbitrary.
+   */
+  readonly currentCoreTestIds?: readonly string[];
+  /** Tests belonging to any core milestone, so core outranks optional work. */
+  readonly coreTestIds?: readonly string[];
 }
 
 /**
@@ -94,6 +104,9 @@ const STRATEGY_SPECIFIC_CLAIMS: Readonly<Partial<Record<ClaimId, RasterStrategy>
 
 /** The pursued strategy's first open viability requirement is the next-highest-value discriminator. */
 const FIRST_OPEN_REQUIREMENT_BOOST = 60;
+/** The current milestone dominates: the plan is what makes progress legible. */
+const CURRENT_CORE_STEP_BOOST = 200;
+const CORE_PLAN_BOOST = 80;
 const FALLBACK_STRATEGY_PENALTY = 50;
 const REPEATED_TEST_PENALTY = 25;
 
@@ -107,6 +120,8 @@ export function rankRecommendations(input: RecommendationInput): readonly Recomm
     input.completedTests.filter((test) => isConcludedTest(test) && !reopened.has(test.testId)).map((test) => test.testId),
   );
   const attemptedTestIds = new Set(input.completedTests.map((test) => test.testId));
+  const currentCore = new Set(input.currentCoreTestIds ?? []);
+  const coreTests = new Set(input.coreTestIds ?? []);
   const assessment = evaluateStaticViability(input.evidence);
   const pursuedIndex = assessment.pursued ? STRATEGY_PREFERENCE.indexOf(assessment.pursued) : STRATEGY_PREFERENCE.length;
   // Historical/imported contradictions of a trusted basis make revalidation
@@ -150,6 +165,8 @@ export function rankRecommendations(input: RecommendationInput): readonly Recomm
     const score = informationValue + CATEGORY_WEIGHT[effectiveCategory] + focusBoost + (unblocksUsability ? 25 : 0)
       + (availability.test.risk === "read-only" ? 5 : 0)
       + firstOpenBoost
+      + (currentCore.has(availability.test.id) ? CURRENT_CORE_STEP_BOOST : 0)
+      + (coreTests.has(availability.test.id) ? CORE_PLAN_BOOST : 0)
       - (isFallbackStrategyTest ? FALLBACK_STRATEGY_PENALTY : 0)
       - (attemptedTestIds.has(availability.test.id) ? REPEATED_TEST_PENALTY : 0);
     scored.push({

@@ -33,24 +33,22 @@ export const ILEDHAT_CORE_PLAN: CorePlan = {
       id: "native-static-baseline",
       ordinal: 1,
       title: "Still image baseline",
-      purpose: "Does a still image appear correctly, and does it stay put?",
+      purpose: "Does a still image appear on the display at all, and correctly?",
       testIds: ["coolledux-graffiti-timing"],
-      satisfiedBy: ["graffiti.initial-render", "graffiti.playback-stability"],
+      // Deliberately only the render question. Whether the image HOLDS is the
+      // next milestone's job: if the baseline answered "it rendered, then it
+      // moved", this milestone is genuinely done and the investigation has
+      // moved on. Making stability a condition here left the milestone
+      // permanently current with its only test already concluded.
+      satisfiedBy: ["graffiti.initial-render"],
     },
     {
       id: "playback-discriminator",
       ordinal: 2,
-      title: "Playback setting check",
-      purpose: "If the image moved, does the one justified alternative setting hold it still?",
-      testIds: ["coolledux-graffiti-staytime"],
+      title: "Does it stay still?",
+      purpose: "Does the image hold steady, and if not, does the one justified alternative setting fix it?",
+      testIds: ["coolledux-graffiti-staytime", "coolledux-graffiti-timing"],
       satisfiedBy: ["graffiti.playback-stability"],
-      // Only meaningful when the baseline actually failed to hold still.
-      // If the native path already works, there is nothing to discriminate.
-      skipWhen(evidence) {
-        const trust = operationalTrust("graffiti.playback-stability", evidence);
-        if (trust.trusted) return "The still image already held steady, so no alternative setting was needed.";
-        return null;
-      },
     },
     {
       id: "native-black",
@@ -71,28 +69,28 @@ export const ILEDHAT_CORE_PLAN: CorePlan = {
       },
     },
     {
-      id: "fallback-viability",
-      ordinal: 4,
-      title: "Fallback still image",
-      purpose: "If the native path cannot hold a still image, can the animation path?",
-      testIds: ["coolledux-animation-static"],
-      satisfiedBy: ["animation.static-single-frame"],
-      // Only needed once the preferred native path is conclusively out.
-      skipWhen(evidence) {
-        const assessment = evaluateStaticViability(evidence);
-        const graffiti = assessment.strategies.find((entry) => entry.strategy === "graffiti");
-        if (graffiti?.verdict === "viable") return "The native still-image path works, so no fallback was needed.";
-        if (graffiti?.verdict === "open") return null;
-        return null;
-      },
-    },
-    {
       id: "pixel-mapping",
-      ordinal: 5,
+      ordinal: 4,
       title: "Color channel mapping",
       purpose: "Which parts of a pixel drive which physical colors — required before any image or text is trustworthy.",
       testIds: ["coolledux-pixel-channels"],
       satisfiedBy: ["pixel.channel-map", "pixel.encoder-correctness"],
+    },
+    {
+      id: "fallback-viability",
+      ordinal: 5,
+      title: "Fallback still image",
+      purpose: "If the native path cannot hold a still image, can the animation path?",
+      testIds: ["coolledux-animation-static"],
+      satisfiedBy: ["animation.static-single-frame"],
+      // Counted for the whole journey so the total does not move while the
+      // user is working, and dropped only once the native path is proven —
+      // at which point a fallback is demonstrably unnecessary.
+      skipWhen(evidence) {
+        const assessment = evaluateStaticViability(evidence);
+        const graffiti = assessment.strategies.find((entry) => entry.strategy === "graffiti");
+        return graffiti?.verdict === "viable" ? "The native still-image path works, so no fallback was needed." : null;
+      },
     },
     {
       id: "final-verification",
