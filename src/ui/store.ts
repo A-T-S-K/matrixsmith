@@ -19,11 +19,11 @@ import { DEFAULT_CONTENT_SETTINGS, loadContentSettings, saveContentSettings, typ
 import type { ClaimState } from "../investigation/claims";
 import type { ContentGate, ContentPathId } from "../investigation/gating";
 import type { CompletedGuidedTest, SymptomId } from "../investigation/investigation";
-import { SYMPTOM_LABELS } from "../investigation/investigation";
+import { completedTestResolution, SYMPTOM_LABELS } from "../investigation/investigation";
 import type { GuidedTestAbout, GuidedTestTimer, TimelinePhase } from "../investigation/tests";
 import type { ObservationFieldSpec, ObservationValue } from "../investigation/observations";
 import { observationsComplete } from "../investigation/observations";
-import type { Recommendation } from "../investigation/recommendations";
+import type { Recommendation, RecommendationOrigin } from "../investigation/recommendations";
 import { RASTER_STRATEGY_LABELS } from "../core/raster-strategy";
 import { diagnosticContent } from "../drivers/coolledux/diagnostics";
 import { rawWordHex, regionPeers, type DiagnosticRegion } from "../investigation/regions";
@@ -32,7 +32,7 @@ import {
   ATTEMPT_INVALIDATION_LABELS, aggregateAttemptDurations, describeAggregate,
   type AttemptValidity, type ObservationAttempt, type PhysicalTimingMark,
 } from "../investigation/timing";
-import type { TransferReason } from "../investigation/orchestration";
+import type { AttemptFailureKind, TransferReason } from "../investigation/orchestration";
 import { stepForTest } from "../investigation/core-plan";
 import { forgetInvestigationHistory, latestInvestigationFor, saveInvestigation, toHistoricalInvestigation } from "../storage/investigations";
 
@@ -125,9 +125,10 @@ export interface OrchestrationDebugView {
     readonly experimentRunId: string;
     readonly definitionId: string;
     readonly status: string;
+    readonly resolution: string | null;
     readonly corePlanStepId: string | null;
     readonly fingerprintKey: string;
-    readonly attempts: readonly { readonly attemptId: string; readonly attemptNumber: number; readonly reason: string; readonly validity: string }[];
+    readonly attempts: readonly { readonly attemptId: string; readonly attemptNumber: number; readonly reason: string; readonly validity: string; readonly failureKind: string | null }[];
   }[];
   readonly transfers: readonly {
     readonly transferId: string;
@@ -135,7 +136,15 @@ export interface OrchestrationDebugView {
     readonly reason: string;
     readonly programCrc32: string | null;
     readonly transactionIds: readonly string[];
+    readonly failureReason: string | null;
   }[];
+  /** What MatrixSmith believes is on the panel, and how sure it is. */
+  readonly panelProgram: {
+    readonly certainty: string;
+    readonly kind: string;
+    readonly label: string;
+    readonly fingerprintKey: string | null;
+  };
   readonly recommendationTrail: readonly { readonly testId: string; readonly evidenceCount: number }[];
   readonly cycling: boolean;
   readonly unclassifiedDuplicates: number;
@@ -144,12 +153,19 @@ export interface OrchestrationDebugView {
 export interface CoreProgressView {
   readonly title: string;
   readonly completed: number;
+  readonly skipped: number;
+  /** completed + skipped: slots that need no further work. */
+  readonly resolved: number;
+  /** Every slot in the plan. Never changes during an investigation. */
   readonly total: number;
   readonly complete: boolean;
   readonly currentStepId: string | null;
+  /** Set when the current milestone is waiting on a repeat measurement. */
+  readonly retryableTestId: string | null;
   readonly steps: readonly {
     readonly id: string;
-    readonly position: number | null;
+    /** Stable 1-based slot ordinal, skipped milestones included. */
+    readonly position: number;
     readonly title: string;
     readonly purpose: string;
     readonly state: "complete" | "current" | "pending" | "skipped";
@@ -758,14 +774,16 @@ export class MatrixStore {
     });
   }
 
-  startGuidedTest(testId: string): void {
+  startGuidedTest(testId: string, origin: RecommendationOrigin = "automatic-recommendation"): void {
     this.#error = null;
     try {
       const test = this.controller.guidedTest(testId);
       const availability = this.controller.guidedTests().find((entry) => entry.test.id === testId);
       if (availability && !availability.available) throw new Error(availability.reason ?? "This test's prerequisites are not met.");
       const run = this.controller.beginExperiment(testId);
-      this.controller.noteRecommendationTaken(testId);
+      // How the user got here decides whether a repeat is an algorithmic loop
+      // or a deliberate re-measurement. Only the former is a cycle.
+      this.controller.noteRecommendationTaken(testId, origin);
       const plan = this.controller.planGuidedTest(testId);
       // The resolved operation (evidence-aware where declared) drives the
       // preview and region diagram, so About always shows the actual run.
@@ -807,40 +825,57 @@ export class MatrixStore {
     flow.stage = "running";
     flow.transferProgress = `Uploading diagnostic program (${flow.planSummary?.packetCount ?? "?"} packets at ${flow.planSummary?.pacingMs ?? "?"} ms pacing)…`;
     await this.#run("Transferring diagnostic content…", async () => {
+      // The controller's attempt is the authoritative identity; the timing
+      // record below borrows its number rather than counting separately. Two
+      // independently numbered attempt lists drift the moment one of them
+      // gains an entry the other cannot see — a failed transfer, for example.
       const attempt = this.controller.beginAttempt(flow.experimentRunId, flow.pendingTransferReason);
       flow.attemptId = attempt.attemptId;
-      const { transactionIds, finalWriteAcceptedAt } = await this.controller.runGuidedTestTransfer(flow.testId, {
-        confirmedConsequence: true, reason: flow.pendingTransferReason, attemptId: attempt.attemptId,
-      });
-      flow.transactionIds = [...flow.transactionIds, ...transactionIds];
-      flow.finalWriteAcceptedAt = finalWriteAcceptedAt;
-      flow.stage = "observe";
-      flow.transferProgress = null;
-      // Each transfer opens a fresh observation attempt: T0 restarts, so the
-      // human's marks belong to this run and not the previous one.
-      if (flow.timerSpec) {
-        flow.marks = [];
-        flow.timerPhaseIndex = 0;
-        flow.timerStopped = false;
+      try {
+        const { transactionIds, finalWriteAcceptedAt } = await this.controller.runGuidedTestTransfer(flow.testId, {
+          confirmedConsequence: true, reason: flow.pendingTransferReason, attemptId: attempt.attemptId,
+        });
+        flow.transactionIds = [...flow.transactionIds, ...transactionIds];
+        flow.finalWriteAcceptedAt = finalWriteAcceptedAt;
+        flow.stage = "observe";
+        flow.transferProgress = null;
+        // Each transfer opens a fresh observation attempt: T0 restarts, so the
+        // human's marks belong to this run and not the previous one.
+        if (flow.timerSpec) {
+          flow.marks = [];
+          flow.timerPhaseIndex = 0;
+          flow.timerStopped = false;
+        }
         flow.attempts.push({
-          attemptNumber: flow.attempts.length + 1,
+          attemptNumber: attempt.attemptNumber,
           parameters: { ...flow.parameters },
           t0: finalWriteAcceptedAt,
           marks: [], values: [],
           validity: "incomplete", invalidationReason: null, note: null,
           startedAt: new Date().toISOString(), endedAt: null,
         });
-        if (finalWriteAcceptedAt) { this.#startTimerTicks(); this.#signalTimingStart(); }
-      } else {
-        // A test with no timeline still has exactly one attempt per transfer.
+        if (flow.timerSpec && finalWriteAcceptedAt) { this.#startTimerTicks(); this.#signalTimingStart(); }
+        this.#info = "Diagnostic content transferred. Watch the physical panel now.";
+      } catch (error) {
+        // The transfer failed, so this attempt number is spent. It stays in
+        // the record as a failed attempt — the controller has already settled
+        // it — and the next try becomes the NEXT attempt. Blaming the person
+        // for a radio failure, or silently reusing the number, both lose what
+        // actually happened.
         flow.attempts.push({
-          attemptNumber: flow.attempts.length + 1, parameters: { ...flow.parameters },
-          t0: finalWriteAcceptedAt, marks: [], values: [],
-          validity: "incomplete", invalidationReason: null, note: null,
-          startedAt: new Date().toISOString(), endedAt: null,
+          attemptNumber: attempt.attemptNumber,
+          parameters: { ...flow.parameters },
+          t0: null, marks: [], values: [],
+          validity: "transfer-failed",
+          invalidationReason: ATTEMPT_INVALIDATION_LABELS["transfer-failed"],
+          note: null,
+          startedAt: attempt.startedAt, endedAt: new Date().toISOString(),
         });
+        flow.attemptId = null;
+        flow.timerStopped = false;
+        this.#stopTimerTicks();
+        throw error;
       }
-      this.#info = "Diagnostic content transferred. Watch the physical panel now.";
     });
     if (flow.stage === "running") { flow.stage = "about"; flow.transferProgress = null; }
     this.#emit();
@@ -981,6 +1016,7 @@ export class MatrixStore {
       this.controller.settleAttempt(flow.attemptId, {
         validity: validity === "valid" ? "valid" : "invalid",
         invalidationReason: settled.invalidationReason,
+        failureKind: attemptFailureKind(validity),
         observations: settled.values,
         timing: settled,
       });
@@ -1067,7 +1103,10 @@ export class MatrixStore {
         this.controller.settleAttempt(flow.attemptId, { validity: "valid", observations: values, timing: null });
       }
       flow.result = this.controller.recordGuidedTestObservations(flow.testId, values, flow.transactionIds, flow.startedAt, flow.attempts);
-      this.controller.settleExperiment(flow.experimentRunId, flow.result.status, flow.result.summary);
+      // The resolution, not the status, decides whether the plan may move on.
+      // A run that stopped short of the required observation window stays
+      // repeatable as the same numbered test instead of retiring as answered.
+      this.controller.settleExperiment(flow.experimentRunId, flow.result.status, flow.result.summary, completedTestResolution(flow.result));
       flow.stage = "result";
       this.#stopTimerTicks();
       this.#persistInvestigation();
@@ -1104,25 +1143,69 @@ export class MatrixStore {
    */
   continueToNextTest(): void {
     const next = this.controller.recommendations()[0] ?? null;
-    const concluded = this.controller.investigation?.completedTests
-      .some((test) => next !== null && test.testId === next.testId && test.status !== "abandoned") ?? false;
+    const settled = this.controller.investigation?.completedTests
+      .some((test) => next !== null && test.testId === next.testId && completedTestResolution(test) === "settled") ?? false;
+    const retryable = this.#retryableOnCurrentMilestone();
     this.closeGuidedTest();
-    if (next && !concluded) { this.startGuidedTest(next.testId); return; }
-    if (next && concluded) {
+    if (next && !settled) { this.startGuidedTest(next.testId); return; }
+    if (next && settled) {
       this.#error = "MatrixSmith was about to repeat a test that already produced a result, so it stopped. Reopen it deliberately if you want to measure it again.";
       this.#emit();
       return;
     }
-    this.#info = this.controller.corePlanProgress()?.complete
-      ? "Core characterization is complete."
-      : "No further test is recommended right now.";
+    if (this.controller.corePlanProgress()?.complete) {
+      this.#info = "Core characterization is complete.";
+      this.#emit();
+      return;
+    }
+    // An experiment that ran out of observation time is not a dead end and
+    // must not be reported as one. The plan is still on its milestone, and
+    // the same measurement, watched for long enough, would settle it.
+    if (retryable) {
+      this.#info = `The last measurement did not run long enough to answer its question. Measure "${retryable.title}" again to finish this step.`;
+      this.#emit();
+      return;
+    }
+    this.#info = "No further test is recommended right now.";
     this.#emit();
+  }
+
+  /**
+   * The experiment blocking the current milestone because its measurement
+   * fell short, if there is one. Deliberately scoped to the current step: an
+   * incomplete run of an already-passed milestone is history, not a blocker.
+   */
+  #retryableOnCurrentMilestone(): { readonly testId: string; readonly title: string } | null {
+    const progress = this.controller.corePlanProgress();
+    const current = progress?.current?.step;
+    if (!current) return null;
+    const retryable = new Set(this.controller.retryableExperimentIds());
+    const testId = current.testIds.find((id) => retryable.has(id));
+    if (!testId) return null;
+    const title = [...(this.controller.investigation?.completedTests ?? [])].reverse().find((test) => test.testId === testId)?.title ?? testId;
+    return { testId, title };
   }
 
   /** Deliberately run a concluded experiment again, with a stated reason. */
   reopenExperiment(testId: string, reason: string): void {
     this.controller.reopenExperiment(testId, reason);
-    this.startGuidedTest(testId);
+    this.startGuidedTest(testId, "explicit-reopen");
+  }
+
+  /**
+   * Measure the same experiment again after an incomplete observation.
+   *
+   * Not a new test and not a reopen: the experiment never answered its
+   * question, so it keeps its number, its milestone and its attempt sequence.
+   * Recorded as a user-initiated repeat so the cycle guard does not mistake
+   * it for the engine looping.
+   */
+  measureAgain(testId: string): void {
+    this.closeGuidedTest();
+    this.startGuidedTest(testId, "explicit-retry");
+    const flow = this.#guidedFlow;
+    if (flow) flow.pendingTransferReason = "explicit-measure-again";
+    this.#emit();
   }
 
   closeGuidedTest(): void {
@@ -1146,9 +1229,9 @@ export class MatrixStore {
       // An abandoned run still closes its open attempt, so the report can
       // say the observation stopped rather than silently losing the timeline.
       if (flow.timerSpec && !flow.timerStopped) this.#completeAttempt("incomplete");
-      else if (flow.attemptId) this.controller.settleAttempt(flow.attemptId, { validity: "invalid", invalidationReason: "Observation stopped before completion." });
+      else if (flow.attemptId) this.controller.settleAttempt(flow.attemptId, { validity: "invalid", failureKind: "observation-incomplete", invalidationReason: "Observation stopped before completion." });
       const abandoned = this.controller.abandonGuidedTest(flow.testId, Object.values(flow.values), flow.transactionIds, flow.startedAt, flow.attempts);
-      this.controller.settleExperiment(flow.experimentRunId, abandoned.status, abandoned.summary);
+      this.controller.settleExperiment(flow.experimentRunId, abandoned.status, abandoned.summary, "abandoned");
       this.#persistInvestigation();
       this.#info = "Observation stopped. The test was recorded as incomplete — the transmitted content and automatic capture remain as evidence, and its report is available.";
     } catch (error) {
@@ -1246,6 +1329,7 @@ export class MatrixStore {
     return { allowed: true, reason: "At least one content path is verified; each Send button follows its own path's gate." };
   }
 
+  /** Retry the identical measurement, recorded as a user-initiated repeat. */
   async #run(label: string, action: () => Promise<void>): Promise<void> { this.#busy = label; this.#error = null; this.#emit(); try { await action(); } catch (error) { this.#error = error instanceof Error ? error.message : String(error); } finally { this.#busy = null; this.#emit(); } }
   #emit(): void { this.#rebuild(); for (const listener of this.#listeners) listener(); }
   #rebuild(): void {
@@ -1397,7 +1481,7 @@ export class MatrixStore {
     const step = stepForTest(plan, testId, this.controller.corePlanProgress());
     if (!progress || !step) return null;
     const entry = progress.steps.find((candidate) => candidate.id === step.id);
-    if (!entry?.position) return null;
+    if (!entry) return null;
     return { position: entry.position, total: progress.total, stepTitle: entry.title };
   }
 
@@ -1407,16 +1491,21 @@ export class MatrixStore {
       corePlanStepId: this.controller.corePlanProgress()?.current?.step.id ?? null,
       experiments: this.controller.experiments.map((run) => ({
         experimentRunId: run.experimentRunId, definitionId: run.definitionId, status: run.status,
-        corePlanStepId: run.corePlanStepId, fingerprintKey: run.fingerprint.key,
+        resolution: run.resolution, corePlanStepId: run.corePlanStepId, fingerprintKey: run.fingerprint.key,
         attempts: run.attempts.map((attempt) => ({
           attemptId: attempt.attemptId, attemptNumber: attempt.attemptNumber,
-          reason: attempt.reason, validity: attempt.validity,
+          reason: attempt.reason, validity: attempt.validity, failureKind: attempt.failureKind,
         })),
       })),
       transfers: this.controller.transfers.map((transfer) => ({
         transferId: transfer.transferId, attemptId: transfer.attemptId, reason: transfer.reason,
         programCrc32: transfer.fingerprint.programCrc32, transactionIds: transfer.transactionIds,
+        failureReason: transfer.failureReason,
       })),
+      panelProgram: (() => {
+        const panel = this.controller.panelProgram();
+        return { certainty: panel.certainty, kind: panel.kind, label: panel.label, fingerprintKey: panel.fingerprint?.key ?? null };
+      })(),
       recommendationTrail: this.controller.recommendationTrail.map((entry) => ({ testId: entry.testId, evidenceCount: entry.evidenceCount })),
       cycling: this.controller.recommendationCycle.cycling,
       unclassifiedDuplicates: this.controller.transferSummary().unclassifiedDuplicates,
@@ -1426,26 +1515,27 @@ export class MatrixStore {
   #coreProgressView(): CoreProgressView | null {
     const progress = this.controller.corePlanProgress();
     if (!progress) return null;
-    let position = 0;
     return {
       title: progress.plan.title,
       completed: progress.completed,
+      skipped: progress.skipped,
+      resolved: progress.resolved,
       total: progress.total,
       complete: progress.complete,
       currentStepId: progress.current?.step.id ?? null,
-      steps: progress.steps.map((entry) => {
-        // Skipped milestones keep their place in the list but not a number,
-        // so "Test 3 of 5" stays true after a branch closes.
-        if (entry.state !== "skipped") position += 1;
-        return {
-          id: entry.step.id,
-          position: entry.state === "skipped" ? null : position,
-          title: entry.step.title,
-          purpose: entry.step.purpose,
-          state: entry.state,
-          skipReason: entry.skipReason,
-        };
-      }),
+      // Every milestone keeps its own ordinal, skipped ones included. A
+      // skipped slot is shown as skipped at its number; it does not vanish
+      // and take the denominator down with it, so "Test 6 of 6" stays "Test
+      // 6 of 6" for the whole investigation.
+      steps: progress.steps.map((entry) => ({
+        id: entry.step.id,
+        position: entry.step.ordinal,
+        title: entry.step.title,
+        purpose: entry.step.purpose,
+        state: entry.state,
+        skipReason: entry.skipReason,
+      })),
+      retryableTestId: this.#retryableOnCurrentMilestone()?.testId ?? null,
     };
   }
 
@@ -1579,3 +1669,22 @@ export function recommendedAction(connected: boolean, resolved: boolean, ambiguo
   return { title: "Collect GATT evidence", description: "No safe family probe is available. Inspect services without writing.", action: "none" };
 }
 function filterTransactions(values: readonly ProtocolTransaction[], filter: TransactionFilter, search: string): ProtocolTransaction[] { const query = search.trim().toLowerCase(); return values.filter((t) => { const matchesFilter = filter === "all" || filter === "txrx" && t.packets.length > 0 || filter === "queries" && /get|read/i.test(t.operation) || filter === "probes" && t.source === "probe" || filter === "diagnostics" && t.source === "diagnostic" || filter === "errors" && Boolean(t.error || t.responseTimedOut); if (!matchesFilter) return false; if (!query) return true; return [t.operation, t.driverId, t.decodedResponse?.summary, ...t.packets.map((p) => p.hex), t.decodedResponse?.opcode === undefined ? "" : `0x${t.decodedResponse.opcode.toString(16)}`].some((value) => String(value ?? "").toLowerCase().includes(query)); }); }
+
+/**
+ * Why an attempt failed, from how its measurement ended.
+ *
+ * A transport failure and a mistimed tap both invalidate an attempt and mean
+ * entirely different things; a report that cannot tell them apart blames the
+ * person for the radio dropping out.
+ */
+function attemptFailureKind(validity: AttemptValidity): AttemptFailureKind | null {
+  switch (validity) {
+    case "valid": return null;
+    case "transfer-failed": return "transfer-failed";
+    case "user-restarted": return "user-restarted";
+    case "incomplete": return "observation-incomplete";
+    case "missed-t1":
+    case "missed-t2":
+    case "accidental-tap": return "human-missed";
+  }
+}

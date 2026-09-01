@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { emptyOrchestration } from "../../src/investigation/orchestration";
 import { loadInvestigationHistory, toHistoricalInvestigation } from "../../src/storage/investigations";
 import type { KeyValueStorage } from "../../src/storage/repository";
 import { MatrixController } from "../../src/app/controller";
@@ -35,6 +36,7 @@ function poisonedInvestigation(scope: string): Investigation {
     goal: { kind: "develop", description: "poisoned" },
     status: "stopped",
     completedTests: [],
+    orchestration: emptyOrchestration(),
     claimEvidence: [
       // A full set of claims that would unlock image sending if trusted.
       { claimId: "stored-program.upload", status: "verified", scope, provenance: "observed", summary: "poisoned" },

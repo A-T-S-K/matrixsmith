@@ -79,6 +79,15 @@ export interface GuidedTestTimer {
 
 export interface GuidedTestInterpretation {
   readonly status: GuidedTestStatus;
+  /**
+   * What this outcome means for the PLAN, when it differs from what it means
+   * for the hardware. Omitted means "settled": the experiment answered its
+   * question. A driver returns `retryable-incomplete` when the observation
+   * simply did not gather enough — watching for seven of the fifteen seconds
+   * a stability verdict requires answers nothing and must not retire the only
+   * test that could answer it.
+   */
+  readonly resolution?: import("./orchestration").ExperimentResolution;
   readonly established: readonly string[];
   readonly rejected: readonly string[];
   readonly unknowns: readonly string[];

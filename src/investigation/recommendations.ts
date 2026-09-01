@@ -2,7 +2,8 @@ import type { ClaimEvidence, ClaimId, ClaimState, ClaimStatus } from "./claims";
 import { claimConflicts, claimDefinition, resolveClaims } from "./claims";
 import type { GuidedTestAvailability, GuidedTestCategory } from "./tests";
 import type { CompletedGuidedTest, InvestigationGoal } from "./investigation";
-import { SYMPTOM_FOCUS_CLAIMS } from "./investigation";
+import { completedTestResolution, SYMPTOM_FOCUS_CLAIMS } from "./investigation";
+import { leavesAutomaticRotation } from "./orchestration";
 import { evaluateStaticViability, STRATEGY_PREFERENCE } from "./static-viability";
 import type { RasterStrategy } from "../core/raster-strategy";
 
@@ -53,17 +54,35 @@ export interface RecommendationInput {
 }
 
 /**
- * A completed experiment has produced its answer, whatever that answer was.
+ * Whether a completed run takes its experiment out of automatic rotation.
  *
- * Only "abandoned" leaves the question genuinely unanswered — the content was
- * transmitted but nothing was observed. Every other status is a conclusion,
- * including "partial" and "inconclusive": re-running the identical experiment
- * with identical parameters would produce the identical non-answer. Treating
- * those as still-pending is precisely what made guided mode feel like an
- * endless loop of the same static-image test.
+ * "Settled" means the experiment answered its question — positively or
+ * negatively — and re-running it unprompted would only reproduce the same
+ * answer. That is what stopped guided mode looping on the same static-image
+ * test forever.
+ *
+ * A `retryable-incomplete` run also leaves automatic rotation, but for the
+ * opposite reason: the engine must not quietly hand the same experiment back
+ * as though it were new work. Repeating it is legitimate and is offered as an
+ * explicit "measure again" — see `retryableIncompleteTestIds`.
  */
 export function isConcludedTest(test: CompletedGuidedTest): boolean {
-  return test.status !== "abandoned";
+  const resolution = completedTestResolution(test);
+  return leavesAutomaticRotation(resolution) || resolution === "retryable-incomplete";
+}
+
+/**
+ * Experiments whose measurement did not gather enough to answer, and which
+ * the user may therefore repeat unchanged. The plan stays on the milestone
+ * these belong to: an incomplete measurement is not progress, but it is also
+ * not a dead end.
+ */
+export function retryableIncompleteTestIds(completedTests: readonly CompletedGuidedTest[]): readonly string[] {
+  const latest = new Map<string, CompletedGuidedTest>();
+  for (const test of completedTests) latest.set(test.testId, test);
+  return [...latest.values()]
+    .filter((test) => completedTestResolution(test) === "retryable-incomplete")
+    .map((test) => test.testId);
 }
 
 /** How much resolving a claim in this status is worth. */
@@ -222,6 +241,22 @@ export function recommendNextTest(input: RecommendationInput): Recommendation | 
  * recommendations and refuses to let the user discover an algorithmic loop by
  * spending twenty minutes re-running the same hardware pattern.
  */
+/**
+ * How the user arrived at an experiment.
+ *
+ * Cycle detection is about the ENGINE looping, not about a person choosing to
+ * measure something again. A retry the user asked for is the product working
+ * as designed; flagging it as an algorithmic loop would punish exactly the
+ * behaviour the timing workflow depends on.
+ */
+export type RecommendationOrigin =
+  /** The engine proposed it and the user took the proposal. */
+  | "automatic-recommendation"
+  /** The user asked to repeat this measurement. */
+  | "explicit-retry"
+  /** The user deliberately reopened a settled experiment. */
+  | "explicit-reopen";
+
 export interface RecommendationTrailEntry {
   readonly testId: string;
   readonly at: string;
@@ -231,6 +266,8 @@ export interface RecommendationTrailEntry {
    * signature of a loop rather than of progress.
    */
   readonly evidenceCount: number;
+  /** Defaults to automatic for entries written before origins were tracked. */
+  readonly origin?: RecommendationOrigin;
 }
 
 export interface CycleVerdict {
@@ -242,7 +279,11 @@ export interface CycleVerdict {
 const CYCLE_WINDOW = 6;
 
 export function detectRecommendationCycle(trail: readonly RecommendationTrailEntry[]): CycleVerdict {
-  const window = trail.slice(-CYCLE_WINDOW);
+  // Only automatic recommendations can constitute an algorithmic loop. A
+  // user-initiated retry or reopen is recorded in the trail — reports need it
+  // — but it is a decision, not a symptom, and never trips this guard.
+  const automatic = trail.filter((entry) => (entry.origin ?? "automatic-recommendation") === "automatic-recommendation");
+  const window = automatic.slice(-CYCLE_WINDOW);
   if (window.length < 3) return { cycling: false, testIds: [], detail: null };
   const seen = new Map<string, RecommendationTrailEntry[]>();
   for (const entry of window) {

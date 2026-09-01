@@ -230,14 +230,14 @@ describe("anti-loop", () => {
 
 describe("transfer classification", () => {
   const fingerprint = (testId: string, parameters: Record<string, number>, crc: string) =>
-    buildExecutionFingerprint({ deviceBindingId: "iledhat", testId, diagnosticId: "d", parameters, programCrc32: crc });
+    buildExecutionFingerprint({ physicalDeviceKey: "browser-device-a", testId, diagnosticId: "d", parameters, programCrc32: crc });
 
   it("does not flag legitimate retries merely because the bytes match", () => {
     const fp = fingerprint("timing", { stayTime: 3 }, "0x227B3A0B");
     const summary = classifyTransfers([
-      { transferId: "1", attemptId: "a1", diagnosticId: "d", reason: "initial-experiment", fingerprint: fp, transactionIds: [], startedAt: "", finalWriteAcceptedAt: null },
-      { transferId: "2", attemptId: "a2", diagnosticId: "d", reason: "explicit-retry-missed-observation", fingerprint: fp, transactionIds: [], startedAt: "", finalWriteAcceptedAt: null },
-      { transferId: "3", attemptId: "a3", diagnosticId: "d", reason: "explicit-measure-again", fingerprint: fp, transactionIds: [], startedAt: "", finalWriteAcceptedAt: null },
+      { transferId: "1", attemptId: "a1", diagnosticId: "d", reason: "initial-experiment", fingerprint: fp, transactionIds: [], startedAt: "", finalWriteAcceptedAt: null, failureReason: null },
+      { transferId: "2", attemptId: "a2", diagnosticId: "d", reason: "explicit-retry-missed-observation", fingerprint: fp, transactionIds: [], startedAt: "", finalWriteAcceptedAt: null, failureReason: null },
+      { transferId: "3", attemptId: "a3", diagnosticId: "d", reason: "explicit-measure-again", fingerprint: fp, transactionIds: [], startedAt: "", finalWriteAcceptedAt: null, failureReason: null },
     ]);
     expect(summary.total).toBe(3);
     expect(summary.unclassifiedDuplicates).toBe(0);
@@ -247,16 +247,16 @@ describe("transfer classification", () => {
   it("flags a repeat that claims to be a fresh experiment", () => {
     const fp = fingerprint("timing", { stayTime: 3 }, "0x227B3A0B");
     const summary = classifyTransfers([
-      { transferId: "1", attemptId: "a1", diagnosticId: "d", reason: "initial-experiment", fingerprint: fp, transactionIds: [], startedAt: "", finalWriteAcceptedAt: null },
-      { transferId: "2", attemptId: "a2", diagnosticId: "d", reason: "initial-experiment", fingerprint: fp, transactionIds: [], startedAt: "", finalWriteAcceptedAt: null },
+      { transferId: "1", attemptId: "a1", diagnosticId: "d", reason: "initial-experiment", fingerprint: fp, transactionIds: [], startedAt: "", finalWriteAcceptedAt: null, failureReason: null },
+      { transferId: "2", attemptId: "a2", diagnosticId: "d", reason: "initial-experiment", fingerprint: fp, transactionIds: [], startedAt: "", finalWriteAcceptedAt: null, failureReason: null },
     ]);
     expect(summary.unclassifiedDuplicates).toBe(1);
   });
 
   it("treats a controlled variant as a different execution, not a duplicate", () => {
     const summary = classifyTransfers([
-      { transferId: "1", attemptId: "a1", diagnosticId: "d", reason: "initial-experiment", fingerprint: fingerprint("timing", { stayTime: 3 }, "0xAAAA"), transactionIds: [], startedAt: "", finalWriteAcceptedAt: null },
-      { transferId: "2", attemptId: "a2", diagnosticId: "d", reason: "controlled-variant", fingerprint: fingerprint("staytime", { stayTime: 0 }, "0xBBBB"), transactionIds: [], startedAt: "", finalWriteAcceptedAt: null },
+      { transferId: "1", attemptId: "a1", diagnosticId: "d", reason: "initial-experiment", fingerprint: fingerprint("timing", { stayTime: 3 }, "0xAAAA"), transactionIds: [], startedAt: "", finalWriteAcceptedAt: null, failureReason: null },
+      { transferId: "2", attemptId: "a2", diagnosticId: "d", reason: "controlled-variant", fingerprint: fingerprint("staytime", { stayTime: 0 }, "0xBBBB"), transactionIds: [], startedAt: "", finalWriteAcceptedAt: null, failureReason: null },
     ]);
     expect(summary.repeatedExecutions).toHaveLength(0);
     expect(summary.unclassifiedDuplicates).toBe(0);

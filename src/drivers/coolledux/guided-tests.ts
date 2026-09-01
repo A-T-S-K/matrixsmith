@@ -242,6 +242,9 @@ function interpretTiming(values: readonly ObservationValue[], stayTime: number):
   }
   let status: GuidedTestInterpretation["status"];
   let summary: string;
+  // Whether the plan should treat this run as answered. A stability question
+  // that timed out is a measurement that fell short, not a verdict.
+  let resolution: GuidedTestInterpretation["resolution"];
   if (moved === "no") {
     // Visible static hold is measured from T1 (full raster visible), not T0.
     const heldMs = t1 !== null && end !== null ? Math.max(0, end - t1) : null;
@@ -256,8 +259,11 @@ function interpretTiming(values: readonly ObservationValue[], stayTime: number):
       });
     } else {
       // A "didn't move" answer without a sufficient MEASURED window never
-      // verifies stability; the exact observed duration is recorded.
+      // verifies stability; the exact observed duration is recorded. The
+      // experiment itself is unfinished, not concluded: the same run,
+      // watched for the full window, would settle it.
       status = "inconclusive";
+      resolution = "retryable-incomplete";
       summary = heldMs !== null
         ? `The image stayed still for ${approximateSeconds(heldMs)}, but watching stopped before the ${MINIMUM_STATIC_HOLD_MS / 1000}s needed to call it stable.`
         : "No movement was reported, but nothing was timed, so stability stays unverified.";
@@ -310,12 +316,14 @@ function interpretTiming(values: readonly ObservationValue[], stayTime: number):
     });
   } else {
     status = "inconclusive";
+    resolution = "retryable-incomplete";
     summary = "Movement behavior was not observed conclusively.";
     unknowns.push("Whether the raster remains static is still unknown.");
     updates.push({ claimId: "graffiti.playback-stability", status: "unknown", summary: `Observation inconclusive ${parameterNote}.` });
   }
   return {
     status, established, rejected, unknowns, summary, claimUpdates: updates,
+    ...(resolution ? { resolution } : {}),
     nextHint: moved === "yes" && stayTime === 3
       ? "Compare stayTime=0 with the same raster — the only other justified variant — to isolate the stayTime byte."
       : moved === "yes" && stayTime === 0
@@ -474,11 +482,11 @@ function interpretAnimationStatic(values: readonly ObservationValue[], variant: 
     // Stopped early: honest partial evidence with the exact measured hold.
     unknowns.push(`Static for the measured ${formatDuration(heldMs)} — below the ${MINIMUM_STATIC_HOLD_MS / 1000}s window; stability stays unverified.`);
     updates.push({ claimId, status: "unresolved", summary: `The ${label} raster stayed still for the measured ${formatDuration(heldMs)}; observation stopped before the required ${MINIMUM_STATIC_HOLD_MS / 1000}s window.`, metrics: { [VISIBLE_STATIC_HOLD_METRIC]: heldMs } });
-    return { status: "inconclusive", established, rejected, unknowns, summary: `Observation ended after ${formatDuration(heldMs)} — before the required window.`, claimUpdates: updates };
+    return { status: "inconclusive", resolution: "retryable-incomplete", established, rejected, unknowns, summary: `Observation ended after ${formatDuration(heldMs)} — before the required window.`, claimUpdates: updates };
   }
   unknowns.push("Stability was not conclusively observed.");
   updates.push({ claimId, status: "unresolved", summary: `Observation of the ${label} program was inconclusive.` });
-  return { status: "inconclusive", established, rejected, unknowns, summary: "The observation was inconclusive.", claimUpdates: updates };
+  return { status: "inconclusive", resolution: "retryable-incomplete", established, rejected, unknowns, summary: "The observation was inconclusive.", claimUpdates: updates };
 }
 
 const animationStaticTest: GuidedTestDefinition = {
@@ -745,7 +753,7 @@ const colorWhiteTest: GuidedTestDefinition = {
     }
     unknowns.push("No color-quality observations were recorded.");
     updates.push({ claimId: "pixel.color-calibration", status: "unresolved", summary: "No color-quality observations recorded." });
-    return { status: "inconclusive", established, rejected, unknowns, summary: "The observation was inconclusive.", claimUpdates: updates };
+    return { status: "inconclusive", resolution: "retryable-incomplete", established, rejected, unknowns, summary: "The observation was inconclusive.", claimUpdates: updates };
   },
 };
 

@@ -56,10 +56,17 @@ export interface CorePlanStepStatus {
 export interface CorePlanProgress {
   readonly plan: CorePlan;
   readonly steps: readonly CorePlanStepStatus[];
-  /** Milestones that still require work. */
+  /**
+   * Every numbered slot in the plan. STABLE for the whole investigation: it
+   * is the denominator of "Test 5 of 6" and must not move because a branch
+   * made a milestone unnecessary. Watching the total shrink under you is
+   * exactly what made bounded progress feel unbounded.
+   */
   readonly total: number;
   readonly completed: number;
   readonly skipped: number;
+  /** Slots that need no further work: completed + skipped. */
+  readonly resolved: number;
   readonly current: CorePlanStepStatus | null;
   readonly complete: boolean;
 }
@@ -95,13 +102,16 @@ export function evaluateCorePlan(
   }
   const skipped = statuses.filter((entry) => entry.state === "skipped").length;
   const completed = statuses.filter((entry) => entry.state === "complete").length;
-  // Skipped slots keep their number in the list but leave the denominator,
-  // so "3 of 5" never becomes "3 of 6" when a branch reopens.
-  const total = statuses.length - skipped;
+  // The denominator is every slot in the plan, always. A skipped milestone
+  // keeps its ordinal and is shown as skipped; it does not leave the count.
+  // Completion is "every slot resolved", where a skipped slot is resolved —
+  // so "5 complete · 1 skipped" reads as 6 of 6, not as 5 of 5.
+  const total = statuses.length;
+  const resolved = completed + skipped;
   return {
-    plan, steps: statuses, total, completed, skipped,
+    plan, steps: statuses, total, completed, skipped, resolved,
     current: statuses.find((entry) => entry.state === "current") ?? null,
-    complete: completed >= total,
+    complete: resolved >= total,
   };
 }
 
@@ -127,13 +137,14 @@ export function stepForTest(plan: CorePlan | null, testId: string, progress?: Co
   return candidates[0] ?? null;
 }
 
-/** Position among the non-skipped milestones, for "Test X of Y". */
+/**
+ * The milestone's display position, for "Test X of Y".
+ *
+ * This is the slot's own stable ordinal — never a running count over the
+ * non-skipped steps. Renumbering on a branch decision made Test 6 become
+ * Test 5 mid-investigation, which is precisely what stable numbering exists
+ * to prevent.
+ */
 export function displayPosition(progress: CorePlanProgress, stepId: string): number | null {
-  let position = 0;
-  for (const entry of progress.steps) {
-    if (entry.state === "skipped") continue;
-    position += 1;
-    if (entry.step.id === stepId) return position;
-  }
-  return null;
+  return progress.steps.find((entry) => entry.step.id === stepId)?.step.ordinal ?? null;
 }

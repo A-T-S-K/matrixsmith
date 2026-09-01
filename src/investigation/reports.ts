@@ -10,7 +10,10 @@ import { approximateSeconds, describeAttempt } from "./timing";
 import type { Recommendation } from "./recommendations";
 import type { DiagnosticRegion } from "./regions";
 import type { CorePlanProgress } from "./core-plan";
-import { classifyTransfers, TRANSFER_REASON_LABELS, type ExperimentRun, type TransferRecord } from "./orchestration";
+import {
+  ATTEMPT_FAILURE_LABELS, classifyTransfers, EXPERIMENT_RESOLUTION_LABELS, TRANSFER_REASON_LABELS,
+  type ExperimentRun, type PanelProgramState, type TransferRecord,
+} from "./orchestration";
 import { evaluateStaticViability, MINIMUM_STATIC_HOLD_MS } from "./static-viability";
 
 /**
@@ -111,6 +114,10 @@ export interface InvestigationReportInput {
   readonly transfers?: readonly TransferRecord[];
   /** The current engine's next step — the single source of truth for "what next?". */
   readonly cycleDetail?: string | null;
+  /** What MatrixSmith believes is on the panel, and how sure it is. */
+  readonly panelProgram?: PanelProgramState | null;
+  /** Whether this report is being written against a live physical session. */
+  readonly liveSession?: boolean;
 }
 
 export function generateInvestigationReport(input: InvestigationReportInput): string {
@@ -126,6 +133,7 @@ export function generateInvestigationReport(input: InvestigationReportInput): st
     ? `${investigation.goal.kind === "troubleshoot" ? "Troubleshooting" : "Guided development"}: ${investigation.goal.description}${investigation.goal.symptomId ? ` (symptom: ${investigation.goal.symptomId})` : ""}`
     : "Characterize and develop support for this display.");
   if (input.coreProgress) section("Investigation progress", coreProgressText(input.coreProgress));
+  if (input.panelProgram) section("Display program state", panelProgramText(input.panelProgram, input.liveSession ?? false));
   if (input.cycleDetail) section("Workflow warning", `MatrixSmith detected a recommendation loop: ${input.cycleDetail}`);
   section("Next step", input.nextRecommendation
     ? `${input.nextRecommendation.title} — ${input.nextRecommendation.why} (~${input.nextRecommendation.estimatedObservationTime})`
@@ -321,16 +329,52 @@ function physicalTimingText(completed: CompletedGuidedTest, transactions: readon
   ].join("\n");
 }
 
-/** The bounded plan, including what was skipped and why. */
+/**
+ * The bounded plan, including what was skipped and why.
+ *
+ * Slots keep their own ordinal. Renumbering around a skipped milestone made
+ * "Test 6 of 6" arrive as "Test 5 of 5", which reads as the plan shrinking
+ * under the user rather than as a branch being closed.
+ */
 function coreProgressText(progress: CorePlanProgress): string {
-  const lines: string[] = [`Core plan: ${progress.completed} / ${progress.total} complete${progress.complete ? " — COMPLETE" : ""}`, ""];
-  let position = 0;
+  const lines: string[] = [
+    `Core plan: ${progress.resolved} / ${progress.total} slots resolved (${progress.completed} completed, ${progress.skipped} skipped)${progress.complete ? " — COMPLETE" : ""}`,
+    "",
+  ];
   for (const entry of progress.steps) {
-    if (entry.state !== "skipped") position += 1;
     const label = entry.state === "skipped" ? "SKIPPED" : entry.state.toUpperCase();
-    lines.push(`${entry.state === "skipped" ? "–" : `${position}.`} ${entry.step.title} — ${label}${entry.skipReason ? ` — not needed because ${entry.skipReason}` : ""}`);
+    lines.push(`${entry.step.ordinal}. ${entry.step.title} — ${label}${entry.skipReason ? ` — not needed because ${entry.skipReason}` : ""}`);
   }
   return lines.join("\n");
+}
+
+/**
+ * What is on the display, stated at the confidence actually available.
+ *
+ * A persisted report may legitimately say what was last sent. It may not say
+ * a diagnostic is currently showing: a browser restart, an import or a device
+ * change all leave the panel unobserved, and only a live session that made
+ * the write can claim otherwise.
+ */
+function panelProgramText(state: PanelProgramState, liveSession: boolean): string {
+  if (state.certainty === "unknown" || !liveSession) {
+    const reason = !liveSession && state.certainty !== "unknown"
+      ? "This report was generated without a live physical session, so the display's current contents were not observed."
+      : state.uncertaintyReason ?? "The display's current contents were not observed.";
+    return [
+      `Last known program sent: ${state.label}${state.at ? ` (${state.at})` : ""}`,
+      "",
+      `Currently on the display: UNKNOWN. ${reason}`,
+    ].join("\n");
+  }
+  const heading = state.certainty === "known-active"
+    ? `Currently on the display: ${state.label} — written and accepted in this session.`
+    : `Currently on the display: ${state.label}. Any previously sent guided diagnostic has been replaced.`;
+  return [
+    heading,
+    ...(state.fingerprint ? ["", `Execution identity: \`${state.fingerprint.key}\``] : []),
+    ...(state.at ? ["", `Written at ${state.at}.`] : []),
+  ].join("\n");
 }
 
 /**
@@ -341,19 +385,17 @@ function coreProgressText(progress: CorePlanProgress): string {
  * is what made a retry-heavy session unreadable.
  */
 function experimentsText(experiments: readonly ExperimentRun[], progress: CorePlanProgress | null): string {
+  // Positions are the slots' own stable ordinals, so a report written after a
+  // branch closed still numbers experiments the way the user saw them.
   const positions = new Map<string, number>();
-  let position = 0;
-  for (const entry of progress?.steps ?? []) {
-    if (entry.state === "skipped") continue;
-    position += 1;
-    positions.set(entry.step.id, position);
-  }
+  for (const entry of progress?.steps ?? []) positions.set(entry.step.id, entry.step.ordinal);
   const blocks = experiments.map((run) => {
     const number = run.corePlanStepId ? positions.get(run.corePlanStepId) : undefined;
     const heading = `### ${number ? `Test ${number} of ${progress?.total ?? "?"} — ` : ""}${run.title}`;
     const lines: string[] = [heading, ""];
     if (run.variant) lines.push(`Variant: ${run.variant}`);
     lines.push(`Status: ${run.status}${run.conclusion ? ` — ${run.conclusion}` : ""}`);
+    if (run.resolution) lines.push(`Resolution: ${EXPERIMENT_RESOLUTION_LABELS[run.resolution]}${run.resolution === "retryable-incomplete" ? " — the same experiment may legitimately be measured again" : ""}`);
     if (run.reopenReason) lines.push(`Reopened deliberately: ${run.reopenReason}`);
     lines.push(`Execution identity: \`${run.fingerprint.key}\`${run.fingerprint.programCrc32 ? ` (program CRC ${run.fingerprint.programCrc32})` : ""}`);
     lines.push("");
@@ -361,8 +403,12 @@ function experimentsText(experiments: readonly ExperimentRun[], progress: CorePl
       lines.push(`Attempt ${attempt.attemptNumber}`);
       lines.push(`- transfer reason: ${TRANSFER_REASON_LABELS[attempt.reason]}`);
       lines.push(`- ${attempt.validity === "valid" ? "valid" : attempt.validity === "invalid" ? "INVALID" : "in progress"}`);
+      if (attempt.failureKind) lines.push(`- failure: ${ATTEMPT_FAILURE_LABELS[attempt.failureKind]}`);
       if (attempt.invalidationReason) lines.push(`- reason: ${attempt.invalidationReason}`);
       if (attempt.validity === "invalid") lines.push("- excluded from conclusions");
+      if (attempt.failureKind === "transfer-failed") {
+        lines.push("- no hardware conclusion: the transfer failed, so nothing physical was observed. Any transactions listed below record packets that were sent before the failure.");
+      }
       // describeAttempt restates the validity and reason; those are already
       // above, so only its measurement detail is carried through here.
       if (attempt.timing) {
@@ -388,7 +434,7 @@ function experimentsText(experiments: readonly ExperimentRun[], progress: CorePl
  */
 function transferSummaryText(transfers: readonly TransferRecord[]): string {
   const summary = classifyTransfers(transfers);
-  const lines: string[] = [`Total diagnostic transfers: ${summary.total}`, ""];
+  const lines: string[] = [`Total diagnostic transfers: ${summary.total}${summary.failed > 0 ? ` (${summary.failed} failed)` : ""}`, ""];
   for (const [reason, count] of Object.entries(summary.byReason)) {
     if (count > 0) lines.push(`- ${TRANSFER_REASON_LABELS[reason as keyof typeof TRANSFER_REASON_LABELS]}: ${count}`);
   }
@@ -400,6 +446,13 @@ function transferSummaryText(transfers: readonly TransferRecord[]): string {
       lines.push(`- \`${group.testId}\`${group.programCrc32 ? ` (CRC ${group.programCrc32})` : ""}: ${group.transfers} transfers — ${reasons}`);
     }
     lines.push("", "Repeated identical payloads are expected when a measurement is retried; only unclassified duplicates indicate a workflow problem.");
+  }
+  const failures = transfers.filter((transfer) => transfer.failureReason !== null);
+  if (failures.length > 0) {
+    lines.push("", "Failed transfers:");
+    for (const transfer of failures) {
+      lines.push(`- \`${transfer.fingerprint.testId}\` (${TRANSFER_REASON_LABELS[transfer.reason]}): ${transfer.failureReason}${transfer.transactionIds.length > 0 ? ` — ${transfer.transactionIds.length} transaction(s) recorded before the failure; the display may have been partly written` : " — no transactions recorded"}.`);
+    }
   }
   if (summary.unclassifiedDuplicates > 0) {
     lines.push("", `POSSIBLE WORKFLOW ISSUE: ${summary.unclassifiedDuplicates} transmission(s) repeated an execution while claiming to be a new experiment.`);

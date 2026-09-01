@@ -41,7 +41,9 @@ export type AttemptValidity =
   | "missed-t2"
   | "accidental-tap"
   | "user-restarted"
-  | "incomplete";
+  | "incomplete"
+  /** The diagnostic never reached the panel; nothing physical was observed. */
+  | "transfer-failed";
 
 export const ATTEMPT_INVALIDATION_LABELS: Readonly<Record<Exclude<AttemptValidity, "valid">, string>> = Object.freeze({
   "missed-t1": "The moment the full image appeared was missed",
@@ -49,6 +51,9 @@ export const ATTEMPT_INVALIDATION_LABELS: Readonly<Record<Exclude<AttemptValidit
   "accidental-tap": "A timing control was tapped by accident",
   "user-restarted": "Superseded by a later attempt of the same experiment",
   incomplete: "The observation ended before the timeline finished",
+  // Emphatically not a human failure: the transfer did not land, so there
+  // was never anything on the panel to observe.
+  "transfer-failed": "The diagnostic transfer failed before anything could be observed",
 });
 
 export interface ObservationAttempt {

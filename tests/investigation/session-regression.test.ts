@@ -95,7 +95,9 @@ describe("retry-heavy session regression", () => {
     await retryHeavyBaseline(store);
     const report = store.controller.investigationReportMarkdown();
     expect(report).toContain("## Investigation progress");
-    expect(report).toMatch(/Core plan: \d+ \/ \d+ complete/u);
+    // The denominator is every slot in the plan and never moves; completion
+    // counts skipped slots as resolved.
+    expect(report).toMatch(/Core plan: \d+ \/ 6 slots resolved \(\d+ completed, \d+ skipped\)/u);
     expect(report).toContain("Still image baseline");
   }, 60000);
 

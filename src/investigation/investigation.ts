@@ -2,6 +2,8 @@ import type { ClaimEvidence, ClaimId, ClaimState } from "./claims";
 import { resolveClaims } from "./claims";
 import type { InvestigationDeviceBinding } from "./device-identity";
 import type { ObservationValue } from "./observations";
+import type { InvestigationOrchestration } from "./orchestration";
+import { demoteOrchestration, emptyOrchestration, type ExperimentResolution } from "./orchestration";
 import type { ObservationAttempt } from "./timing";
 
 /**
@@ -54,6 +56,24 @@ export interface CompletedGuidedTest {
    * so a report can show what was measured, what was discarded, and why.
    */
   readonly attempts?: readonly ObservationAttempt[];
+  /**
+   * What this run means for the plan, as distinct from what it means for the
+   * hardware. An "inconclusive" run because the person watched for seven of
+   * the required fifteen seconds is `retryable-incomplete`: the experiment is
+   * still the right one to run, and retiring it would strand the plan.
+   */
+  readonly resolution?: ExperimentResolution;
+}
+
+/**
+ * The plan-level resolution of a completed run.
+ *
+ * Older records (and any that predate the field) fall back to the coarse
+ * status mapping this replaced, so history stays readable.
+ */
+export function completedTestResolution(test: CompletedGuidedTest): ExperimentResolution {
+  if (test.resolution) return test.resolution;
+  return test.status === "abandoned" ? "abandoned" : "settled";
 }
 
 export interface Investigation {
@@ -70,6 +90,16 @@ export interface Investigation {
   /** Session/imported claim evidence accumulated by this investigation. */
   readonly claimEvidence: readonly ClaimEvidence[];
   readonly notes: readonly string[];
+  /**
+   * Guided orchestration for THIS physical device: experiments, attempts,
+   * transfers, panel-program belief, reopen and recommendation state.
+   *
+   * It lives here rather than on the controller so that it cannot outlive or
+   * cross the physical-device boundary independently of the evidence it
+   * explains. When a different display connects, this investigation detaches
+   * and takes its entire orchestration history with it.
+   */
+  readonly orchestration: InvestigationOrchestration;
 }
 
 export function investigationId(): string {
@@ -84,6 +114,7 @@ export function createInvestigation(input: { profileId: string | null; deviceNam
     profileId: input.profileId, deviceName: input.deviceName,
     deviceBinding: input.deviceBinding ?? null,
     goal: input.goal, status: "active", completedTests: [], claimEvidence: [], notes: [],
+    orchestration: emptyOrchestration(),
   };
 }
 
@@ -103,7 +134,21 @@ export function demoteInvestigationEvidence(
   return {
     ...investigation,
     claimEvidence: investigation.claimEvidence.map((entry) => ({ ...entry, scope })),
+    // Semantic orchestration history is preserved verbatim — it is a record of
+    // what happened. Only the belief that a program is physically on the panel
+    // is dropped: nothing in the new context observed the display.
+    orchestration: demoteOrchestration(
+      investigation.orchestration ?? emptyOrchestration(),
+      scope === "imported-external"
+        ? "This investigation was imported; the display it describes was never connected to this session."
+        : "This investigation was restored from history; what the display is showing now was not observed.",
+    ),
   };
+}
+
+/** Replace the orchestration state, stamping the investigation as updated. */
+export function withOrchestration(investigation: Investigation, orchestration: InvestigationOrchestration, now = new Date().toISOString()): Investigation {
+  return { ...investigation, orchestration, updatedAt: now };
 }
 
 export function recordCompletedTest(investigation: Investigation, test: CompletedGuidedTest, evidence: readonly ClaimEvidence[], now = new Date().toISOString()): Investigation {

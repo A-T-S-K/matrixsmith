@@ -20,12 +20,14 @@ import { transactionId } from "../diagnostics/transactions";
 import type { DiagnosticRun, DiagnosticStepResult } from "../diagnostics/workflows";
 import type { ObservationAttempt } from "../investigation/timing";
 import {
-  buildExecutionFingerprint, classifyTransfers, newId,
-  type DiagnosticExecutionFingerprint, type ExperimentAttempt, type ExperimentRun,
+  buildExecutionFingerprint, classifyTransfers, emptyOrchestration, invalidatePanelProgram,
+  isGuidedProgramActive, newId, UNKNOWN_PANEL_PROGRAM,
+  type AttemptFailureKind, type DiagnosticExecutionFingerprint, type ExperimentAttempt, type ExperimentResolution,
+  type ExperimentRun, type InvestigationOrchestration, type PanelProgramState,
   type TransferReason, type TransferRecord,
 } from "../investigation/orchestration";
 import { evaluateCorePlan, stepForTest, type CorePlan, type CorePlanProgress } from "../investigation/core-plan";
-import { detectRecommendationCycle, type CycleVerdict, type RecommendationTrailEntry } from "../investigation/recommendations";
+import { detectRecommendationCycle, retryableIncompleteTestIds, type CycleVerdict, type RecommendationOrigin, type RecommendationTrailEntry } from "../investigation/recommendations";
 import { findImporter, type ImportedEvidence } from "../diagnostics/importers";
 import { chooseTestBrightness, COOLLEDUX_DIAGNOSTIC_TOOLS, diagnosticRunId } from "../diagnostics/workflows";
 import { CONTENT_VALIDATION_WORKFLOWS, evaluateValidationAnswers, sessionValidationId, type ContentValidationWorkflow, type ValidationAnswer } from "../diagnostics/validation";
@@ -34,10 +36,11 @@ import { diagnosticAnimation, orientationPattern } from "../render/patterns";
 import { resolveClaims, resolveOperationalTrust, type ClaimEvidence, type ClaimState, type EvidenceScope, type OperationalTrust } from "../investigation/claims";
 import { claimEvidenceFromValidation } from "../investigation/legacy-bridge";
 import {
-  createInvestigation, demoteInvestigationEvidence, recordCompletedTest, resumeInvestigation, stopInvestigation,
+  completedTestResolution, createInvestigation, demoteInvestigationEvidence, recordCompletedTest,
+  resumeInvestigation, stopInvestigation, withOrchestration,
   type CompletedGuidedTest, type Investigation, type InvestigationGoal,
 } from "../investigation/investigation";
-import { bindingAllowsSessionContinuity, deviceIdentityBinding } from "../investigation/device-identity";
+import { bindingAllowsSessionContinuity, deviceIdentityBinding, fingerprintIdentityKey } from "../investigation/device-identity";
 import { evaluateTestAvailability, resolveGuidedOperation, type GuidedTestAvailability, type GuidedTestDefinition } from "../investigation/tests";
 import { validateObservations, type ObservationValue } from "../investigation/observations";
 import { rankRecommendations, type Recommendation } from "../investigation/recommendations";
@@ -189,15 +192,28 @@ export class MatrixController {
     if (investigation) {
       if (this.session.source === "live" && bindingAllowsSessionContinuity(investigation.deviceBinding, current)) {
         // Same browser-authorized physical device reconnected: the
-        // investigation resumes with its current-session evidence intact.
+        // investigation resumes with its evidence and its whole orchestration
+        // history intact. What is CURRENTLY on the panel is a different
+        // question — the link dropped, and nothing in this session has
+        // observed the display since.
         this.#investigationEpoch = this.#connectionEpoch;
+        this.#invalidatePanelProgram("The display reconnected; what it is showing now was not observed across the disconnect.");
         this.trace.record("investigation.device-resumed", { id: investigation.id });
       } else {
+        // The investigation detaches and takes its ENTIRE orchestration
+        // history with it — experiments, attempts, transfers, reopen state,
+        // recommendation trail. A different physical display starts with
+        // nothing: same-model is not same-unit, and inheriting one panel's
+        // execution history would let it speak for another's.
         this.#investigation = null;
         this.#detachedInvestigation = stopInvestigation(demoteInvestigationEvidence(investigation, "previous-local-session"));
-        this.trace.record("investigation.device-detached", { id: investigation.id });
+        this.trace.record("investigation.device-detached", { id: investigation.id, experiments: investigation.orchestration?.experiments.length ?? 0 });
       }
     }
+    // Nothing staged for, or believed about, a previous connection may
+    // describe this one.
+    this.#stagedPanelProgram = null;
+    this.#unownedPanelProgram = null;
     const sameLiveDevice = this.session.source === "live" && bindingAllowsSessionContinuity(this.#liveBinding, current);
     if (!sameLiveDevice) {
       for (const [id, scope] of this.#validationScopes) {
@@ -263,11 +279,31 @@ export class MatrixController {
     const driver = this.registry.drivers.find(({ id }) => id === plan.driverId);
     if (!driver) throw new Error(`Driver ${plan.driverId} is unavailable.`);
     await this.enableDriverNotifications(driver);
+    // A stored-program display holds exactly one program. Every persistent
+    // write replaces it, so the belief about what is on the panel is settled
+    // HERE — the one path all of them go through — rather than in each
+    // caller, where "Create → Send image" was silently exempt.
+    const replacesStoredProgram = plan.risk === "persistent" || plan.persistence === "persistent";
+    const staged = this.#stagedPanelProgram;
+    this.#stagedPanelProgram = null;
     try {
       const result = await this.#executor.execute(decision.authorized, driver);
       this.#recordTransaction(plan, result, startedAt, notificationStart, source, diagnosticRunIdValue, null);
+      if (replacesStoredProgram) {
+        this.#setPanelProgram(staged ?? {
+          certainty: "known-replaced", kind: "ordinary-content", fingerprint: null,
+          label: `${plan.operation.type} (${plan.purpose})`,
+          at: new Date().toISOString(), uncertaintyReason: null,
+        });
+      }
       return result;
     } catch (error) {
+      // A failed persistent write may still have landed packets. What is on
+      // the panel is genuinely unknown, and saying otherwise in either
+      // direction would be a guess.
+      if (replacesStoredProgram) {
+        this.#invalidatePanelProgram("A persistent write failed part-way; what the display is showing was not established.");
+      }
       this.#recordTransaction(plan, null, startedAt, notificationStart, source, diagnosticRunIdValue, errorMessage(error));
       throw error;
     }
@@ -375,14 +411,21 @@ export class MatrixController {
 
   #investigation: Investigation | null = null;
   // ---- Guided orchestration -------------------------------------------
-  #experiments: ExperimentRun[] = [];
-  #transfers: TransferRecord[] = [];
-  /** Execution presumed to be on the panel right now, for duplicate detection. */
-  #activeExecution: DiagnosticExecutionFingerprint | null = null;
-  /** Experiments the user deliberately reopened, with their stated reason. */
-  #reopened = new Map<string, string>();
-  #recommendationTrail: RecommendationTrailEntry[] = [];
-  #cycleVerdict: CycleVerdict = { cycling: false, testIds: [], detail: null };
+  /**
+   * Orchestration state is NOT held here. It lives on the Investigation, so
+   * that experiments, attempts, transfers, panel-program belief, reopen and
+   * recommendation history are bound to the physical device the investigation
+   * is bound to, and detach with it. Controller-owned collections would have
+   * survived a device change and let one display's history speak for another.
+   *
+   * Two controller-local fields support that. `#stagedPanelProgram` is the
+   * description a caller supplies for the write it is about to make, consumed
+   * by the send path so a failed write cannot claim to have landed.
+   * `#unownedPanelProgram` holds the belief for writes made with no
+   * investigation at all; a new investigation never inherits it.
+   */
+  #stagedPanelProgram: PanelProgramState | null = null;
+  #unownedPanelProgram: PanelProgramState | null = null;
   #detachedInvestigation: Investigation | null = null;
   /** Increments on every applied fingerprint; ties an investigation to one unbroken (or same-authorized-device) session. */
   #connectionEpoch = 0;
@@ -397,6 +440,49 @@ export class MatrixController {
   readonly #validationScopes = new Map<string, EvidenceScope>();
 
   get investigation(): Investigation | null { return this.#investigation; }
+
+  /** Orchestration for the active investigation; empty when there is none. */
+  get orchestration(): InvestigationOrchestration {
+    return this.#investigation?.orchestration ?? emptyOrchestration();
+  }
+
+  /**
+   * Apply a change to the active investigation's orchestration.
+   *
+   * Silently a no-op without an investigation: orchestration is evidence
+   * about one physical display, and there is nowhere safe to put it when no
+   * investigation owns that display.
+   */
+  #updateOrchestration(mutate: (current: InvestigationOrchestration) => InvestigationOrchestration): void {
+    const investigation = this.#investigation;
+    if (!investigation) return;
+    const current = investigation.orchestration ?? emptyOrchestration();
+    this.#investigation = withOrchestration(investigation, mutate(current));
+  }
+
+  /** What MatrixSmith believes is on the panel right now. */
+  panelProgram(): PanelProgramState {
+    return this.#investigation?.orchestration?.panelProgram ?? this.#unownedPanelProgram ?? UNKNOWN_PANEL_PROGRAM;
+  }
+
+  /**
+   * Record what a completed persistent write put on the display.
+   *
+   * Every persistent write goes through here, not only guided ones. A display
+   * holds exactly one stored program, so an image sent from Create replaces
+   * whatever diagnostic was showing — and the duplicate guard has to know
+   * that, or it refuses a legitimate re-run as a duplicate.
+   */
+  #setPanelProgram(state: PanelProgramState): void {
+    if (this.#investigation) this.#updateOrchestration((current) => ({ ...current, panelProgram: state }));
+    else this.#unownedPanelProgram = state;
+  }
+
+  /** Lose certainty about the panel's contents, keeping what was last written. */
+  #invalidatePanelProgram(reason: string): void {
+    if (this.#investigation) this.#updateOrchestration((current) => ({ ...current, panelProgram: invalidatePanelProgram(current.panelProgram, reason) }));
+    else if (this.#unownedPanelProgram) this.#unownedPanelProgram = invalidatePanelProgram(this.#unownedPanelProgram, reason);
+  }
 
   /** Baseline claim evidence: driver-shipped profile/source facts plus bridged legacy validations. */
   baselineClaimEvidence(): readonly ClaimEvidence[] {
@@ -438,6 +524,10 @@ export class MatrixController {
       this.#investigation = { ...this.#investigation, goal, updatedAt: new Date().toISOString() };
     } else {
       if (this.#investigation) this.#detachedInvestigation = stopInvestigation(demoteInvestigationEvidence(this.#investigation, "previous-local-session"));
+      // A new investigation begins with empty orchestration and no claim
+      // about the panel: whatever the previous one established belongs to it.
+      this.#stagedPanelProgram = null;
+      this.#unownedPanelProgram = null;
       this.#investigation = createInvestigation({
         profileId: this.session.profile?.id ?? null,
         deviceName: this.session.fingerprint?.name ?? null,
@@ -524,20 +614,31 @@ export class MatrixController {
    * for a loop. Recorded at the point of action rather than of display: what
    * matters is what the user was sent to do, not what a render computed.
    */
-  noteRecommendationTaken(testId: string): CycleVerdict {
-    this.#recommendationTrail.push({
+  noteRecommendationTaken(testId: string, origin: RecommendationOrigin = "automatic-recommendation"): CycleVerdict {
+    this.ensureInvestigation();
+    const entry: RecommendationTrailEntry = {
       testId,
       at: new Date().toISOString(),
       evidenceCount: (this.#investigation?.claimEvidence ?? []).length,
+      origin,
+    };
+    let verdict: CycleVerdict = { cycling: false, testIds: [], detail: null };
+    this.#updateOrchestration((current) => {
+      const recommendationTrail = [...current.recommendationTrail, entry];
+      // Only ENGINE repetition is a loop. A retry or reopen the user asked
+      // for is recorded for the report and deliberately excluded from the
+      // verdict — punishing a deliberate re-measurement as an algorithmic
+      // cycle would break the workflow the timing tests depend on.
+      verdict = detectRecommendationCycle(recommendationTrail);
+      return { ...current, recommendationTrail, cycleVerdict: verdict };
     });
-    this.#cycleVerdict = detectRecommendationCycle(this.#recommendationTrail);
-    if (this.#cycleVerdict.cycling) {
-      this.trace.record("guided-test.cycle-detected", { testIds: this.#cycleVerdict.testIds.join(","), detail: this.#cycleVerdict.detail ?? "" });
+    if (verdict.cycling) {
+      this.trace.record("guided-test.cycle-detected", { testIds: verdict.testIds.join(","), detail: verdict.detail ?? "" });
     }
-    return this.#cycleVerdict;
+    return verdict;
   }
 
-  get recommendationTrail(): readonly RecommendationTrailEntry[] { return this.#recommendationTrail; }
+  get recommendationTrail(): readonly RecommendationTrailEntry[] { return this.orchestration.recommendationTrail; }
 
   /** Path-specific content gates derived from operationally trusted claims. */
   contentGates(): readonly ContentGate[] {
@@ -593,10 +694,13 @@ export class MatrixController {
     this.ensureInvestigation();
     const plan = this.planGuidedTest(testId);
     const fingerprint = this.guidedExecutionFingerprint(testId, typeof plan.metadata.crc32 === "string" ? plan.metadata.crc32 : null);
-    // The guard: a reason that asserts novelty ("initial experiment", "a
-    // controlled variant") cannot be true of a diagnostic already on the
-    // panel. Repeat reasons are expected to match — that is what they mean.
-    if (this.#activeExecution && this.#activeExecution.key === fingerprint.key
+    // The guard asks whether THIS diagnostic is presumed to be on the panel
+    // right now — not whether these bytes were ever sent. A reason that
+    // asserts novelty ("initial experiment", "a controlled variant") cannot
+    // be true of a diagnostic already showing; repeat reasons are expected to
+    // match, that is what they mean. After any intervening persistent write
+    // the diagnostic is gone and an initial run is legitimate again.
+    if (isGuidedProgramActive(this.panelProgram(), fingerprint)
       && (options.reason === "initial-experiment" || options.reason === "controlled-variant")) {
       this.trace.record("guided-test.duplicate-blocked", { testId, reason: options.reason, fingerprint: fingerprint.key });
       throw new Error(
@@ -606,28 +710,76 @@ export class MatrixController {
     }
     const transactionIndex = this.#transactions.length;
     const startedAt = new Date().toISOString();
-    const result = await this.sendPersistentContent(plan, { confirmedConsequence: true });
-    const transactionIds = this.#transactions.slice(transactionIndex).map(({ id }) => id);
     const transferId = newId("transfer");
-    this.#transfers.push({
-      transferId, attemptId: options.attemptId, diagnosticId: fingerprint.diagnosticId,
-      reason: options.reason, fingerprint, transactionIds, startedAt,
-      finalWriteAcceptedAt: result.finalWriteAcceptedAt,
-    });
-    this.#activeExecution = fingerprint;
-    this.trace.record("guided-test.transferred", {
-      testId, transferId, attemptId: options.attemptId, reason: options.reason,
-      fingerprint: fingerprint.key, crc32: fingerprint.programCrc32,
-      transactionCount: transactionIds.length, finalWriteAcceptedAt: result.finalWriteAcceptedAt,
-    });
-    return { transactionIds, finalWriteAcceptedAt: result.finalWriteAcceptedAt, transferId };
+    // The panel program is stamped by the send path itself, so that a partial
+    // or failed write leaves certainty at "unknown" rather than claiming this
+    // diagnostic is showing.
+    this.#stagedPanelProgram = {
+      certainty: "known-active", kind: "guided-diagnostic", fingerprint,
+      label: `guided diagnostic ${test.title}`, at: startedAt, uncertaintyReason: null,
+    };
+    try {
+      const result = await this.sendPersistentContent(plan, { confirmedConsequence: true });
+      const transactionIds = this.#transactions.slice(transactionIndex).map(({ id }) => id);
+      this.#recordTransfer({
+        transferId, attemptId: options.attemptId, diagnosticId: fingerprint.diagnosticId,
+        reason: options.reason, fingerprint, transactionIds, startedAt,
+        finalWriteAcceptedAt: result.finalWriteAcceptedAt, failureReason: null,
+      });
+      this.trace.record("guided-test.transferred", {
+        testId, transferId, attemptId: options.attemptId, reason: options.reason,
+        fingerprint: fingerprint.key, crc32: fingerprint.programCrc32,
+        transactionCount: transactionIds.length, finalWriteAcceptedAt: result.finalWriteAcceptedAt,
+      });
+      return { transactionIds, finalWriteAcceptedAt: result.finalWriteAcceptedAt, transferId };
+    } catch (error) {
+      // A transfer that threw must settle its attempt. Leaving it open left a
+      // zombie in-progress attempt forever and made the next real try look
+      // like a continuation of a measurement that never started.
+      const transactionIds = this.#transactions.slice(transactionIndex).map(({ id }) => id);
+      const detail = errorMessage(error);
+      this.#recordTransfer({
+        transferId, attemptId: options.attemptId, diagnosticId: fingerprint.diagnosticId,
+        reason: options.reason, fingerprint, transactionIds, startedAt,
+        finalWriteAcceptedAt: null, failureReason: detail,
+      });
+      this.settleAttempt(options.attemptId, {
+        validity: "invalid",
+        failureKind: "transfer-failed",
+        invalidationReason: `The diagnostic transfer failed before any physical observation: ${detail}`,
+      });
+      this.trace.record("guided-test.transfer-failed", {
+        testId, transferId, attemptId: options.attemptId, reason: options.reason,
+        fingerprint: fingerprint.key, transactionCount: transactionIds.length, error: detail,
+      });
+      throw error;
+    }
   }
 
-  /** Identity of a guided test's resolved diagnostic on this device. */
+  #recordTransfer(record: TransferRecord): void {
+    this.#updateOrchestration((current) => ({ ...current, transfers: [...current.transfers, record] }));
+  }
+
+  /**
+   * Identity of a guided test's resolved diagnostic on this PHYSICAL device.
+   *
+   * The device half of the identity is the browser-authorized device id when
+   * there is one, and otherwise the fingerprint shape, labelled as the weaker
+   * thing it is. It is deliberately never the profile id: a profile is a
+   * model, so two identical panels shared one identity and each could be told
+   * its diagnostic was already showing because the other had received it.
+   */
   guidedExecutionFingerprint(testId: string, programCrc32: string | null = null): DiagnosticExecutionFingerprint {
     const operation = this.guidedTestOperation(testId);
+    const binding = this.#investigation?.deviceBinding
+      ?? deviceIdentityBinding(this.session.fingerprint, this.session.profile?.id ?? null);
     return buildExecutionFingerprint({
-      deviceBindingId: this.#investigation?.deviceBinding?.profileId ?? this.session.profile?.id ?? null,
+      physicalDeviceKey: binding?.browserDeviceId
+        ?? this.session.fingerprint?.browserDeviceId
+        ?? null,
+      fingerprintShapeKey: binding?.fingerprintKey
+        ?? (this.session.fingerprint ? fingerprintIdentityKey(this.session.fingerprint) : null),
+      profileId: this.session.profile?.id ?? null,
       testId,
       diagnosticId: operation.type === "ShowDiagnostic" ? operation.diagnosticId : operation.type,
       parameters: operation.type === "ShowDiagnostic" ? operation.parameters : undefined,
@@ -638,10 +790,10 @@ export class MatrixController {
 
   // ---- Guided orchestration accessors ----------------------------------
 
-  get experiments(): readonly ExperimentRun[] { return this.#experiments; }
-  get transfers(): readonly TransferRecord[] { return this.#transfers; }
-  get recommendationCycle(): CycleVerdict { return this.#cycleVerdict; }
-  transferSummary(): ReturnType<typeof classifyTransfers> { return classifyTransfers(this.#transfers); }
+  get experiments(): readonly ExperimentRun[] { return this.orchestration.experiments; }
+  get transfers(): readonly TransferRecord[] { return this.orchestration.transfers; }
+  get recommendationCycle(): CycleVerdict { return this.orchestration.cycleVerdict; }
+  transferSummary(): ReturnType<typeof classifyTransfers> { return classifyTransfers(this.orchestration.transfers); }
 
   /** The driver-contributed core plan for the resolved profile, if any. */
   corePlan(): CorePlan | null {
@@ -657,10 +809,27 @@ export class MatrixController {
     return evaluateCorePlan(plan, this.allClaimEvidence(), this.#investigation?.completedTests ?? []);
   }
 
-  /** Open an experiment run, or return the in-progress one for this test. */
+  /**
+   * Open an experiment run, or continue one that is still open for this test.
+   *
+   * A run whose measurement fell short is CONTINUED rather than replaced: the
+   * user is repeating the same experiment, so its attempts keep counting up
+   * and the report shows one experiment with several attempts instead of a
+   * pile of near-identical runs. Continuation requires the same execution
+   * identity — a controlled variant is a different experiment, not a retry.
+   */
   beginExperiment(testId: string): ExperimentRun {
-    const existing = this.#experiments.find((run) => run.definitionId === testId && run.status === "in-progress");
-    if (existing) return existing;
+    this.ensureInvestigation();
+    const fingerprint = this.guidedExecutionFingerprint(testId);
+    const runs = this.orchestration.experiments;
+    const existing = runs.find((run) => run.definitionId === testId && run.status === "in-progress")
+      ?? runs.find((run) => run.definitionId === testId && run.resolution === "retryable-incomplete" && run.fingerprint.key === fingerprint.key);
+    if (existing) {
+      if (existing.status === "in-progress") return existing;
+      const resumed: ExperimentRun = { ...existing, status: "in-progress", completedAt: null };
+      this.#replaceExperiment(resumed);
+      return resumed;
+    }
     const test = this.guidedTest(testId);
     const operation = this.guidedTestOperation(testId);
     const parameters = operation.type === "ShowDiagnostic" && operation.parameters ? { ...operation.parameters } : {};
@@ -672,22 +841,35 @@ export class MatrixController {
       corePlanStepId: step?.id ?? null,
       variant: Object.entries(parameters).map(([key, value]) => `${key}=${value}`).join(", ") || null,
       parameters,
-      fingerprint: this.guidedExecutionFingerprint(testId),
+      fingerprint,
       status: "in-progress",
+      resolution: null,
       startedAt: new Date().toISOString(),
       completedAt: null,
       attempts: [],
       conclusion: null,
-      reopenReason: this.#reopened.get(testId) ?? null,
+      reopenReason: this.#reopenReason(testId),
     };
-    this.#experiments.push(run);
+    this.#updateOrchestration((current) => ({ ...current, experiments: [...current.experiments, run] }));
     return run;
   }
 
-  /** Add an attempt to an open experiment run. */
+  #replaceExperiment(run: ExperimentRun): void {
+    this.#updateOrchestration((current) => ({
+      ...current,
+      experiments: current.experiments.map((entry) => entry.experimentRunId === run.experimentRunId ? run : entry),
+    }));
+  }
+
+  /**
+   * Add an attempt to an open experiment run.
+   *
+   * Numbers come off the run's own history and are never recycled: an attempt
+   * whose transfer failed still occupied number 1, and a report that renumbers
+   * around it loses the fact that anything was sent at all.
+   */
   beginAttempt(experimentRunId: string, reason: TransferReason): ExperimentAttempt {
-    const index = this.#experiments.findIndex((run) => run.experimentRunId === experimentRunId);
-    const run = this.#experiments[index];
+    const run = this.orchestration.experiments.find((entry) => entry.experimentRunId === experimentRunId);
     if (!run) throw new Error(`Unknown experiment run ${experimentRunId}.`);
     const attempt: ExperimentAttempt = {
       attemptId: newId("attempt"),
@@ -695,9 +877,9 @@ export class MatrixController {
       reason,
       startedAt: new Date().toISOString(),
       transferIds: [], observations: [], timing: null,
-      validity: "in-progress", invalidationReason: null,
+      validity: "in-progress", invalidationReason: null, failureKind: null,
     };
-    this.#experiments[index] = { ...run, attempts: [...run.attempts, attempt] };
+    this.#replaceExperiment({ ...run, attempts: [...run.attempts, attempt] });
     return attempt;
   }
 
@@ -705,11 +887,12 @@ export class MatrixController {
   settleAttempt(attemptId: string, update: {
     readonly validity: ExperimentAttempt["validity"];
     readonly invalidationReason?: string | null;
+    readonly failureKind?: AttemptFailureKind | null;
     readonly observations?: readonly ObservationValue[];
     readonly timing?: ObservationAttempt | null;
   }): void {
-    for (let index = 0; index < this.#experiments.length; index += 1) {
-      const run = this.#experiments[index]!;
+    const transfers = this.orchestration.transfers;
+    for (const run of this.orchestration.experiments) {
       const attemptIndex = run.attempts.findIndex((attempt) => attempt.attemptId === attemptId);
       if (attemptIndex < 0) continue;
       const attempt = run.attempts[attemptIndex]!;
@@ -718,22 +901,41 @@ export class MatrixController {
         ...attempt,
         validity: update.validity,
         invalidationReason: update.invalidationReason ?? attempt.invalidationReason,
+        failureKind: update.failureKind !== undefined ? update.failureKind : attempt.failureKind,
         observations: update.observations ? [...update.observations] : attempt.observations,
         timing: update.timing !== undefined ? update.timing : attempt.timing,
-        transferIds: this.#transfers.filter((transfer) => transfer.attemptId === attemptId).map((transfer) => transfer.transferId),
+        transferIds: transfers.filter((transfer) => transfer.attemptId === attemptId).map((transfer) => transfer.transferId),
       };
-      this.#experiments[index] = { ...run, attempts };
+      this.#replaceExperiment({ ...run, attempts });
       return;
     }
   }
 
-  /** Close an experiment run once its result is recorded. */
-  settleExperiment(experimentRunId: string, status: ExperimentRun["status"], conclusion: string): void {
-    const index = this.#experiments.findIndex((run) => run.experimentRunId === experimentRunId);
-    const run = this.#experiments[index];
+  /** Attempts still open on any experiment. Should always be empty at rest. */
+  inProgressAttempts(): readonly ExperimentAttempt[] {
+    return this.orchestration.experiments.flatMap((run) => run.attempts.filter((attempt) => attempt.validity === "in-progress"));
+  }
+
+  /**
+   * Close an experiment run once its result is recorded.
+   *
+   * The resolution — not the status — decides whether the plan may move on.
+   * A run that timed out short of the required observation window is left
+   * `retryable-incomplete` so it can be measured again as the same numbered
+   * test rather than being retired as answered.
+   */
+  settleExperiment(experimentRunId: string, status: ExperimentRun["status"], conclusion: string, resolution: ExperimentResolution = "settled"): void {
+    const run = this.orchestration.experiments.find((entry) => entry.experimentRunId === experimentRunId);
     if (!run) return;
-    this.#experiments[index] = { ...run, status, conclusion, completedAt: new Date().toISOString() };
-    this.#reopened.delete(run.definitionId);
+    this.#replaceExperiment({ ...run, status, conclusion, resolution, completedAt: new Date().toISOString() });
+    // A settled or abandoned experiment consumes its reopen; one still open
+    // for a repeat measurement keeps it, so the report says why it is running.
+    if (resolution !== "retryable-incomplete") {
+      this.#updateOrchestration((current) => ({
+        ...current,
+        reopened: current.reopened.filter((entry) => entry.testId !== run.definitionId),
+      }));
+    }
   }
 
   /**
@@ -742,11 +944,28 @@ export class MatrixController {
    * the user makes, with a reason that survives into the report.
    */
   reopenExperiment(testId: string, reason: string): void {
-    this.#reopened.set(testId, reason);
+    this.ensureInvestigation();
+    this.#updateOrchestration((current) => ({
+      ...current,
+      reopened: [...current.reopened.filter((entry) => entry.testId !== testId), { testId, reason, at: new Date().toISOString() }],
+    }));
     this.trace.record("guided-test.reopened", { testId, reason });
   }
 
-  reopenedTestIds(): readonly string[] { return [...this.#reopened.keys()]; }
+  #reopenReason(testId: string): string | null {
+    return this.orchestration.reopened.find((entry) => entry.testId === testId)?.reason ?? null;
+  }
+
+  reopenedTestIds(): readonly string[] { return this.orchestration.reopened.map((entry) => entry.testId); }
+
+  /**
+   * Experiments the user may legitimately measure again unchanged. The plan
+   * stays on their milestone: an incomplete measurement is not progress, and
+   * it is not a dead end either.
+   */
+  retryableExperimentIds(): readonly string[] {
+    return retryableIncompleteTestIds(this.#investigation?.completedTests ?? []);
+  }
 
   /**
    * Record the structured physical observations for a guided test: the
@@ -889,9 +1108,11 @@ export class MatrixController {
       driverCandidates: this.session.selection?.matches ?? [],
       regionsByTest: new Map(this.guidedTestDefinitions().map((test) => [test.id, this.guidedTestRegions(test.id)])),
       coreProgress: this.corePlanProgress(),
-      experiments: this.#experiments,
-      transfers: this.#transfers,
-      cycleDetail: this.#cycleVerdict.cycling ? this.#cycleVerdict.detail : null,
+      experiments: this.orchestration.experiments,
+      transfers: this.orchestration.transfers,
+      cycleDetail: this.orchestration.cycleVerdict.cycling ? this.orchestration.cycleVerdict.detail : null,
+      panelProgram: this.panelProgram(),
+      liveSession: this.session.source === "live" && this.transport.state === "connected",
     });
   }
 
@@ -1011,6 +1232,12 @@ export class MatrixController {
     if (!options.confirmedConsequence) throw new Error(`Explicit confirmation required. ${workflow.consequence}`);
     const plan = this.planValidationContent(workflowId);
     const transactionIndex = this.#transactions.length;
+    // A legacy validation program replaces the stored content exactly like
+    // anything else; naming it keeps the guided guard honest afterwards.
+    this.#stagedPanelProgram = {
+      certainty: "known-replaced", kind: "validation", fingerprint: null,
+      label: `legacy validation ${workflow.label}`, at: new Date().toISOString(), uncertaintyReason: null,
+    };
     const result = await this.sendPersistentContent(plan, { confirmedConsequence: true });
     const transactionIds = this.#transactions.slice(transactionIndex).map(({ id }) => id);
     return { plan, result, transactionIds };

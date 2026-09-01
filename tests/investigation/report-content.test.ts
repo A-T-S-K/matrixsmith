@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { emptyOrchestration } from "../../src/investigation/orchestration";
 import { MatrixController } from "../../src/app/controller";
 import { TraceRecorder } from "../../src/diagnostics/trace";
 import { parseHexBytes } from "../../src/discovery/advertisement";
@@ -54,6 +55,7 @@ describe("investigation report content", () => {
       id: "investigation:old", createdAt: "2026-08-30T10:00:00.000Z", updatedAt: "2026-08-30T10:00:00.000Z",
       profileId: "iledhat-31ae-32x16", deviceName: "iLedHat", deviceBinding: null,
       goal: { kind: "develop", description: "old" }, status: "stopped", completedTests: [], notes: [],
+      orchestration: emptyOrchestration(),
       claimEvidence: [{ claimId: "animation.frames", status: "rejected", scope: "previous-local-session", provenance: "observed", summary: "rejected in an old session" }],
     });
     const report = controller.investigationReportMarkdown();
