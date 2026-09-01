@@ -1010,6 +1010,10 @@ export class MatrixController {
       summary: interpretation.summary, transactionIds: [...transactionIds],
       ...(parameters ? { parameters } : {}),
       ...(attempts.length > 0 ? { attempts: [...attempts] } : {}),
+      // What this run means for the PLAN, which is not always what its status
+      // means for the hardware: an "inconclusive" because the observation ran
+      // out of time is a measurement to repeat, not a question answered.
+      resolution: interpretation.resolution ?? "settled",
     };
     this.#investigation = recordCompletedTest(this.ensureInvestigation(), completed, evidence, completedAt);
     this.#deriveSessionRasterStrategy(testId);
@@ -1055,6 +1059,7 @@ export class MatrixController {
       transactionIds: [...transactionIds],
       ...(parameters ? { parameters } : {}),
       ...(attempts.length > 0 ? { attempts: [...attempts] } : {}),
+      resolution: "abandoned",
     };
     this.#investigation = recordCompletedTest(this.ensureInvestigation(), completed, [], completedAt);
     this.trace.record("guided-test.abandoned", { testId, transactionCount: transactionIds.length });

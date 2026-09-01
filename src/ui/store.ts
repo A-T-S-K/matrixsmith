@@ -1147,26 +1147,25 @@ export class MatrixStore {
       .some((test) => next !== null && test.testId === next.testId && completedTestResolution(test) === "settled") ?? false;
     const retryable = this.#retryableOnCurrentMilestone();
     this.closeGuidedTest();
+    // An unanswered measurement on the CURRENT milestone comes first. Moving
+    // on to a controlled variant while the baseline it varies was never
+    // actually observed would advance the plan past a question nobody
+    // answered — and would look, to the user, like their short measurement
+    // had counted.
+    if (retryable) {
+      this.#info = `The last measurement did not run long enough to answer this step. Measure "${retryable.title}" again to finish it.`;
+      this.#emit();
+      return;
+    }
     if (next && !settled) { this.startGuidedTest(next.testId); return; }
     if (next && settled) {
       this.#error = "MatrixSmith was about to repeat a test that already produced a result, so it stopped. Reopen it deliberately if you want to measure it again.";
       this.#emit();
       return;
     }
-    if (this.controller.corePlanProgress()?.complete) {
-      this.#info = "Core characterization is complete.";
-      this.#emit();
-      return;
-    }
-    // An experiment that ran out of observation time is not a dead end and
-    // must not be reported as one. The plan is still on its milestone, and
-    // the same measurement, watched for long enough, would settle it.
-    if (retryable) {
-      this.#info = `The last measurement did not run long enough to answer its question. Measure "${retryable.title}" again to finish this step.`;
-      this.#emit();
-      return;
-    }
-    this.#info = "No further test is recommended right now.";
+    this.#info = this.controller.corePlanProgress()?.complete
+      ? "Core characterization is complete."
+      : "No further test is recommended right now.";
     this.#emit();
   }
 

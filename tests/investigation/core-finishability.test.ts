@@ -41,6 +41,19 @@ function heldStill(): ObservationValue[] {
   ];
 }
 
+/**
+ * The sub-threshold case: the person watched, saw nothing move, and stopped
+ * after seven seconds of a fifteen-second requirement.
+ */
+function heldStillTooBriefly(): ObservationValue[] {
+  return [
+    { kind: "boolean", fieldId: "initial-correct", value: "yes" },
+    timer("image-visible", 1200),
+    { kind: "boolean", fieldId: "moved", value: "no" },
+    timer("observation-end", 1200 + 7000),
+  ];
+}
+
 /** A timing run that rendered and then began moving. */
 function moved(): ObservationValue[] {
   return [
@@ -150,6 +163,76 @@ describe("core plan finishability", () => {
     expect(complete).toBe(true);
     expect(distinct.length).toBeLessThanOrEqual(MAX_DISTINCT_CORE_EXPERIMENTS);
     expect(new Set(distinct).size).toBe(distinct.length);
+  }, 60000);
+
+  it("PATH E — a short measurement offers to measure again and does not advance", async () => {
+    const instance = await controller();
+    const before = instance.corePlanProgress()!;
+
+    // The user watches for seven seconds and stops. Nothing is concluded.
+    await instance.runGuidedTestTransfer("coolledux-graffiti-timing", { confirmedConsequence: true, reason: "initial-experiment", attemptId: "attempt:1" });
+    instance.recordGuidedTestObservations("coolledux-graffiti-timing", heldStillTooBriefly(), []);
+
+    expect(instance.retryableExperimentIds()).toContain("coolledux-graffiti-timing");
+    const stability = instance.claims().find((claim) => claim.id === "graffiti.playback-stability");
+    expect(stability?.status).not.toBe("verified");
+    expect(stability?.status).not.toBe("rejected");
+    // The stability milestone has NOT advanced past its question.
+    const after = instance.corePlanProgress()!;
+    expect(after.total).toBe(before.total);
+    expect(after.steps.find((entry) => entry.step.id === "playback-discriminator")!.state).not.toBe("complete");
+    expect(after.complete).toBe(false);
+
+    // Measuring the same experiment again, properly, continues the plan.
+    await instance.runGuidedTestTransfer("coolledux-graffiti-timing", { confirmedConsequence: true, reason: "explicit-measure-again", attemptId: "attempt:2" });
+    instance.recordGuidedTestObservations("coolledux-graffiti-timing", heldStill(), []);
+    expect(instance.retryableExperimentIds()).not.toContain("coolledux-graffiti-timing");
+    expect(instance.corePlanProgress()!.steps.find((entry) => entry.step.id === "playback-discriminator")!.state).toBe("complete");
+
+    // And from there the plan still terminates in the bounded number of
+    // distinct experiments — the incomplete measurement cost nothing but time.
+    for (let guard = 0; guard < 10 && !instance.corePlanProgress()!.complete; guard += 1) {
+      const next = instance.recommendations()[0];
+      if (!next) break;
+      const outcome = ({
+        "coolledux-graffiti-black": blackIsOff,
+        "coolledux-pixel-channels": channelsMapped,
+      } as Record<string, () => ObservationValue[]>)[next.testId];
+      if (!outcome) break;
+      await instance.runGuidedTestTransfer(next.testId, { confirmedConsequence: true, reason: "initial-experiment", attemptId: `attempt:e${guard}` });
+      instance.recordGuidedTestObservations(next.testId, outcome(), []);
+    }
+    const final = instance.corePlanProgress()!;
+    expect(final.complete).toBe(true);
+    expect(final.total).toBe(6);
+    expect(final.resolved).toBe(6);
+  }, 60000);
+
+  it("keeps the denominator at six on every modelled path", async () => {
+    const paths: Readonly<Record<string, () => ObservationValue[]>>[] = [
+      { "coolledux-graffiti-timing": heldStill, "coolledux-graffiti-black": blackIsOff, "coolledux-pixel-channels": channelsMapped },
+      { "coolledux-graffiti-timing": moved, "coolledux-graffiti-staytime": heldStill, "coolledux-graffiti-black": blackIsOff, "coolledux-pixel-channels": channelsMapped },
+      { "coolledux-graffiti-timing": moved, "coolledux-graffiti-staytime": moved, "coolledux-animation-static": () => animationStatic(true), "coolledux-graffiti-black": blackIsOff, "coolledux-pixel-channels": channelsMapped },
+    ];
+    for (const outcomes of paths) {
+      const instance = await controller();
+      const total = instance.corePlanProgress()!.total;
+      expect(total).toBe(6);
+      for (let guard = 0; guard < 20; guard += 1) {
+        const progress = instance.corePlanProgress()!;
+        // The invariant under test: the denominator never moves, whatever
+        // the branch does to the milestones themselves.
+        expect(progress.total).toBe(6);
+        expect(progress.resolved).toBe(progress.completed + progress.skipped);
+        if (progress.complete) break;
+        const next = instance.recommendations()[0];
+        const outcome = next ? outcomes[next.testId] : undefined;
+        if (!next || !outcome) break;
+        await instance.runGuidedTestTransfer(next.testId, { confirmedConsequence: true, reason: "initial-experiment", attemptId: `attempt:${guard}` });
+        instance.recordGuidedTestObservations(next.testId, outcome(), []);
+      }
+      expect(instance.corePlanProgress()!.total).toBe(6);
+    }
   }, 60000);
 
   it("never repeats an experiment on any modelled path", async () => {

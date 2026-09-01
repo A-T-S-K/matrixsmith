@@ -125,6 +125,11 @@ function StoppedInvestigation({ snapshot, store }: { snapshot: AppSnapshot; stor
 /** The one dominant action, with the reason it is next. */
 function NextAction({ snapshot, store }: { snapshot: AppSnapshot; store: MatrixStore }): JSX.Element {
   const next = snapshot.nextTest;
+  // An unanswered measurement on the current milestone outranks the engine's
+  // next suggestion. Advancing past a question nobody answered would read as
+  // though the short measurement had counted.
+  const retry = snapshot.coreProgress?.retryableTestId ?? null;
+  if (retry) return <MeasureAgain snapshot={snapshot} store={store} testId={retry}/>;
   if (next) {
     return <section class="next-action" aria-labelledby="next-action-title">
       <p class="panel-kicker">NEXT</p>
@@ -142,28 +147,6 @@ function NextAction({ snapshot, store }: { snapshot: AppSnapshot; store: MatrixS
       </div>
     </section>;
   }
-  // An experiment that ran out of observation time is not a dead end. The
-  // milestone is still open and the same measurement, watched for long
-  // enough, would settle it — so the offer is to measure again, not a
-  // "nothing further is recommended" that strands the user.
-  const retry = snapshot.coreProgress?.retryableTestId ?? null;
-  if (retry) {
-    const step = snapshot.coreProgress?.steps.find((entry) => entry.id === snapshot.coreProgress?.currentStepId) ?? null;
-    return <section class="next-action" aria-labelledby="next-action-title">
-      <p class="panel-kicker">{step ? `TEST ${step.position} OF ${snapshot.coreProgress!.total}` : "NEXT"}</p>
-      <h2 id="next-action-title">Not enough observation time</h2>
-      <p>The last measurement stopped before it had watched for long enough to answer this step. Nothing about the display was concluded from it.</p>
-      <div class="next-action-cta">
-        <button
-          class="primary"
-          disabled={snapshot.busy !== null || !snapshot.liveConnected}
-          title={snapshot.liveConnected ? "" : "Connect the physical display to run tests."}
-          onClick={() => store.measureAgain(retry)}
-        >Measure again</button>
-        <button class="secondary" onClick={() => store.stopInvestigation()}>Stop for now</button>
-      </div>
-    </section>;
-  }
   return <section class="next-action" aria-labelledby="next-action-title">
     <p class="panel-kicker">NEXT</p>
     <h2 id="next-action-title">{snapshot.recommended.title}</h2>
@@ -171,6 +154,33 @@ function NextAction({ snapshot, store }: { snapshot: AppSnapshot; store: MatrixS
     <div class="next-action-cta">
       {snapshot.recommended.action === "identify" && <button class="primary" onClick={() => void store.identify()} disabled={snapshot.busy !== null}>Run safe identification</button>}
       {snapshot.recommended.action === "checks" && <button class="primary" onClick={() => void store.refreshInfo()} disabled={snapshot.busy !== null}>Refresh device info</button>}
+    </div>
+  </section>;
+}
+
+/**
+ * An experiment that ran out of observation time is not a dead end.
+ *
+ * The milestone is still open and the same measurement, watched for long
+ * enough, would settle it — so the offer is to measure again, at the same
+ * number, rather than a "nothing further is recommended" that strands the
+ * user with the only test that could answer their question retired.
+ */
+function MeasureAgain({ snapshot, store, testId }: { snapshot: AppSnapshot; store: MatrixStore; testId: string }): JSX.Element {
+  const progress = snapshot.coreProgress;
+  const step = progress?.steps.find((entry) => entry.id === progress.currentStepId) ?? null;
+  return <section class="next-action" aria-labelledby="next-action-title">
+    <p class="panel-kicker">{step && progress ? `TEST ${step.position} OF ${progress.total}` : "NEXT"}</p>
+    <h2 id="next-action-title">Not enough observation time</h2>
+    <p>The last measurement stopped before it had watched for long enough to answer this step. Nothing about the display was concluded from it.</p>
+    <div class="next-action-cta">
+      <button
+        class="primary"
+        disabled={snapshot.busy !== null || !snapshot.liveConnected}
+        title={snapshot.liveConnected ? "" : "Connect the physical display to run tests."}
+        onClick={() => store.measureAgain(testId)}
+      >Measure again</button>
+      <button class="secondary" onClick={() => store.stopInvestigation()}>Stop for now</button>
     </div>
   </section>;
 }
