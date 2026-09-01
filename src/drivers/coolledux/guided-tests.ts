@@ -10,6 +10,7 @@ import { formatDuration } from "../../investigation/observations";
 import { approximateSeconds } from "../../investigation/timing";
 import { MINIMUM_STATIC_HOLD_MS, VISIBLE_STATIC_HOLD_METRIC } from "../../investigation/static-viability";
 import { PIXEL_CHANNEL_PROBE_WORDS, pixelChannelZoneId } from "./diagnostics";
+import { orientationPattern } from "../../render/patterns";
 
 /**
  * CoolLEDUX guided hardware tests for the iLedHat characterization phase.
@@ -765,10 +766,141 @@ const colorWhiteTest: GuidedTestDefinition = {
  * CoolLEDUX profiles — a future unrelated device gets its own applicable
  * suite (or a genuinely generic one), never these unchanged.
  */
+/**
+ * PROFILE MAINTENANCE — the normal image path, end to end.
+ *
+ * Every other test here sends a fixed diagnostic program. This one sends a
+ * plain ShowFrame, which means it goes through exactly what Create does:
+ * the profile's preferred static strategy, the ordinary encoder, the ordinary
+ * tiling, the ordinary persistent-send path. Nothing about the compilation is
+ * special-cased for diagnostics.
+ *
+ * It is NOT a prerequisite for normal use on an already-characterized
+ * profile. It exists so the production routing can be validated on hardware
+ * after a change to it, and so image.rendering can eventually be promoted
+ * from "allowed through a verified substrate" to "directly observed" — a
+ * distinction the profile keeps honestly until someone actually looks.
+ *
+ * Four questions, deliberately. It is not another characterization flow, and
+ * colour perfection is explicitly not being judged.
+ */
+const normalImageSmokeTest: GuidedTestDefinition = {
+  id: "coolledux-normal-image-smoke",
+  driverId: "coolledux",
+  title: "Check a normal image end to end",
+  category: "optional",
+  targetClaims: ["image.rendering"],
+  prerequisites: [
+    { claimId: "stored-program.upload", anyOf: ["verified"] },
+    { claimId: "static.strategy", anyOf: ["verified"] },
+  ],
+  requiresCompletedTests: [],
+  risk: "persistent", persistence: "persistent", consequence: PERSISTENT_CONSEQUENCE,
+  about: {
+    question: "Does an ordinary image sent the normal way look right on the panel?",
+    whyRelevant: "The substrate, encoder and strategy have each been verified separately. This is the only test that exercises them together through the exact path Create uses, so it is what turns 'should work' into 'was seen to work'.",
+    whatMatrixSmithDoes: "Sends a normal still image — the same ShowFrame the Create screen sends — with no diagnostic-specific compilation. The profile's own preferred static strategy decides how it is delivered.",
+    whatChangesOnDevice: "The stored display program is replaced with the test image.",
+    estimatedObservationTime: "About 20 seconds.",
+    possibleOutcomes: [
+      { outcome: "The image appears and stays put", learns: "The production image path works on this panel." },
+      { outcome: "The image appears and then moves", learns: "The selected static strategy does not hold a still image after all; the strategy selection needs rechecking." },
+      { outcome: "The image is wrong from the start", learns: "The encoder or tiling in the normal path needs attention, independent of playback." },
+    ],
+    observeInstructions: "Tap when the image is fully visible, then watch it. Tap if anything moves, or stop once it has stayed completely still for 15 seconds.",
+    technicalDetails: [
+      "A plain ShowFrame through the driver's normal content path: profile-preferred raster strategy, ordinary RGB444 encoder, ordinary 8-column tiling.",
+      "Nothing here is diagnostic-only. If this renders correctly, the Create image path renders correctly.",
+    ],
+  },
+  // A plain still image, compiled exactly as Create compiles one.
+  operation: { type: "ShowFrame", frame: orientationPattern(32, 16) },
+  buildOperation: ({ profile }) => ({ type: "ShowFrame", frame: orientationPattern(profile.width, profile.height) }),
+  observation: [
+    { kind: "boolean", id: "initial-correct", prompt: "Did the image appear correctly?" },
+    { kind: "duration", id: "image-visible", prompt: "When was the image fully visible? (measured by the timer)", required: false },
+    { kind: "boolean", id: "moved", prompt: "Did it start moving at any point?", required: false },
+    { kind: "duration", id: "movement-start", prompt: "When did movement begin? (measured by the timer)", required: false },
+    { kind: "duration", id: "observation-end", prompt: "When did you stop watching the still image? (measured by the timer)", required: false },
+    { kind: "boolean", id: "background-off", prompt: "Was the black background genuinely off — not glowing or tinted?" },
+    { kind: "boolean", id: "layout-correct", prompt: "Was the image the right way up, with no gaps or steps between sections?" },
+    { kind: "note", id: "note", prompt: "Anything else worth recording?" },
+  ],
+  timer: STATIC_TIMELINE,
+  showRegionDiagram: false,
+  validate: validateTimeline,
+  interpret(values) {
+    const initial = booleanAnswer(values, "initial-correct");
+    const moved = booleanAnswer(values, "moved");
+    const backgroundOff = booleanAnswer(values, "background-off");
+    const layout = booleanAnswer(values, "layout-correct");
+    const t1 = measuredDurationAnswer(values, "image-visible");
+    const end = measuredDurationAnswer(values, "observation-end");
+    const heldMs = t1 !== null && end !== null ? Math.max(0, end - t1) : null;
+    const updates: ClaimUpdate[] = [];
+    const established: string[] = [];
+    const rejected: string[] = [];
+    const unknowns: string[] = [];
+
+    if (initial === "no") {
+      rejected.push("The normal image did not render correctly.");
+      updates.push({ claimId: "image.rendering", status: "rejected", summary: "A normal ShowFrame through the profile's selected static strategy did not render correctly on this panel." });
+      return { status: "failed", established, rejected, unknowns, summary: "The normal image path did not render correctly.", claimUpdates: updates };
+    }
+    if (moved === "yes") {
+      rejected.push("The image rendered but did not stay still.");
+      updates.push({ claimId: "image.rendering", status: "rejected", summary: "A normal ShowFrame rendered but did not stay still, so the selected static strategy does not deliver a stable image here." });
+      return { status: "partial", established, rejected, unknowns, summary: "The normal image rendered, then moved. The selected static strategy needs rechecking.", claimUpdates: updates };
+    }
+    if (moved !== "no" || heldMs === null || heldMs < MINIMUM_STATIC_HOLD_MS) {
+      // Not enough watching to call it stable, and not a verdict either.
+      unknowns.push(heldMs !== null
+        ? `Only ${approximateSeconds(heldMs)} of stillness was observed — below the ${MINIMUM_STATIC_HOLD_MS / 1000}s needed to call the image stable.`
+        : "Stability cannot be confirmed without a timed observation window.");
+      return {
+        status: "inconclusive", resolution: "retryable-incomplete", established, rejected, unknowns,
+        summary: heldMs !== null
+          ? `The image looked right and stayed still for ${approximateSeconds(heldMs)}, but watching stopped before the ${MINIMUM_STATIC_HOLD_MS / 1000}s needed to confirm it.`
+          : "The image looked right, but nothing was timed, so stability stays unconfirmed.",
+        claimUpdates: updates,
+      };
+    }
+
+    established.push(`The normal image rendered correctly and stayed completely still for ${approximateSeconds(heldMs)}.`);
+    updates.push({
+      claimId: "image.rendering", status: "verified",
+      summary: `A normal ShowFrame, compiled through the profile's selected static strategy and the ordinary encoder and tiling, rendered correctly and held still for the measured ${formatDuration(heldMs)}.`,
+      metrics: { [VISIBLE_STATIC_HOLD_METRIC]: heldMs, ...(t1 !== null ? { renderLatencyMs: t1 } : {}) },
+    });
+    if (backgroundOff === "yes") established.push("Black was genuinely off.");
+    else if (backgroundOff === "no") {
+      rejected.push("The black background was not genuinely off.");
+      unknowns.push("Black rendered as something other than off on the normal path; the profile's black semantics need rechecking.");
+    }
+    if (layout === "yes") established.push("Orientation and tiling were correct.");
+    else if (layout === "no") {
+      rejected.push("Orientation or tiling was wrong on the normal path.");
+      updates.push({ claimId: "raster.orientation", status: "unresolved", summary: "Orientation or tiling was reported wrong on the normal image path; geometry needs recharacterization." });
+    }
+    // Colour quality is deliberately not judged here.
+    const clean = backgroundOff !== "no" && layout !== "no";
+    return {
+      status: clean ? "passed" : "partial",
+      established, rejected, unknowns,
+      summary: clean
+        ? "The normal image path works end to end on this panel."
+        : "The normal image rendered and stayed still, but something about black or layout was off.",
+      claimUpdates: updates,
+      nextHint: clean ? "The production image path is confirmed; image.rendering can be promoted to observed evidence in the profile." : undefined,
+    };
+  },
+};
+
 export const ILEDHAT_GUIDED_TESTS: readonly GuidedTestDefinition[] = Object.freeze([
   graffitiBlackTest, graffitiTimingTest, graffitiStayTimeTest,
   animationStaticTest, animationStaticPairTest,
   pixelChannelTest, colorWhiteTest,
+  normalImageSmokeTest,
 ]);
 
 /** Generic CoolLEDUX tests applicable to any profile of the family. None exist yet. */
