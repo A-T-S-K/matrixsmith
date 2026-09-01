@@ -2,11 +2,12 @@ import type { DeviceFingerprint, DeviceProfile } from "../core/device";
 import type { ProtocolTransaction } from "../diagnostics/transactions";
 import type { ContentCompilationRecord } from "../diagnostics/content-evidence";
 import { analyzeStoredProgramUpload, describeUploadAnalysis, type NotificationDecoder } from "../diagnostics/upload-analysis";
-import { CLAIM_DEFINITIONS, resolveClaims, type ClaimEvidence, type ClaimId, type ClaimState } from "./claims";
+import { CLAIM_DEFINITIONS, operationalTrust, resolveClaims, type ClaimEvidence, type ClaimId, type ClaimState } from "./claims";
 import type { CompletedGuidedTest, Investigation } from "./investigation";
 import type { GuidedTestDefinition } from "./tests";
-import { observationValueSummary } from "./observations";
+import { formatDuration, observationValueSummary, type ObservationValue } from "./observations";
 import type { Recommendation } from "./recommendations";
+import { evaluateStaticViability, MINIMUM_STATIC_HOLD_MS } from "./static-viability";
 
 /**
  * AI/human-ready report generation. Test reports are scoped to one guided
@@ -64,6 +65,8 @@ export function generateTestReport(input: TestReportInput): string {
   section("Protocol operation", test.about.technicalDetails.map((detail) => `- ${detail}`).join("\n"));
   section("Compiler / transmission summary", compilationText(input.compilation));
   section("Automatic observations", automaticObservationsText(input));
+  const timing = physicalTimingText(completed, input.transactions);
+  if (timing) section("Physical timing", timing);
   section("Physical observations", listOrNone(completed.observations.map((value) => observationValueSummary(test.observation.find((spec) => spec.id === value.fieldId), value))));
   section("Result", `**${completed.status.toUpperCase()}** — ${completed.summary}`);
   section("What this establishes", listOrNone(completed.established));
@@ -110,16 +113,18 @@ export function generateInvestigationReport(input: InvestigationReportInput): st
   section("Stored-program behavior", claimText(["stored-program.upload", "stored-program.receipts"]));
   section("Geometry / orientation / tiling", claimText(["raster.tiling", "raster.orientation"]));
   section("Black / off behavior by content path", claimText(["graffiti.black-semantics", "animation.black-semantics"]));
-  section("Pixel / channel mapping", claimText(["pixel.channel-map", "pixel.white-channel"]));
+  section("Pixel / channel mapping", claimText(["pixel.channel-map", "pixel.encoder-correctness", "pixel.fourth-channel", "pixel.white-channel"]));
   section("Color observations", claimText(["graffiti.color-mapping", "pixel.color-calibration"]));
-  section("Animation behavior", claimText(["animation.frames", "animation.timing", "animation.tile-sync", "animation.autonomous-loop", "animation.static-single-frame"]));
+  section("Animation behavior", claimText(["animation.frames", "animation.timing", "animation.tile-sync", "animation.autonomous-loop", "animation.static-single-frame", "animation.static-identical-pair"]));
   section("Static behavior", claimText(["graffiti.initial-render", "graffiti.playback-stability", "static.strategy"]));
+  section("Static image strategy assessment", staticStrategyAssessmentText(allEvidence, investigation));
   section("Text / image / GIF support", claimText(["text.rendering", "image.rendering", "gif.playback"]));
   section("Controls", claimText(["brightness.control", "power.control"]));
   section("Persistence / recovery", claimText(["power-cycle.persistence", "recovery.manual-reset"]));
   section("Tests performed", listOrNone((investigation?.completedTests ?? []).map((test) => `${test.completedAt} — ${test.title} (\`${test.testId}\`): ${test.status.toUpperCase()} — ${test.summary}${test.parameters ? ` [${Object.entries(test.parameters).map(([key, value]) => `${key}=${String(value)}`).join(", ")}]` : ""}`)));
   section("Structured physical observations", structuredObservationsText(investigation, input.tests));
-  section("Claims and confidence", claimsTable(claims));
+  section("Claims and confidence", claimsTable(claims, allEvidence));
+  section("Evidence trust and conflicts", trustAndConflictsText(allEvidence));
   section("Rejected hypotheses", listOrNone(claims.filter((claim) => claim.status === "rejected").map((claim) => formatClaim(claim))));
   section("Open hypotheses", listOrNone(claims.filter((claim) => claim.status === "unresolved" || claim.status === "unknown" || claim.status === "source-supported").map((claim) => formatClaim(claim))));
   section("Known limitations", listOrNone([...(device.profile?.quirks?.contentLimits ?? []), ...(device.profile?.quirks?.graffitiPlaybackNotes ?? [])]));
@@ -170,9 +175,100 @@ function formatClaim(claim: ClaimState | undefined): string {
   return `\`${claim.id}\` (${claim.label}): **${claim.status}**${blocked}${basis}`;
 }
 
-function claimsTable(claims: readonly ClaimState[]): string {
-  return ["| Claim | Status | Scope | Evidence |", "| --- | --- | --- | --- |",
-    ...claims.map((claim) => `| \`${claim.id}\` | ${claim.status} | ${claim.decidedBy ? SCOPE_LABEL[claim.decidedBy.scope] : "—"} | ${claim.decidedBy?.summary.replaceAll("|", "\\|") ?? "No evidence."} |`),
+/**
+ * Investigative state AND operational trust per claim. The investigative
+ * status includes historical/imported contradictions; the operational basis
+ * says whether a normal operation currently has a trusted authorization and
+ * from which scope it comes.
+ */
+function claimsTable(claims: readonly ClaimState[], evidence: readonly ClaimEvidence[]): string {
+  return ["| Claim | Investigative status | Operational basis | Evidence |", "| --- | --- | --- | --- |",
+    ...claims.map((claim) => {
+      const trust = operationalTrust(claim.id, evidence);
+      const basis = claim.id === "static.strategy"
+        ? (trust.trusted ? "derived (viable strategy)" : "derived (no viable strategy)")
+        : trust.trusted
+          ? `trusted (${SCOPE_LABEL[trust.basis!.scope]})${trust.historicalConflict ? " · CONFLICT with historical evidence" : ""}`
+          : trust.trustedStatus === "rejected" ? "revoked (trusted rejection)" : "none";
+      const summary = claim.decidedBy?.summary ?? claim.derivedSummary ?? "No evidence.";
+      return `| \`${claim.id}\` | ${claim.status} | ${basis} | ${summary.replaceAll("|", "\\|")} |`;
+    }),
+  ].join("\n");
+}
+
+/**
+ * Per-scope breakdown for every claim whose evidence spans scopes or whose
+ * trusted basis is contradicted, so an AI never has to infer scope conflicts
+ * from a flat list.
+ */
+function trustAndConflictsText(evidence: readonly ClaimEvidence[]): string {
+  const lines: string[] = [];
+  for (const definition of CLAIM_DEFINITIONS) {
+    const entries = evidence.filter((entry) => entry.claimId === definition.id);
+    const scopes = new Set(entries.map((entry) => entry.scope));
+    const trust = operationalTrust(definition.id, evidence);
+    if (scopes.size <= 1 && !trust.historicalConflict) continue;
+    lines.push(`### \`${definition.id}\` (${definition.label})`, "");
+    for (const entry of entries) lines.push(`- ${SCOPE_LABEL[entry.scope]}: ${entry.status.toUpperCase()} — ${entry.summary}`);
+    lines.push(`- Operational basis: ${trust.trusted ? `${SCOPE_LABEL[trust.basis!.scope]} (trusted)` : trust.trustedStatus === "rejected" ? "revoked by trusted rejection" : "none"}`);
+    if (trust.historicalConflict) lines.push("- Effective investigative state: CONFLICT — historical/imported evidence contradicts the trusted basis; revalidation on the current physical session is recommended.");
+    lines.push("");
+  }
+  return lines.length ? lines.join("\n").trimEnd() : "No cross-scope evidence or conflicts.";
+}
+
+/**
+ * Derived static-strategy assessment from the same evaluator that powers
+ * normal-operation gating and session strategy selection — no duplicated
+ * logic. Includes the measured timing comparison across Graffiti runs.
+ */
+function staticStrategyAssessmentText(evidence: readonly ClaimEvidence[], investigation: Investigation | null): string {
+  const assessment = evaluateStaticViability(evidence);
+  const lines: string[] = [];
+  for (const strategy of assessment.strategies) {
+    lines.push(`### ${strategy.strategy}`, "");
+    for (const requirement of strategy.requirements) {
+      const marker = requirement.state === "met" ? "✓" : requirement.state === "failed" ? "✕" : "?";
+      lines.push(`- ${marker} ${requirement.label} (\`${requirement.claimId}\`): ${requirement.trustedStatus} — ${requirement.detail}`);
+    }
+    lines.push(`- **Overall: ${strategy.verdict === "viable" ? "VIABLE" : strategy.verdict === "not-viable" ? "NOT VIABLE" : "NOT YET DECIDED"}** — ${strategy.summary}`, "");
+  }
+  lines.push(`Selected usable strategy: ${assessment.selected ?? "none"}. Characterization currently pursues: ${assessment.pursued ?? "none"}${assessment.nextOpenRequirement ? ` (next open requirement: \`${assessment.nextOpenRequirement}\`)` : ""}. Stability verification requires a MatrixSmith-measured visibly-static hold of at least ${MINIMUM_STATIC_HOLD_MS / 1000}s from full-raster-visible (T1).`);
+  const timingRuns = (investigation?.completedTests ?? []).filter((test) => test.testId === "coolledux-graffiti-timing" || test.testId === "coolledux-graffiti-staytime");
+  if (timingRuns.length > 0) {
+    lines.push("", "#### Measured Graffiti timing runs", "");
+    for (const run of timingRuns) {
+      const t1 = measuredObservationMs(run.observations, "image-visible");
+      const t2 = measuredObservationMs(run.observations, "movement-start");
+      const end = measuredObservationMs(run.observations, "observation-end");
+      const hold = t1 !== null && t2 !== null ? t2 - t1 : t1 !== null && end !== null ? end - t1 : null;
+      lines.push(`- stayTime=${run.parameters?.stayTime ?? "?"} (${run.status}): render latency ${t1 !== null ? formatDuration(t1) : "not measured"}; visible static hold ${hold !== null ? formatDuration(Math.max(0, hold)) : "not measured"}; movement ${t2 !== null ? `began at +${formatDuration(t2)}` : end !== null ? "not observed within the window" : "not measured"}.`);
+    }
+  }
+  return lines.join("\n").trimEnd();
+}
+
+function measuredObservationMs(observations: readonly ObservationValue[], fieldId: string): number | null {
+  const value = observations.find((observation) => observation.fieldId === fieldId);
+  return value?.kind === "duration" && value.measuredBy === "matrixsmith-timer" ? value.milliseconds : null;
+}
+
+function physicalTimingText(completed: CompletedGuidedTest, transactions: readonly ProtocolTransaction[]): string | null {
+  const t1 = measuredObservationMs(completed.observations, "image-visible");
+  const t2 = measuredObservationMs(completed.observations, "movement-start");
+  const end = measuredObservationMs(completed.observations, "observation-end");
+  if (t1 === null && t2 === null && end === null) return null;
+  const relevant = transactions.filter((transaction) => completed.transactionIds.includes(transaction.id));
+  const finalWrite = relevant.flatMap((transaction) => transaction.packets.filter((packet) => packet.direction === "TX")).map((packet) => packet.hostAcceptedAt ?? packet.timestamp).sort().at(-1) ?? null;
+  return [
+    `- Upload final write accepted (T0): ${finalWrite ?? "not captured"}`,
+    ...(t1 !== null ? [`- Full raster visible (T1): +${formatDuration(t1)}`] : []),
+    ...(t2 !== null ? [`- Movement began (T2): +${formatDuration(t2)}`] : []),
+    ...(end !== null ? [`- Observation ended, still static: +${formatDuration(end)}`] : []),
+    ...(t1 !== null ? [`- Render latency (T1 − T0): ${formatDuration(t1)}`] : []),
+    ...(t1 !== null && t2 !== null ? [`- Visible static hold (T2 − T1): ${formatDuration(Math.max(0, t2 - t1))}`] : []),
+    ...(t1 !== null && t2 === null && end !== null ? [`- Visible static hold (still static at stop): ${formatDuration(Math.max(0, end - t1))}`] : []),
+    "- Measurement basis: MatrixSmith timer. T0 is the final host-accepted transport write; human-observed display timing above is distinct from the per-packet transport timing in the transactions/forensic appendix.",
   ].join("\n");
 }
 
@@ -189,11 +285,32 @@ function deviceText(device: DeviceReportContext): string {
 function advertisementText(device: DeviceReportContext): string {
   const fingerprint = device.fingerprint;
   const profile = device.profile;
-  return [
+  const lines = [
     `- Live advertisement bytes: ${fingerprint?.rawAdvertisementHex ?? "not exposed by this browser session (never fabricated)"}`,
     `- Live manufacturer data: ${fingerprint?.manufacturerDataHex ?? "not captured this session"}`,
     `- Profile advertisement evidence: ${profile?.metadata.companyId !== undefined ? `company id 0x${Number(profile.metadata.companyId).toString(16).toUpperCase()}` : "none"}`,
-  ].join("\n");
+  ];
+  const observation = fingerprint?.advertisementObservation;
+  if (observation) {
+    // The browser exposes parsed advertisement fields, never the original
+    // byte stream; the source is labeled and raw bytes are never fabricated.
+    lines.push(
+      `- Structured advertisement observation (source: ${observation.source}, captured ${observation.capturedAt}):`,
+      ...(observation.name !== undefined ? [`  - Advertised name: ${observation.name}`] : []),
+      ...(observation.rssi !== undefined ? [`  - RSSI: ${observation.rssi} dBm`] : []),
+      ...(observation.txPower !== undefined ? [`  - TX power: ${observation.txPower} dBm`] : []),
+      `  - Advertised service UUIDs: ${observation.advertisedServiceUuids.length ? observation.advertisedServiceUuids.join(", ") : "none observed"}`,
+      ...(observation.manufacturerData.length
+        ? observation.manufacturerData.map((entry) => `  - Manufacturer data: company id 0x${entry.companyId.toString(16).toUpperCase().padStart(4, "0")}, data ${entry.dataHex || "(empty)"}`)
+        : ["  - Manufacturer data: none observed"]),
+      ...(observation.serviceData.length
+        ? observation.serviceData.map((entry) => `  - Service data ${entry.uuid}: ${entry.dataHex || "(empty)"}`)
+        : []),
+    );
+  } else {
+    lines.push("- Structured advertisement observation: not captured (watchAdvertisements unsupported or nothing received; never fabricated)");
+  }
+  return lines.join("\n");
 }
 
 function gattText(fingerprint: DeviceFingerprint | null): string {
@@ -240,6 +357,11 @@ function structuredObservationsText(investigation: Investigation | null, tests: 
 function driverRecommendationsText(claims: readonly ClaimState[], device: DeviceReportContext): string {
   const lines: string[] = [];
   const status = (id: ClaimId): string => claims.find((claim) => claim.id === id)?.status ?? "unknown";
+  const encoder = claims.find((claim) => claim.id === "pixel.encoder-correctness");
+  if (encoder?.status === "rejected") {
+    const details = encoder.decidedBy?.details;
+    lines.push(`ENCODER CORRECTION REQUIRED: the raw channel map is characterized but MatrixSmith's encoder maps logical channels incorrectly. Observed: ${String(details?.observedMap ?? "see pixel.channel-map evidence")}. Encoder emits: ${String(details?.expectedMap ?? "RGB444 (byte0 low nibble=R, byte1 high nibble=G, byte1 low nibble=B)")}. Implement the corrected ordering in the driver/profile, then re-run the channel verification; the profile is never mutated at runtime and normal image/text sending stays gated until re-verified.`);
+  }
   if (status("static.strategy") !== "verified") lines.push("No static-raster strategy is validated; images/text must stay gated until one is (candidates: graffiti, animation-single-frame, animation-identical-frames).");
   if (status("graffiti.black-semantics") === "source-supported") lines.push("The Graffiti 0x0004 off workaround is inherited from reference hardware and untested here; run the black probe before changing it.");
   if (status("pixel.white-channel") === "unknown") lines.push("The unused high nibble may drive a physical emitter (hypothesis only); do not claim RGBW without the channel probe evidence.");
