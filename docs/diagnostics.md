@@ -51,7 +51,7 @@ From Home choose **Explore unknown BLE device** to open the inspection chooser (
 
 ## Guided investigation evidence (2026-08-31 revision)
 
-The diagnostic bundle additionally carries the active `investigation` (goal, completed guided tests with structured observations, and session claim evidence). Importing a bundle demotes its current-session claim evidence to `previous-local-session` scope.
+The diagnostic bundle additionally carries the active `investigation` (goal, device binding, completed guided tests with structured observations, and session claim evidence). Importing a bundle structurally demotes EVERY investigation claim-evidence entry to `imported-external` — serialized scope fields are never trusted — and bundle-carried legacy validations bridge as `imported-external` too. Imported evidence never authorizes live operations.
 
 Three report formats exist beyond the classic device report:
 
@@ -60,3 +60,12 @@ Three report formats exist beyond the classic device report:
 - **Forensic appendix** (`forensicReportMarkdown`) — every packet with real per-write timestamps, measured gaps, host-acceptance times, and receipt/timing analysis per stored-program upload.
 
 Stored-program receipts decode structurally (`program-announce-receipt`, `program-chunk-receipt` with `statusRaw` and a structural `chunkIndex`). Status `0x00` is reported as a raw byte observed alongside physically successful uploads — never labeled "success" — and a missing receipt is never treated as a transmission failure or a retry trigger.
+
+## Hardened report semantics (2026-08-31, phase 2)
+
+- The investigation report includes the structured live Web Bluetooth advertisement observation (name, RSSI, tx power, advertised service UUIDs, manufacturer/service data), explicitly labeled `source: web-bluetooth-watch`; when nothing was captured the report says so and never fabricates raw bytes.
+- The claims table separates the INVESTIGATIVE status (what all evidence says, historical contradictions included) from the OPERATIONAL basis (trusted current-session/built-in authorization, or "derived" for the static strategy). An "Evidence trust and conflicts" section breaks multi-scope claims down per scope and marks CONFLICT where historical/imported evidence contradicts a trusted basis, recommending revalidation.
+- A "Static image strategy assessment" section renders the derived per-requirement viability for graffiti, animation-single-frame, and animation-identical-frames from the same evaluator that powers gating — including the measured Graffiti stayTime timing comparison when both runs exist.
+- Scoped test reports include a "Physical timing" section: T0 (final host-accepted write), T1 (full raster visible), T2 (movement/observation end), render latency, and visible static hold — measured by the MatrixSmith timer and kept distinct from per-packet transport timing.
+- A characterized channel permutation is flagged as ENCODER CORRECTION REQUIRED with the observed vs emitted maps, an explicit instruction to fix the driver/profile in code, and a reminder that normal image/text sending stays gated until re-verification.
+- Abandoned tests (transfer completed, observation stopped) keep their transactions and partial observations and still produce a test report.

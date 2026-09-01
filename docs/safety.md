@@ -39,14 +39,20 @@ Execution results keep three claims separate: browser/host acceptance, a matchin
 
 The experimental unlock is memory-only and clears on disconnect or reload. It cannot bypass driver intent, validation, risk, source, confidence, or endpoint checks.
 
-## Path-specific content gating (2026-08-31 revision)
+## Path-specific content gating (2026-08-31 revision, hardened)
 
-The broad static-frame gate is replaced by per-path gates derived from atomic claims (`src/investigation/gating.ts`):
+Per-path gates derive from OPERATIONAL TRUST (`operationalTrust` in `src/investigation/claims.ts`), not from the flat investigative claim state:
 
-- text / image → require `stored-program.upload` and a validated `static.strategy`
-- animation → require verified `animation.frames`, `animation.timing`, `animation.tile-sync`
-- GIF → require verified `gif.playback` on this device
+- text / image → require trusted `stored-program.upload` and a truly VIABLE static strategy: `static.strategy` is derived from the atomic requirements in `src/investigation/static-viability.ts` (upload, tiling, orientation, initial render, a measured ≥15 s stable hold, characterized black semantics, raw channel map, and encoder correctness). A casually asserted `static.strategy` entry has no authority, and a known-incorrect logical channel mapping keeps image/text gated. Optional visual color calibration is deliberately NOT required.
+- animation → require trusted `animation.frames`, `animation.timing`, `animation.tile-sync`
+- GIF → require trusted `gif.playback` on this device
 
-Only `current-session` or `built-in-profile` verification satisfies a gate; previous local sessions and imported evidence inform the investigation but never unlock sends, and a current-session rejection overrides built-in verification. An inconclusive Graffiti validation cannot unlock unrelated content, and a successful Animation never silently proves Graffiti.
+Only `current-session` or `built-in-profile` evidence grants operational trust; previous local sessions and imported evidence inform the investigation, surface conflicts, and boost revalidation recommendations, but never unlock sends — and they also cannot revoke a shipped basis (only a trusted current-session rejection can). An inconclusive Graffiti validation cannot unlock unrelated content, and a successful Animation never silently proves Graffiti.
+
+## Device/session evidence boundary
+
+Current-session evidence is bound to one physical device session: only a matching browser-authorized device id lets an investigation (and its evidence) survive a reconnect. Any other connect detaches it with all evidence demoted to `previous-local-session`. LocalStorage and bundles are untrusted: every loaded evidence entry is structurally demoted regardless of its serialized scope, so poisoned records cannot manufacture `built-in-profile` or `current-session` authority. The controller also refuses to record guided-test observations outside a live physical session, and validates every submission (required fields, kinds, options, durations, timeline coherence) in the domain layer.
+
+A running guided-test transfer cannot be dismissed as if canceled, and after transfer the only exit is "Stop observation and save as incomplete": an `abandoned` result records the exact operation and transaction ids with no claim conclusions, because the device WAS changed.
 
 Guided hardware tests transmit only fixed driver-defined diagnostic programs (`ShowDiagnostic` with declared ids and enumerated parameter values — e.g. stayTime ∈ {3, 0}); there is no general raw writer and no arbitrary raw-word entry. Persistent guided plans keep `maxAttempts: 1` with no retry conditions; a missing receipt notification never triggers automatic persistent retransmission. Local investigation history persists structured evidence only — never experimental unlocks, persistent-send confirmation tokens, safety bypasses, or content binaries.

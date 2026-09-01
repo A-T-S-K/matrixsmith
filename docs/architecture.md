@@ -65,9 +65,12 @@ src/investigation/
   investigation.ts    — first-class Investigation object (goal, tests, evidence, stop/resume)
   tests.ts            — driver-contributed GuidedTestDefinition contract + availability
   recommendations.ts  — deterministic, inspectable next-test ranking
-  gating.ts           — path-specific content gates derived from claims
+  gating.ts           — path-specific content gates derived from operational trust
+  static-viability.ts — derived static-strategy viability (shared by gating, session strategy, recommendations, reports)
+  session-behavior.ts — session-resolved behavior beside immutable profile quirks
+  device-identity.ts  — physical device/session identity binding for investigations
   reports.ts          — test / investigation / forensic report generators
-  legacy-bridge.ts    — legacy validation areas → atomic claim evidence
+  legacy-bridge.ts    — legacy validation areas → atomic claim evidence (scope decided by the controller)
 ```
 
 **Atomic claims** replace the coarse support model. Each claim (`graffiti.black-semantics`, `animation.autonomous-loop`, `power-cycle.persistence`, …) resolves from scoped evidence — `source-reference`, `built-in-profile`, `current-session`, `previous-local-session`, `imported-external` — with higher-authority scope winning and, within a scope, rejection outranking verification. Session observations never rewrite built-in profile facts; one passing sub-question cannot verify a broad parent; a rejected prerequisite blocks a "verified" presentation; autonomous looping is a different claim from power-cycle persistence.
@@ -79,3 +82,69 @@ src/investigation/
 **Timing and receipts**: the executor records real per-packet write and host-acceptance timestamps plus measured TX gaps (`PacketTiming`); transactions carry them, and `diagnostics/upload-analysis.ts` structurally correlates announce/chunk receipt notifications with transmitted chunks — raw status bytes verbatim, missing receipts reported as observations (never failures, never retries), matching upstream evidence that these notifications are not reliable acknowledgements.
 
 **Local history** (`src/storage/investigations.ts`) persists whitelisted investigation state only; on resume, session evidence is demoted to `previous-local-session` scope so history never bypasses current-session safety gates.
+
+## Hardening revision (2026-08-31, phase 2)
+
+**Device-bound investigations** (`device-identity.ts`): an `Investigation` carries an
+`InvestigationDeviceBinding` (browser device id when available, profile id, and a
+deterministic fingerprint-shape key that is never treated as a MAC or unique hardware
+identity). Only a matching browser-authorized device id proves the SAME physical unit.
+Connecting anything else detaches the active investigation — its evidence is
+structurally demoted to `previous-local-session` and persisted to local history — so
+current-session evidence can never cross physical displays. Reconnecting the same
+authorized device resumes the investigation with its evidence intact (intentional and
+tested). Troubleshooting retargets a goal only within the same device session.
+
+**Trust boundaries**: loading an investigation from browser-local history demotes EVERY
+claim-evidence entry to `previous-local-session` regardless of its serialized scope
+field; bundle import demotes to `imported-external`. Serialized scopes are never
+trusted, so a poisoned local record claiming `built-in-profile` or `current-session`
+authority has none. Legacy validation evidence gets its scope from controller-side
+trust state (live on the current device session → `current-session`; device change →
+`previous-local-session`; bundle import → `imported-external`), never from serialized
+data.
+
+**Operational trust vs investigative state** (`claims.ts`): `resolveClaims` keeps
+describing what ALL evidence says, including historical contradictions.
+`operationalTrust` answers the narrower authorization question — does this claim hold a
+currently trusted verified basis (`current-session` or `built-in-profile` only)?
+Historical/imported evidence surfaces conflicts, boosts revalidation recommendations,
+and appears in reports, but can neither unlock an operation nor silently erase a
+shipped trust basis. A current-session rejection still revokes a built-in basis.
+
+**Derived static viability** (`static-viability.ts`): `static.strategy` is a DERIVED
+claim — no direct evidence ever decides it. One evaluator derives per-strategy
+viability from atomic requirements (upload, tiling, orientation, initial render, a
+MEASURED ≥15 s visibly-static hold from T1, characterized black semantics, the raw
+channel map, and encoder correctness) and powers content gating, the session raster
+strategy, the recommendation engine's pursued-strategy walk, and the report's strategy
+assessment. `pixel.channel-map` (raw wire behavior characterized) is distinct from
+`pixel.encoder-correctness` (MatrixSmith's logical RGB reaches the intended channels):
+a characterized permutation keeps normal rendering gated until the encoder is corrected
+in code and re-verified. `pixel.fourth-channel` (any emitter exists) is distinct from
+`pixel.white-channel` (that emitter appears white). Single-frame and identical-pair
+Animation rasters carry separate claims.
+
+**T0/T1/T2 physical timing**: guided static tests record T0 (final host-accepted
+program write, automatic), T1 (full raster visible, measured tap), and T2 (movement
+begins or observation ends, measured tap) through a small multi-phase timeline in the
+observation model. Render latency = T1−T0; visible static hold = T2−T1. User estimates
+never verify a claim; an early stop records the exact duration as unresolved. Reports
+separate this human-observed display timeline from per-packet transport timing.
+
+**Evidence-aware operations**: `GuidedTestDefinition.buildOperation(context)` derives a
+test's exact fixed diagnostic operation from established evidence (e.g. the color/white
+probe includes raw 0xF000/0xFFFF bands only when `pixel.fourth-channel` is trusted).
+The plan, preview, region diagram, recorded parameters, and reports all use the
+resolved operation. `validate(values)` adds per-test cross-field coherence checks, and
+the controller validates every observation submission in the domain layer.
+
+**Session-resolved behavior** (`session-behavior.ts`): trusted current-session evidence
+with structured details (e.g. `zeroBehavior: "true-black"`) activates explicit runtime
+behavior (Graffiti literal 0x0000) through `DriverContext.resolvedBehavior` — never by
+mutating profile quirks and never from speculative, historical, or imported evidence.
+An observed channel permutation is informational only; encoder corrections happen in
+reviewed code.
+
+**Applicability**: the iLedHat characterization suite (`ILEDHAT_GUIDED_TESTS`) applies
+only to the iLedHat profile; other CoolLEDUX profiles receive only the generic suite.

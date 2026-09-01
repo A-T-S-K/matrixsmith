@@ -92,3 +92,39 @@ Failures are evidence: "the raster rendered, then moved after a measured 3.2 s" 
 ## Reporting is part of the flow
 
 Every test result offers a scoped **test report**; every investigation offers the **investigation report** (sufficient for an AI to implement or fix a driver without the chat history), plus the forensic full report and the canonical JSON bundle. The active investigation supplies the report question automatically.
+
+---
+
+# Hardened guided UX (2026-08-31, phase 2)
+
+**Navigation**: primary navigation (desktop sidebar and mobile bottom nav) is Create +
+Investigate only. The protocol workbench lives under a "Developer tools" sidebar group
+and an "Open protocol workbench" action inside Investigate's Developer tools
+disclosure. Every guided workflow and every report completes without opening it.
+
+**Investigate surface**: the default page answers, top to bottom — the CURRENT GOAL
+(heading), WHAT WE KNOW (compact verified/ruled-out/open summary plus the static-image
+strategy state), the ONE recommended next test, the LAST TEST result with Copy report,
+and the report actions. "All guided tests", "Technical support map", "Previous tests",
+and "Developer tools" (read-only diagnostics, the legacy validations labeled as
+superseded, and workbench access) are collapsed secondary sections.
+
+**The static timing test** speaks user language ("Measure how long a static image
+stays still", "Full image is visible now", "Movement started", "Still completely
+static at 15 seconds") and drives a two-phase measured timeline: T0 starts
+automatically at the final host-accepted packet, the first tap records T1 (full image
+visible; a fail button records a wrong/incomplete render), the second tap records T2
+(movement) or a still-stop. Stopping before 15 s is allowed and recorded honestly as
+an exact measured duration that does not verify stability. Protocol parameters
+(mode/speed/stayTime bytes) appear only under Technical details.
+
+**Transfer protection**: while a diagnostic upload runs, the dialog cannot be
+dismissed and says the Bluetooth upload would continue regardless. After the transfer,
+"Discard" no longer exists — the device WAS changed — the exit is "Stop observation
+and save as incomplete", which records an abandoned result (operation, transactions,
+partial observations, no claim conclusions) with its report still available.
+
+**Evidence-aware runs**: the About screen's preview, region diagram, plan summary, and
+recorded parameters always reflect the actual generated operation — e.g. the
+color/white probe shows its extra 0xF000/0xFFFF bands only when the fourth channel is
+established.
