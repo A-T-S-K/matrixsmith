@@ -175,3 +175,32 @@ describe("guided test engine", () => {
     expect(resumed.completedTests).toHaveLength(1);
   });
 });
+
+describe("evidence-aware guided operations", () => {
+  it("omits high-nibble bands until a fourth channel is established", async () => {
+    const controller = await connectedController();
+    const patch = (word: number, optionId: string): ObservationValue => ({ kind: "choice", fieldId: `patch-0x${word.toString(16).padStart(4, "0")}`, optionId });
+    // Channel map verified with every high-nibble patch off: no fourth channel.
+    controller.recordGuidedTestObservations("coolledux-pixel-channels", [
+      patch(0x0000, "off"), patch(0x0f00, "red"), patch(0x00f0, "green"), patch(0x000f, "blue"), patch(0x0fff, "tinted-white"),
+      patch(0x1000, "off"), patch(0x2000, "off"), patch(0x4000, "off"), patch(0x8000, "off"), patch(0xf000, "off"), patch(0xffff, "tinted-white"),
+    ], []);
+    const operation = controller.guidedTestOperation("coolledux-color-white");
+    expect(operation.type).toBe("ShowDiagnostic");
+    expect((operation as { parameters?: Record<string, number> }).parameters?.includeHighNibble).toBe(0);
+  });
+
+  it("includes the 0xF000/0xFFFF comparison once the fourth channel is trusted", async () => {
+    const controller = await connectedController();
+    const patch = (word: number, optionId: string): ObservationValue => ({ kind: "choice", fieldId: `patch-0x${word.toString(16).padStart(4, "0")}`, optionId });
+    controller.recordGuidedTestObservations("coolledux-pixel-channels", [
+      patch(0x0000, "off"), patch(0x0f00, "red"), patch(0x00f0, "green"), patch(0x000f, "blue"), patch(0x0fff, "tinted-white"),
+      patch(0x1000, "off"), patch(0x2000, "off"), patch(0x4000, "neutral-white"), patch(0x8000, "neutral-white"), patch(0xf000, "neutral-white"), patch(0xffff, "neutral-white"),
+    ], []);
+    const operation = controller.guidedTestOperation("coolledux-color-white");
+    expect((operation as { parameters?: Record<string, number> }).parameters?.includeHighNibble).toBe(1);
+    // The plan compiles the actual bands for the run.
+    const plan = controller.planGuidedTest("coolledux-color-white");
+    expect(plan.metadata.diagnosticId).toBe("color-white-probe");
+  });
+});

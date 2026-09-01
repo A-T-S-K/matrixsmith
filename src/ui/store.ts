@@ -607,7 +607,9 @@ export class MatrixStore {
       const availability = this.controller.guidedTests().find((entry) => entry.test.id === testId);
       if (availability && !availability.available) throw new Error(availability.reason ?? "This test's prerequisites are not met.");
       const plan = this.controller.planGuidedTest(testId);
-      const { previews, regions } = this.#guidedTestVisuals(test.operation);
+      // The resolved operation (evidence-aware where declared) drives the
+      // preview and region diagram, so About always shows the actual run.
+      const { previews, regions } = this.#guidedTestVisuals(this.controller.guidedTestOperation(testId));
       this.#guidedFlow = {
         testId, title: test.title, stage: "about",
         about: test.about, consequence: test.consequence, category: test.category, risk: test.risk,

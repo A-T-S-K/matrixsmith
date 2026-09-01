@@ -4,6 +4,7 @@ import {
   booleanAnswer, choiceAnswer, durationAnswer, measuredDurationAnswer,
   type ClaimUpdate, type GuidedTestDefinition, type GuidedTestInterpretation, type GuidedTestTimer,
 } from "../../investigation/tests";
+import { operationalTrust } from "../../investigation/claims";
 import { formatDuration } from "../../investigation/observations";
 import { MINIMUM_STATIC_HOLD_MS, VISIBLE_STATIC_HOLD_METRIC } from "../../investigation/static-viability";
 import { PIXEL_CHANNEL_PROBE_WORDS } from "./diagnostics";
@@ -655,7 +656,7 @@ const colorWhiteTest: GuidedTestDefinition = {
   about: {
     question: "Do rendered colors — especially white — look visually correct on this panel?",
     whyRelevant: "With the wire channels mapped, the remaining question is visual quality: whether RGB-max white is acceptable and how the alternatives compare.",
-    whatMatrixSmithDoes: "Uploads labeled bands of pure red, green, blue, and RGB-max white via the animation path. When a fourth channel has been established, additional bands compare it directly.",
+    whatMatrixSmithDoes: "Uploads labeled bands of pure red, green, blue, and RGB-max white via the animation path. When earlier evidence has established a fourth (high-nibble) channel on this device, two additional bands (raw 0xF000 and 0xFFFF) compare it directly; otherwise no meaningless extra regions are shown.",
     whatChangesOnDevice: "The stored display program is replaced with the color bands.",
     estimatedObservationTime: "About 1–2 minutes.",
     possibleOutcomes: [
@@ -664,17 +665,26 @@ const colorWhiteTest: GuidedTestDefinition = {
     ],
     observeInstructions: "Compare each band against its label and judge the white quality.",
     technicalDetails: [
-      "Animation path, one frame, raw words 0x0F00 / 0x00F0 / 0x000F / 0x0FFF; optional 0xF000 and 0xFFFF bands when the fourth channel is established.",
+      "Animation path, one frame, raw words 0x0F00 / 0x00F0 / 0x000F / 0x0FFF.",
+      "includeHighNibble is derived from evidence: 1 (adds raw 0xF000 and 0xFFFF bands) only when pixel.fourth-channel holds a trusted verification, else 0. The About preview and reports reflect the actual generated operation.",
       "Wire values are raw and uncalibrated by design: this test separates protocol mapping from visual calibration.",
     ],
   },
   operation: { type: "ShowDiagnostic", diagnosticId: "color-white-probe", parameters: { includeHighNibble: 0 } },
+  // Evidence-aware: the exact operation depends on the established
+  // fourth-channel evidence at run time.
+  buildOperation: (context) => ({
+    type: "ShowDiagnostic", diagnosticId: "color-white-probe",
+    parameters: { includeHighNibble: operationalTrust("pixel.fourth-channel", context.evidence).trusted ? 1 : 0 },
+  }),
   observation: [
     { kind: "boolean", id: "channels-correct", prompt: "Do the red, green, and blue bands show those exact colors?" },
     { kind: "choice", id: "white-quality", prompt: "How does the RGB-max band look?", options: [
       { id: "neutral-white", label: "Neutral white" }, { id: "tinted-white", label: "Tinted white" }, { id: "not-white", label: "Not white at all" },
     ], allowOther: true },
     { kind: "boolean", id: "imbalance", prompt: "Is any channel obviously brighter or dimmer than the others?", required: false },
+    { kind: "choice", id: "high-nibble-band", prompt: "If a bottom row of extra bands is shown: how does the left (raw 0xF000) band look?", required: false, options: [...COLOR_CHOICES], allowOther: true },
+    { kind: "choice", id: "combined-band", prompt: "If a bottom row of extra bands is shown: how does the right (raw 0xFFFF) band look?", required: false, options: [...COLOR_CHOICES], allowOther: true },
     { kind: "note", id: "note", prompt: "Describe any tint or imbalance." },
   ],
   showRegionDiagram: true,
@@ -682,6 +692,8 @@ const colorWhiteTest: GuidedTestDefinition = {
     const channels = booleanAnswer(values, "channels-correct");
     const white = choiceAnswer(values, "white-quality");
     const imbalance = booleanAnswer(values, "imbalance");
+    const highNibbleBand = choiceAnswer(values, "high-nibble-band");
+    const combinedBand = choiceAnswer(values, "combined-band");
     const updates: ClaimUpdate[] = [];
     const established: string[] = [];
     const rejected: string[] = [];
@@ -689,6 +701,8 @@ const colorWhiteTest: GuidedTestDefinition = {
     if (channels === "yes") established.push("Pure red, green, and blue bands rendered their labeled colors.");
     if (channels === "no") rejected.push("At least one pure-channel band rendered the wrong color.");
     if (imbalance === "yes") established.push("A visible channel brightness imbalance was recorded.");
+    if (highNibbleBand) established.push(`High-nibble band (raw 0xF000) observed as: ${highNibbleBand}.`);
+    if (combinedBand) established.push(`Combined band (raw 0xFFFF) observed as: ${combinedBand}.`);
     if (white === "neutral-white" && channels === "yes") {
       updates.push({ claimId: "pixel.color-calibration", status: "verified", summary: "RGB-max white judged neutral and pure channels correct; no calibration needed." });
       return { status: "passed", established: [...established, "White looks neutral."], rejected, unknowns, summary: "Color rendering looks visually correct.", claimUpdates: updates };

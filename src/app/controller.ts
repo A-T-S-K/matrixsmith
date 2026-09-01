@@ -30,7 +30,7 @@ import {
   type CompletedGuidedTest, type Investigation, type InvestigationGoal,
 } from "../investigation/investigation";
 import { bindingAllowsSessionContinuity, deviceIdentityBinding } from "../investigation/device-identity";
-import { evaluateTestAvailability, type GuidedTestAvailability, type GuidedTestDefinition } from "../investigation/tests";
+import { evaluateTestAvailability, resolveGuidedOperation, type GuidedTestAvailability, type GuidedTestDefinition } from "../investigation/tests";
 import { validateObservations, type ObservationValue } from "../investigation/observations";
 import { rankRecommendations, type Recommendation } from "../investigation/recommendations";
 import { generateForensicAppendix, generateInvestigationReport, generateTestReport } from "../investigation/reports";
@@ -498,8 +498,15 @@ export class MatrixController {
     return test;
   }
 
+  /** The exact operation a guided test will transmit, resolved against current evidence. */
+  guidedTestOperation(testId: string): MatrixOperation {
+    const profile = this.session.profile;
+    if (!profile) throw new Error("A resolved device profile is required for guided tests.");
+    return resolveGuidedOperation(this.guidedTest(testId), { profile, evidence: this.allClaimEvidence() });
+  }
+
   planGuidedTest(testId: string): TransmissionPlan {
-    return this.plan(this.guidedTest(testId).operation);
+    return this.plan(this.guidedTestOperation(testId));
   }
 
   /**
@@ -546,7 +553,8 @@ export class MatrixController {
       ...(update.metrics ? { metrics: update.metrics } : {}),
       ...(update.details ? { details: update.details } : {}),
     }));
-    const parameters = test.operation.type === "ShowDiagnostic" && test.operation.parameters ? { ...test.operation.parameters } : undefined;
+    const resolvedOperation = this.guidedTestOperation(testId);
+    const parameters = resolvedOperation.type === "ShowDiagnostic" && resolvedOperation.parameters ? { ...resolvedOperation.parameters } : undefined;
     const completed: CompletedGuidedTest = {
       testId, title: test.title, startedAt, completedAt,
       status: interpretation.status, observations: [...values],

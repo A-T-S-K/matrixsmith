@@ -114,6 +114,15 @@ export interface GuidedTestDefinition {
   readonly about: GuidedTestAbout;
   /** The deterministic operation to transmit. Always a fixed driver-defined program. */
   readonly operation: MatrixOperation;
+  /**
+   * Optional evidence-aware operation builder. Most tests are fully static;
+   * a test whose exact operation depends on already-established evidence
+   * (e.g. including high-nibble bands only once a fourth channel is
+   * established) derives it here. The result must still be one of the fixed
+   * driver-defined diagnostic programs with declared parameters — this is
+   * NOT a raw-content escape hatch.
+   */
+  buildOperation?(context: GuidedOperationContext): MatrixOperation;
   readonly observation: readonly ObservationFieldSpec[];
   readonly timer?: GuidedTestTimer;
   /** Whether the UI should render the plan's region diagram before/while observing. */
@@ -121,6 +130,18 @@ export interface GuidedTestDefinition {
   /** Optional cross-field coherence validation beyond the generic structural checks; returns error messages. */
   validate?(values: readonly ObservationValue[]): readonly string[];
   interpret(values: readonly ObservationValue[]): GuidedTestInterpretation;
+}
+
+/** Context available to evidence-aware operation builders. */
+export interface GuidedOperationContext {
+  readonly profile: import("../core/device").DeviceProfile;
+  /** Full claim-evidence pool for the session (trust decisions via operationalTrust). */
+  readonly evidence: readonly ClaimEvidence[];
+}
+
+/** Resolve a guided test's exact operation for the current evidence. */
+export function resolveGuidedOperation(test: GuidedTestDefinition, context: GuidedOperationContext): MatrixOperation {
+  return test.buildOperation ? test.buildOperation(context) : test.operation;
 }
 
 export interface GuidedTestAvailability {
