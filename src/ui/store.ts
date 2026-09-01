@@ -290,7 +290,9 @@ export class MatrixStore {
 
   async connect(mode: "registered" | "inspection" = "registered", serviceHints: readonly BluetoothServiceUUID[] = []): Promise<void> {
     await this.#run(mode === "registered" ? "Connecting display…" : "Opening BLE explorer…", async () => {
+      this.#persistInvestigation();
       await this.controller.connect(mode, serviceHints);
+      this.#persistDetachedInvestigation();
       await this.controller.enableDriverNotifications().catch(() => undefined);
       this.#page = "workspace";
       // Known/usable displays open the Device Workspace; unknown or
@@ -579,12 +581,14 @@ export class MatrixStore {
 
   async reconnectAuthorized(deviceId: string): Promise<void> {
     await this.#run("Reconnecting display…", async () => {
+      this.#persistInvestigation();
       try {
         await this.controller.reconnectAuthorized(deviceId);
       } catch {
         // Chooser fallback: never make success depend on getDevices().
         await this.controller.connect();
       }
+      this.#persistDetachedInvestigation();
       await this.controller.enableDriverNotifications().catch(() => undefined);
       this.#page = "workspace";
       this.#view = this.controller.session.selection?.selected ? "control" : "diagnose";
@@ -717,6 +721,12 @@ export class MatrixStore {
   #persistInvestigation(): void {
     const investigation = this.controller.investigation;
     if (investigation) saveInvestigation(investigation);
+  }
+
+  /** An investigation detached by a device change stays available as local history. */
+  #persistDetachedInvestigation(): void {
+    const detached = this.controller.takeDetachedInvestigation();
+    if (detached) saveInvestigation(detached);
   }
 
   #guidedTestVisuals(operation: import("../core/operations").MatrixOperation): { previews: Framebuffer[]; regions: DiagnosticRegionView[] } {

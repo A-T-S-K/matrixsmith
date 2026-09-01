@@ -1,14 +1,17 @@
 import { BrowserStorageRepository, type KeyValueStorage } from "./repository";
 import { isValidObservationValue } from "../investigation/observations";
-import type { Investigation } from "../investigation/investigation";
+import { demoteInvestigationEvidence, type Investigation } from "../investigation/investigation";
 
 /**
  * Lightweight local persistence for hardware investigations, so testing can
  * span browser sessions. Only structured evidence persists — never
  * experimental unlocks, persistent-send confirmation tokens, safety
- * bypasses, or raw image/GIF binaries. On load, session-scoped claim
- * evidence is demoted to "previous-local-session": historical evidence never
- * bypasses current-session safety requirements.
+ * bypasses, or raw image/GIF binaries. LocalStorage is user-controlled,
+ * untrusted application storage: on load, EVERY piece of investigation claim
+ * evidence is structurally demoted to "previous-local-session" regardless of
+ * its serialized scope field, so a corrupt or malicious record claiming
+ * "built-in-profile" or "current-session" authority can never bypass
+ * operational gates.
  */
 
 const KEY = "matrixsmith:v1:investigations";
@@ -48,12 +51,13 @@ export function latestInvestigationFor(profileId: string | null, storage?: KeyVa
   return history.find((entry) => profileId === null || entry.investigation.profileId === profileId) ?? null;
 }
 
-/** Demote session evidence to historical scope for resuming in a NEW session. */
+/**
+ * Demote ALL stored evidence to the historical local scope for resuming in a
+ * new session. The serialized scope field is never trusted — see the module
+ * comment.
+ */
 export function toHistoricalInvestigation(investigation: Investigation): Investigation {
-  return {
-    ...investigation,
-    claimEvidence: investigation.claimEvidence.map((entry) => entry.scope === "current-session" ? { ...entry, scope: "previous-local-session" as const } : entry),
-  };
+  return demoteInvestigationEvidence(investigation, "previous-local-session");
 }
 
 export function forgetInvestigationHistory(storage?: KeyValueStorage): void {
@@ -66,6 +70,11 @@ function sanitizeForStorage(investigation: Investigation): Investigation {
   return {
     id: investigation.id, createdAt: investigation.createdAt, updatedAt: investigation.updatedAt,
     profileId: investigation.profileId, deviceName: investigation.deviceName,
+    deviceBinding: investigation.deviceBinding ? {
+      ...(investigation.deviceBinding.browserDeviceId ? { browserDeviceId: investigation.deviceBinding.browserDeviceId } : {}),
+      profileId: investigation.deviceBinding.profileId,
+      fingerprintKey: investigation.deviceBinding.fingerprintKey,
+    } : null,
     goal: { kind: investigation.goal.kind, description: investigation.goal.description, ...(investigation.goal.symptomId ? { symptomId: investigation.goal.symptomId } : {}) },
     status: investigation.status,
     completedTests: investigation.completedTests.map((test) => ({
@@ -88,7 +97,13 @@ function loadStore(storage?: KeyValueStorage): StoreShape {
     if (typeof value !== "object" || value === null || (value as { schemaVersion?: unknown }).schemaVersion !== 1) return { schemaVersion: 1, investigations: [] };
     const entries = (value as { investigations?: unknown }).investigations;
     if (!Array.isArray(entries)) return { schemaVersion: 1, investigations: [] };
-    return { schemaVersion: 1, investigations: entries.filter(isStoredInvestigation) };
+    return {
+      schemaVersion: 1,
+      investigations: entries.filter(isStoredInvestigation).map((entry) => ({
+        ...entry,
+        investigation: { ...entry.investigation, deviceBinding: entry.investigation.deviceBinding ?? null },
+      })),
+    };
   } catch {
     return { schemaVersion: 1, investigations: [] };
   }

@@ -94,7 +94,7 @@ describe("forensic report", () => {
 });
 
 describe("bundle round-trip", () => {
-  it("carries the investigation and demotes its session evidence on import", async () => {
+  it("carries the investigation and demotes ALL its evidence to imported-external on import", async () => {
     const controller = await controllerWithBlackTest();
     const json = controller.exportBundle();
     const bundle = parseDiagnosticBundle(json);
@@ -102,6 +102,8 @@ describe("bundle round-trip", () => {
     const imported = new MatrixController(new ScriptedCoolLedUxDevice(null), new TraceRecorder());
     imported.importBundle(json);
     expect(imported.investigation?.completedTests).toHaveLength(1);
-    for (const entry of imported.investigation?.claimEvidence ?? []) expect(entry.scope).toBe("previous-local-session");
+    // Bundle content is external data: every evidence entry is demoted
+    // regardless of its serialized scope field.
+    for (const entry of imported.investigation?.claimEvidence ?? []) expect(entry.scope).toBe("imported-external");
   }, 30000);
 });

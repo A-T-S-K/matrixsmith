@@ -23,12 +23,13 @@ import { chooseTestBrightness, COOLLEDUX_DIAGNOSTIC_TOOLS, diagnosticRunId } fro
 import { CONTENT_VALIDATION_WORKFLOWS, evaluateValidationAnswers, sessionValidationId, type ContentValidationWorkflow, type ValidationAnswer } from "../diagnostics/validation";
 import { contentCompilationId } from "../diagnostics/content-evidence";
 import { diagnosticAnimation, orientationPattern } from "../render/patterns";
-import { resolveClaims, type ClaimEvidence, type ClaimState } from "../investigation/claims";
+import { resolveClaims, type ClaimEvidence, type ClaimState, type EvidenceScope } from "../investigation/claims";
 import { claimEvidenceFromValidation } from "../investigation/legacy-bridge";
 import {
-  createInvestigation, recordCompletedTest, resumeInvestigation, stopInvestigation,
+  createInvestigation, demoteInvestigationEvidence, recordCompletedTest, resumeInvestigation, stopInvestigation,
   type CompletedGuidedTest, type Investigation, type InvestigationGoal,
 } from "../investigation/investigation";
+import { bindingAllowsSessionContinuity, deviceIdentityBinding } from "../investigation/device-identity";
 import { evaluateTestAvailability, type GuidedTestAvailability, type GuidedTestDefinition } from "../investigation/tests";
 import type { ObservationValue } from "../investigation/observations";
 import { rankRecommendations, type Recommendation } from "../investigation/recommendations";
@@ -157,8 +158,53 @@ export class MatrixController {
     this.session.selection = this.registry.match(fingerprint);
     const driver = this.session.selection.selected;
     this.session.profile = driver?.resolveProfile(fingerprint) ?? null;
+    this.#reconcileDeviceBoundary();
     for (const match of this.session.selection.matches) this.trace.record("driver.match", { driverId: match.driverId, score: match.score, confidence: match.confidence });
     if (driver) this.trace.record("driver.selected", { driverId: driver.id, profileId: this.session.profile?.id ?? null });
+  }
+
+  /**
+   * Enforce the physical device/session evidence boundary whenever a new
+   * fingerprint is applied. Only a matching browser-authorized device id
+   * proves the SAME physical unit; anything else — a different device, an
+   * identical-looking unit without a stable id, or an imported fingerprint —
+   * detaches the active investigation: its current-session evidence is
+   * structurally demoted to a historical scope and it stops accumulating.
+   * Legacy validation evidence obeys the exact same boundary.
+   */
+  #reconcileDeviceBoundary(): void {
+    this.#connectionEpoch += 1;
+    const current = deviceIdentityBinding(this.session.fingerprint, this.session.profile?.id ?? null);
+    const investigation = this.#investigation;
+    if (investigation) {
+      if (this.session.source === "live" && bindingAllowsSessionContinuity(investigation.deviceBinding, current)) {
+        // Same browser-authorized physical device reconnected: the
+        // investigation resumes with its current-session evidence intact.
+        this.#investigationEpoch = this.#connectionEpoch;
+        this.trace.record("investigation.device-resumed", { id: investigation.id });
+      } else {
+        this.#investigation = null;
+        this.#detachedInvestigation = stopInvestigation(demoteInvestigationEvidence(investigation, "previous-local-session"));
+        this.trace.record("investigation.device-detached", { id: investigation.id });
+      }
+    }
+    const sameLiveDevice = this.session.source === "live" && bindingAllowsSessionContinuity(this.#liveBinding, current);
+    if (!sameLiveDevice) {
+      for (const [id, scope] of this.#validationScopes) {
+        if (scope === "current-session") this.#validationScopes.set(id, "previous-local-session");
+      }
+    }
+    this.#liveBinding = this.session.source === "live" ? current : null;
+  }
+
+  /**
+   * An investigation detached by a device change, already demoted and
+   * stopped. The store persists it to local history; taking it clears it.
+   */
+  takeDetachedInvestigation(): Investigation | null {
+    const detached = this.#detachedInvestigation;
+    this.#detachedInvestigation = null;
+    return detached;
   }
 
   plan(operation: MatrixOperation): TransmissionPlan {
@@ -314,6 +360,18 @@ export class MatrixController {
   // ---- Guided investigation engine ---------------------------------------
 
   #investigation: Investigation | null = null;
+  #detachedInvestigation: Investigation | null = null;
+  /** Increments on every applied fingerprint; ties an investigation to one unbroken (or same-authorized-device) session. */
+  #connectionEpoch = 0;
+  #investigationEpoch = -1;
+  #liveBinding: ReturnType<typeof deviceIdentityBinding> = null;
+  /**
+   * Trust scope of each legacy validation's bridged claim evidence. The
+   * decision is controller-side state, never read from serialized data:
+   * live-recorded validations are current-session until the physical device
+   * session ends; bundle-imported validations are always imported-external.
+   */
+  readonly #validationScopes = new Map<string, EvidenceScope>();
 
   get investigation(): Investigation | null { return this.#investigation; }
 
@@ -322,7 +380,8 @@ export class MatrixController {
     const driver = this.session.selection?.selected;
     const profile = this.session.profile;
     const shipped = driver?.claimEvidence && profile ? driver.claimEvidence(profile) : [];
-    const bridged = this.#validations.flatMap((validation) => claimEvidenceFromValidation(validation));
+    const bridged = this.#validations.flatMap((validation) =>
+      claimEvidenceFromValidation(validation, this.#validationScopes.get(validation.id) ?? "previous-local-session"));
     return [...shipped, ...bridged];
   }
 
@@ -334,14 +393,20 @@ export class MatrixController {
   startInvestigation(goal: InvestigationGoal): Investigation {
     // An active investigation is retargeted, never discarded: troubleshooting
     // keeps every completed test and claim as evidence toward the new goal.
-    if (this.#investigation && this.#investigation.status === "active") {
+    // Retargeting requires the investigation to still belong to THIS physical
+    // device session; #reconcileDeviceBoundary maintains that invariant on
+    // every connect, and the epoch check enforces it defensively here.
+    if (this.#investigation && this.#investigation.status === "active" && this.#investigationEpoch === this.#connectionEpoch) {
       this.#investigation = { ...this.#investigation, goal, updatedAt: new Date().toISOString() };
     } else {
+      if (this.#investigation) this.#detachedInvestigation = stopInvestigation(demoteInvestigationEvidence(this.#investigation, "previous-local-session"));
       this.#investigation = createInvestigation({
         profileId: this.session.profile?.id ?? null,
         deviceName: this.session.fingerprint?.name ?? null,
+        deviceBinding: deviceIdentityBinding(this.session.fingerprint, this.session.profile?.id ?? null),
         goal,
       });
+      this.#investigationEpoch = this.#connectionEpoch;
     }
     this.trace.record("investigation.started", { goal: goal.kind, symptom: goal.symptomId ?? null });
     return this.#investigation;
@@ -350,7 +415,7 @@ export class MatrixController {
   /** Returns the active investigation, creating a default develop-goal one if needed. */
   ensureInvestigation(): Investigation {
     if (!this.#investigation || this.#investigation.status === "stopped") {
-      if (this.#investigation?.status === "stopped") this.#investigation = resumeInvestigation(this.#investigation);
+      if (this.#investigation?.status === "stopped" && this.#investigationEpoch === this.#connectionEpoch) this.#investigation = resumeInvestigation(this.#investigation);
       else this.startInvestigation({ kind: "develop", description: "Characterize and develop support for this display." });
     }
     return this.#investigation!;
@@ -361,9 +426,21 @@ export class MatrixController {
     return this.#investigation;
   }
 
-  /** Adopt a previously persisted investigation (its evidence is historical, not current-session). */
+  /**
+   * Adopt a previously persisted investigation. ALL of its claim evidence is
+   * structurally demoted to "previous-local-session" here — the serialized
+   * scope field is never trusted, so a poisoned local record cannot smuggle
+   * in built-in-profile or current-session authority. The investigation is
+   * rebound to the currently connected device: its future evidence belongs
+   * to this session, its past evidence stays labeled historical.
+   */
   adoptInvestigation(investigation: Investigation): void {
-    this.#investigation = resumeInvestigation(investigation);
+    const rebound: Investigation = {
+      ...demoteInvestigationEvidence(investigation, "previous-local-session"),
+      deviceBinding: deviceIdentityBinding(this.session.fingerprint, this.session.profile?.id ?? null) ?? investigation.deviceBinding,
+    };
+    this.#investigation = resumeInvestigation(rebound);
+    this.#investigationEpoch = this.#connectionEpoch;
     this.trace.record("investigation.resumed", { id: investigation.id, completedTests: investigation.completedTests.length });
   }
 
@@ -562,10 +639,15 @@ export class MatrixController {
     this.#validations.splice(0, this.#validations.length, ...(bundle.validations ?? []));
     this.#contentCompilations.splice(0, this.#contentCompilations.length, ...(bundle.contentCompilations ?? []));
     this.#importedEvidence.splice(0, this.#importedEvidence.length, ...(bundle.importedEvidence ?? []));
-    // Imported investigations are historical evidence, not the current session.
+    // Bundle-imported validations can never bridge as trusted live evidence.
+    this.#validationScopes.clear();
+    for (const validation of this.#validations) this.#validationScopes.set(validation.id, "imported-external");
+    // An imported investigation is external historical evidence in its
+    // entirety; the serialized scope fields are never trusted.
     this.#investigation = bundle.investigation
-      ? { ...bundle.investigation, claimEvidence: bundle.investigation.claimEvidence.map((entry) => entry.scope === "current-session" ? { ...entry, scope: "previous-local-session" as const } : entry) }
+      ? demoteInvestigationEvidence(bundle.investigation, "imported-external")
       : null;
+    this.#investigationEpoch = this.#connectionEpoch;
     return bundle;
   }
 
@@ -641,6 +723,9 @@ export class MatrixController {
       answers: [...answers], transactionIds: [...transactionIds], findings: outcome.findings,
     };
     this.#validations.push(validation);
+    // Trust is decided here, from live controller state — never from
+    // serialized data. Only a live physical session earns current-session.
+    this.#validationScopes.set(validation.id, this.session.source === "live" ? "current-session" : "imported-external");
     this.trace.record("validation.recorded", { workflowId, status: outcome.status, validated: outcome.validatedAreas.join(","), rejected: outcome.rejectedAreas.join(",") });
     return validation;
   }

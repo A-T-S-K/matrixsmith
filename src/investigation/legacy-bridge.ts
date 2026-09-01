@@ -1,5 +1,5 @@
 import type { SessionValidationResult, ValidationAreaId } from "../diagnostics/validation";
-import type { ClaimEvidence, ClaimId } from "./claims";
+import type { ClaimEvidence, ClaimId, EvidenceScope } from "./claims";
 
 /**
  * Bridges the original content-validation workflows into atomic claim
@@ -21,12 +21,17 @@ const AREA_CLAIMS: Readonly<Record<ValidationAreaId, readonly ClaimId[]>> = Obje
   persistence: ["animation.autonomous-loop"],
 });
 
-export function claimEvidenceFromValidation(validation: SessionValidationResult): readonly ClaimEvidence[] {
+/**
+ * The evidence scope is supplied by the controller from its own trust state
+ * (live-recorded on the current physical device session vs historical vs
+ * bundle-imported); it is never derived from the serialized validation.
+ */
+export function claimEvidenceFromValidation(validation: SessionValidationResult, scope: EvidenceScope = "current-session"): readonly ClaimEvidence[] {
   const evidence: ClaimEvidence[] = [];
   for (const area of validation.validatedAreas) {
     for (const claimId of AREA_CLAIMS[area] ?? []) {
       evidence.push({
-        claimId, status: "verified", scope: "current-session", provenance: "observed",
+        claimId, status: "verified", scope, provenance: "observed",
         summary: `Validated by the ${validation.workflowId} workflow (${area}).`,
         recordedAt: validation.recordedAt, testId: validation.workflowId, transactionIds: validation.transactionIds,
       });
@@ -35,7 +40,7 @@ export function claimEvidenceFromValidation(validation: SessionValidationResult)
   for (const area of validation.rejectedAreas) {
     for (const claimId of AREA_CLAIMS[area] ?? []) {
       evidence.push({
-        claimId, status: "rejected", scope: "current-session", provenance: "observed",
+        claimId, status: "rejected", scope, provenance: "observed",
         summary: `Rejected by the ${validation.workflowId} workflow (${area}).`,
         recordedAt: validation.recordedAt, testId: validation.workflowId, transactionIds: validation.transactionIds,
       });

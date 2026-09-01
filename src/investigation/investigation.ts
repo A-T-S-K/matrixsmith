@@ -1,5 +1,6 @@
 import type { ClaimEvidence, ClaimId, ClaimState } from "./claims";
 import { resolveClaims } from "./claims";
+import type { InvestigationDeviceBinding } from "./device-identity";
 import type { ObservationValue } from "./observations";
 
 /**
@@ -54,6 +55,8 @@ export interface Investigation {
   readonly updatedAt: string;
   readonly profileId: string | null;
   readonly deviceName: string | null;
+  /** The physical device identity this investigation's evidence belongs to. */
+  readonly deviceBinding: InvestigationDeviceBinding | null;
   readonly goal: InvestigationGoal;
   readonly status: "active" | "stopped";
   readonly completedTests: readonly CompletedGuidedTest[];
@@ -67,12 +70,32 @@ export function investigationId(): string {
   return `investigation:${value}`;
 }
 
-export function createInvestigation(input: { profileId: string | null; deviceName: string | null; goal: InvestigationGoal; now?: string }): Investigation {
+export function createInvestigation(input: { profileId: string | null; deviceName: string | null; deviceBinding?: InvestigationDeviceBinding | null; goal: InvestigationGoal; now?: string }): Investigation {
   const now = input.now ?? new Date().toISOString();
   return {
     id: investigationId(), createdAt: now, updatedAt: now,
     profileId: input.profileId, deviceName: input.deviceName,
+    deviceBinding: input.deviceBinding ?? null,
     goal: input.goal, status: "active", completedTests: [], claimEvidence: [], notes: [],
+  };
+}
+
+/**
+ * Structurally demote every piece of investigation-produced claim evidence to
+ * an explicitly historical/untrusted scope. Used whenever an investigation
+ * crosses a trust boundary: loaded from browser-local history, imported from
+ * a bundle, or detached from its physical device session. The serialized
+ * scope field is never trusted — ALL entries are rewritten, so a corrupt or
+ * malicious record claiming "built-in-profile" or "current-session" authority
+ * cannot survive the boundary.
+ */
+export function demoteInvestigationEvidence(
+  investigation: Investigation,
+  scope: "previous-local-session" | "imported-external",
+): Investigation {
+  return {
+    ...investigation,
+    claimEvidence: investigation.claimEvidence.map((entry) => ({ ...entry, scope })),
   };
 }
 

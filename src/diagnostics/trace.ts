@@ -8,7 +8,8 @@ export type TraceEventType =
   | "tx.packet.hostAccepted" | "tx.packet.failed" | "tx.ack" | "tx.completed"
   | "tx.response.matched" | "tx.response.timeout" | "protocol.probe.started" | "protocol.probe.resolved" | "protocol.probe.rejected"
   | "observation.recorded" | "evidence.imported" | "validation.recorded" | "content.compiled" | "disconnect" | "error"
-  | "investigation.started" | "investigation.resumed" | "guided-test.transferred" | "guided-test.recorded" | "raster-strategy.validated"
+  | "investigation.started" | "investigation.resumed" | "investigation.device-resumed" | "investigation.device-detached"
+  | "guided-test.transferred" | "guided-test.recorded" | "guided-test.abandoned" | "raster-strategy.validated"
   | "advertisement.observed";
 
 export interface TraceEvent {
