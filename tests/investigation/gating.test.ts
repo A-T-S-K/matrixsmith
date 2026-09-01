@@ -21,14 +21,38 @@ describe("path-specific content gating", () => {
     expect(gif.missingClaims).toContain("gif.playback");
   });
 
-  it("unlocks images once a static strategy is verified this session", () => {
+  it("keeps images gated on a directly asserted static strategy", () => {
+    // static.strategy is derived: a bare "verified" assertion has no
+    // authority, so image/text stay gated until real requirements hold.
     const evidence: ClaimEvidence[] = [...baseline,
-      { claimId: "static.strategy", status: "verified", scope: "current-session", provenance: "observed", summary: "animation-single-frame validated" },
+      { claimId: "static.strategy", status: "verified", scope: "current-session", provenance: "observed", summary: "casually asserted" },
+    ];
+    expect(contentPathGate("image", evidence).allowed).toBe(false);
+    expect(contentPathGate("text", evidence).allowed).toBe(false);
+  });
+
+  it("unlocks images once a strategy is actually viable this session", () => {
+    const session = (claimId: string, extra: object = {}): ClaimEvidence => ({ claimId, status: "verified", scope: "current-session", provenance: "observed", summary: "verified this session", ...extra } as ClaimEvidence);
+    const evidence: ClaimEvidence[] = [...baseline,
+      session("animation.static-single-frame"),
+      session("pixel.channel-map"),
+      session("pixel.encoder-correctness"),
     ];
     expect(contentPathGate("image", evidence).allowed).toBe(true);
     expect(contentPathGate("text", evidence).allowed).toBe(true);
     // Unrelated paths do not silently unlock.
     expect(contentPathGate("gif", evidence).allowed).toBe(false);
+  });
+
+  it("keeps images gated while the encoder maps logical channels incorrectly", () => {
+    const session = (claimId: string, status = "verified"): ClaimEvidence => ({ claimId, status, scope: "current-session", provenance: "observed", summary: "session evidence" } as ClaimEvidence);
+    const evidence: ClaimEvidence[] = [...baseline,
+      session("animation.static-single-frame"),
+      session("pixel.channel-map"),
+      session("pixel.encoder-correctness", "rejected"),
+    ];
+    expect(contentPathGate("image", evidence).allowed).toBe(false);
+    expect(contentPathGate("text", evidence).allowed).toBe(false);
   });
 
   it("does not let an inconclusive Graffiti result unlock unrelated content", () => {

@@ -1,3 +1,5 @@
+import { allStrategyRequirementClaims, evaluateStaticViability } from "./static-viability";
+
 /**
  * Atomic hardware claims. A claim is one narrowly scoped statement about
  * this device's behavior ("Animation frames decode", "Graffiti 0x0000 is
@@ -27,7 +29,10 @@ export type ClaimId =
   | "animation.autonomous-loop"
   | "animation.black-semantics"
   | "animation.static-single-frame"
+  | "animation.static-identical-pair"
   | "pixel.channel-map"
+  | "pixel.encoder-correctness"
+  | "pixel.fourth-channel"
   | "pixel.white-channel"
   | "pixel.color-calibration"
   | "static.strategy"
@@ -77,6 +82,13 @@ export interface ClaimEvidence {
   readonly observationIds?: readonly string[];
   /** Optional 0..1 confidence for physically observed evidence. */
   readonly confidence?: number;
+  /**
+   * Measured quantities backing the evidence (e.g. visibleStaticHoldMs).
+   * Numbers only; always from MatrixSmith-measured timers, never estimates.
+   */
+  readonly metrics?: Readonly<Record<string, number>>;
+  /** Structured outcome facts (e.g. zeroBehavior: "true-black") for session-resolved behavior. */
+  readonly details?: Readonly<Record<string, string | number | boolean>>;
 }
 
 export type ClaimCategory = "core" | "content" | "optional";
@@ -110,12 +122,15 @@ export const CLAIM_DEFINITIONS: readonly ClaimDefinition[] = Object.freeze([
   { id: "animation.timing", label: "Animation timing", category: "content", prerequisites: ["animation.frames"], description: "Per-frame delays play at approximately the declared durations." },
   { id: "animation.tile-sync", label: "Animation tile sync", category: "content", prerequisites: ["animation.frames"], description: "All tiles switch frames together with no lagging strip." },
   { id: "animation.autonomous-loop", label: "Autonomous playback", category: "content", prerequisites: ["animation.frames"], description: "Animation keeps looping without further Bluetooth traffic. Distinct from power-cycle persistence." },
-  { id: "animation.black-semantics", label: "Animation black", category: "content", prerequisites: ["animation.frames"], description: "How the Animation path renders a literal 0x0000 pixel on this exact device." },
-  { id: "animation.static-single-frame", label: "Static raster via Animation", category: "content", prerequisites: ["animation.frames"], contributesTo: ["static.strategy"], description: "A one-frame Animation program renders a stable static raster." },
-  { id: "pixel.channel-map", label: "Pixel channel mapping", category: "content", prerequisites: ["stored-program.upload"], description: "Which nibbles of the 16-bit pixel word drive which physical channels." },
-  { id: "pixel.white-channel", label: "White channel", category: "content", prerequisites: ["pixel.channel-map"], description: "Whether the unused high nibble drives a dedicated physical emitter." },
+  { id: "animation.black-semantics", label: "Animation black", category: "content", prerequisites: ["animation.frames"], contributesTo: ["static.strategy"], description: "How the Animation path renders a literal 0x0000 pixel on this exact device." },
+  { id: "animation.static-single-frame", label: "One-frame Animation raster", category: "content", prerequisites: ["animation.frames"], contributesTo: ["static.strategy"], description: "A one-frame Animation program renders a stable static raster." },
+  { id: "animation.static-identical-pair", label: "Identical-pair Animation raster", category: "content", prerequisites: ["animation.frames"], contributesTo: ["static.strategy"], description: "Two identical Animation frames render a stable static raster. Distinct from the one-frame variant." },
+  { id: "pixel.channel-map", label: "Raw channel mapping", category: "content", prerequisites: ["stored-program.upload"], contributesTo: ["static.strategy"], description: "Which nibbles of the 16-bit pixel word drive which physical channels — the raw wire behavior, regardless of what MatrixSmith's encoder assumes." },
+  { id: "pixel.encoder-correctness", label: "Encoder correctness", category: "content", prerequisites: ["pixel.channel-map"], contributesTo: ["static.strategy"], description: "Whether MatrixSmith's logical RGB values produce the intended physical channels. A characterized-but-permuted raw map means the encoder needs correction and keeps this rejected." },
+  { id: "pixel.fourth-channel", label: "Fourth channel", category: "content", prerequisites: ["pixel.channel-map"], description: "Whether the unused high nibble drives ANY fourth physical emitter, of whatever color." },
+  { id: "pixel.white-channel", label: "White channel", category: "content", prerequisites: ["pixel.fourth-channel"], description: "Whether the established fourth channel appears white. Existence of a fourth channel alone never verifies this." },
   { id: "pixel.color-calibration", label: "Color calibration", category: "optional", prerequisites: ["pixel.channel-map"], description: "Whether rendered colors, including white, look visually correct." },
-  { id: "static.strategy", label: "Static-image strategy", category: "content", prerequisites: ["stored-program.upload"], description: "A validated strategy exists for showing a stable static image." },
+  { id: "static.strategy", label: "Static-image strategy", category: "content", prerequisites: ["stored-program.upload"], description: "A usable strategy exists for showing a stable static image. DERIVED from the atomic strategy requirements (see static-viability.ts); direct evidence never decides it." },
   { id: "text.rendering", label: "Text", category: "content", prerequisites: ["static.strategy"], description: "Rendered text displays correctly via the selected raster strategy." },
   { id: "image.rendering", label: "Images", category: "content", prerequisites: ["static.strategy"], description: "Imported images display correctly via the selected raster strategy." },
   { id: "gif.playback", label: "GIF", category: "optional", prerequisites: ["stored-program.upload"], description: "Native GIF programs decode and play." },
@@ -136,12 +151,14 @@ export interface ClaimState {
   readonly label: string;
   readonly category: ClaimCategory;
   readonly status: ClaimStatus;
-  /** The evidence entry that determined the effective status. */
+  /** The evidence entry that determined the effective status; null for derived claims. */
   readonly decidedBy: ClaimEvidence | null;
   /** Every evidence entry for this claim, strongest scope first. */
   readonly evidence: readonly ClaimEvidence[];
   /** True when a prerequisite claim is rejected, blocking a "verified" presentation. */
   readonly blockedByPrerequisite: ClaimId | null;
+  /** For derived claims (static.strategy): how the status was derived. */
+  readonly derivedSummary?: string;
 }
 
 /** Scope authority for deciding the effective status; higher wins. */
@@ -176,6 +193,7 @@ export function resolveClaims(evidence: readonly ClaimEvidence[]): readonly Clai
 }
 
 function resolveClaim(definition: ClaimDefinition, allEvidence: readonly ClaimEvidence[]): ClaimState {
+  if (definition.id === "static.strategy") return deriveStaticStrategyState(definition, allEvidence);
   const entries = allEvidence
     .filter((entry) => entry.claimId === definition.id)
     .slice()
@@ -190,6 +208,36 @@ function resolveClaim(definition: ClaimDefinition, allEvidence: readonly ClaimEv
     id: definition.id, label: definition.label, category: definition.category,
     status: blockedBy && status === "verified" ? "unresolved" : status,
     decidedBy, evidence: entries, blockedByPrerequisite: blockedBy,
+  };
+}
+
+/**
+ * static.strategy is DERIVED: no direct evidence ever decides it (so a
+ * poisoned or over-eager "static.strategy verified" entry has no authority).
+ * Its status comes from the strategy viability evaluator over the same
+ * evidence pool — the single source of truth shared with gating, session
+ * strategy selection, and reports.
+ */
+function deriveStaticStrategyState(definition: ClaimDefinition, allEvidence: readonly ClaimEvidence[]): ClaimState {
+  const assessment = evaluateStaticViability(allEvidence);
+  const requirementClaims = allStrategyRequirementClaims();
+  const anyRequirementEvidence = allEvidence.some((entry) => requirementClaims.has(entry.claimId));
+  const status: ClaimStatus = assessment.overall === "viable" ? "verified"
+    : assessment.overall === "not-viable" ? "rejected"
+      : anyRequirementEvidence ? "unresolved" : "unknown";
+  const derivedSummary = assessment.selected
+    ? `Derived: the ${assessment.selected} strategy satisfies every requirement.`
+    : assessment.overall === "not-viable"
+      ? "Derived: every candidate strategy has a conclusively rejected requirement."
+      : assessment.pursued
+        ? `Derived: no strategy is fully usable yet; characterization is pursuing ${assessment.pursued}${assessment.nextOpenRequirement ? ` (next open requirement: ${assessment.nextOpenRequirement})` : ""}.`
+        : "Derived: no candidate strategy has been characterized.";
+  return {
+    id: definition.id, label: definition.label, category: definition.category,
+    status, decidedBy: null,
+    evidence: allEvidence.filter((entry) => entry.claimId === definition.id),
+    blockedByPrerequisite: null,
+    derivedSummary,
   };
 }
 

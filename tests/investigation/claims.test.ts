@@ -48,7 +48,9 @@ describe("atomic claims", () => {
     expect(claimState("graffiti.initial-render", evidence).status).toBe("verified");
     expect(claimState("graffiti.playback-stability", evidence).status).toBe("unknown");
     expect(claimState("graffiti.black-semantics", evidence).status).toBe("unknown");
-    expect(claimState("static.strategy", evidence).status).toBe("unknown");
+    // static.strategy is derived: with one requirement verified and the rest
+    // open, it is honestly unresolved, never verified.
+    expect(claimState("static.strategy", evidence).status).toBe("unresolved");
   });
 
   it("keeps autonomous looping distinct from power-cycle persistence", () => {
@@ -74,12 +76,18 @@ describe("atomic claims", () => {
     expect(state.status).toBe("unresolved");
   });
 
-  it("keeps unresolved evidence unresolved instead of promoting it", () => {
+  it("never lets direct evidence decide the derived static strategy", () => {
+    // A direct "static.strategy verified" entry (e.g. from a poisoned or
+    // over-eager source) has no authority: the claim derives from its
+    // atomic requirements, which are unknown here.
     const evidence: ClaimEvidence[] = [
-      { claimId: "static.strategy", status: "unresolved", scope: "built-in-profile", provenance: "observed", summary: "graffiti moves" },
+      { claimId: "static.strategy", status: "verified", scope: "current-session", provenance: "observed", summary: "casually asserted" },
     ];
     expect(isClaimSatisfied("static.strategy", evidence)).toBe(false);
-    expect(claimState("static.strategy", evidence).status).toBe("unresolved");
+    const state = claimState("static.strategy", evidence);
+    expect(state.status).toBe("unknown");
+    expect(state.decidedBy).toBeNull();
+    expect(state.derivedSummary).toBeTruthy();
   });
 });
 

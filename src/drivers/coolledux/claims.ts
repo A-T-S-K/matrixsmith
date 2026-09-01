@@ -34,7 +34,8 @@ const ILEDHAT_PROFILE_EVIDENCE: readonly ClaimEvidence[] = Object.freeze([
   { claimId: "animation.black-semantics", status: "verified", scope: "built-in-profile", provenance: "observed", summary: "Animation-path literal 0x0000 background is genuinely off/black on this iLedHat." },
   { claimId: "pixel.channel-map", status: "unresolved", scope: "built-in-profile", provenance: "observed", summary: "RGB-max \"white\" does not appear convincingly neutral on this panel; the actual channel behavior of the 16-bit pixel word is not yet characterized on this device." },
   { claimId: "pixel.color-calibration", status: "unresolved", scope: "built-in-profile", provenance: "observed", summary: "Rendered white looks tinted rather than neutral; calibration work is premature until the channel map is characterized." },
-  { claimId: "static.strategy", status: "unresolved", scope: "built-in-profile", provenance: "observed", summary: "No static-raster strategy is validated: Graffiti moved after its initial render and the Animation single-frame alternative is untested." },
+  // static.strategy carries no direct evidence: it is DERIVED from the
+  // atomic strategy requirements (see investigation/static-viability.ts).
   { claimId: "recovery.manual-reset", status: "verified", scope: "built-in-profile", provenance: "observed", summary: "A single observation: a long power-button action displayed \"reset\" and restored the default scrolling content. Exact timing and reset class are unknown; no automatic restoration exists." },
 ]);
 

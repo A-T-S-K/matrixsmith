@@ -86,7 +86,8 @@ describe("profile immutability", () => {
     ], []);
     expect(JSON.stringify(iledHat31aeProfile)).toBe(before);
     expect(iledHat31aeProfile.quirks?.preferredRasterStrategy).toBe("unresolved");
-    // The session-level selection changed instead.
-    expect(controller.session.validatedRasterStrategy).toBe("animation-single-frame");
+    // No strategy is selected either: viability still requires channel and
+    // encoder characterization, and profile facts never mutate regardless.
+    expect(controller.session.validatedRasterStrategy).toBeNull();
   });
 });

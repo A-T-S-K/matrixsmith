@@ -5,6 +5,7 @@ import {
   type ClaimUpdate, type GuidedTestDefinition, type GuidedTestInterpretation,
 } from "../../investigation/tests";
 import { formatDuration } from "../../investigation/observations";
+import { MINIMUM_STATIC_HOLD_MS, VISIBLE_STATIC_HOLD_METRIC } from "../../investigation/static-viability";
 import { PIXEL_CHANNEL_PROBE_WORDS } from "./diagnostics";
 
 /**
@@ -95,23 +96,26 @@ const graffitiBlackTest: GuidedTestDefinition = {
       summary = "Literal Graffiti 0x0000 renders off/black on this iLedHat.";
       established.push("Graffiti-path literal 0x0000 is genuinely off/black on this exact device.");
       rejected.push("The upstream white-sentinel quirk (0x0000 → bright white) does not reproduce on this profile.");
-      updates.push({ claimId: "graffiti.black-semantics", status: "verified", summary: "Literal 0x0000 observed off/black on the Graffiti path; the upstream white-sentinel quirk does not apply to this profile. Built-in profile behavior is not changed automatically." });
+      updates.push({ claimId: "graffiti.black-semantics", status: "verified", summary: "Literal 0x0000 observed off/black on the Graffiti path; the upstream white-sentinel quirk does not apply to this profile. Built-in profile behavior is not changed automatically.", details: { zeroBehavior: "true-black", ...(workaround ? { workaroundAppearance: workaround } : {}) } });
     } else if (zero === "bright-white") {
       status = "passed";
       summary = "Literal Graffiti 0x0000 renders bright white: the upstream quirk is directly corroborated on this iLedHat.";
       established.push("The Graffiti white-sentinel quirk is directly observed on this profile; the 0x0004 workaround remains necessary.");
-      updates.push({ claimId: "graffiti.black-semantics", status: "verified", summary: "Literal 0x0000 observed bright white on the Graffiti path; the white-sentinel workaround is required on this profile." });
+      updates.push({ claimId: "graffiti.black-semantics", status: "verified", summary: "Literal 0x0000 observed bright white on the Graffiti path; the white-sentinel workaround is required on this profile.", details: { zeroBehavior: "white-sentinel", ...(workaround ? { workaroundAppearance: workaround } : {}) } });
     } else if (zero !== null) {
       status = "partial";
       summary = `The raw 0x0000 regions showed an unexpected appearance (${zero}).`;
       unknowns.push("Graffiti 0x0000 semantics remain uncharacterized: the observed appearance matches neither hypothesis.");
-      updates.push({ claimId: "graffiti.black-semantics", status: "unresolved", summary: `Raw 0x0000 regions observed as "${zero}" — neither off/black nor bright white.` });
+      updates.push({ claimId: "graffiti.black-semantics", status: "unresolved", summary: `Raw 0x0000 regions observed as "${zero}" — neither off/black nor bright white.`, details: { zeroBehavior: "other", observedAppearance: zero, ...(workaround ? { workaroundAppearance: workaround } : {}) } });
     } else {
       unknowns.push("No observation was recorded for the 0x0000 regions.");
     }
     if (workaround && workaround !== "off-black") established.push(`The raw 0x0004 workaround regions appeared "${workaround}" — visible rather than fully off.`);
     else if (workaround === "off-black") established.push("The raw 0x0004 workaround regions appeared off/black.");
-    return { status, established, rejected, unknowns, summary, claimUpdates: updates, nextHint: "Measure static-image movement to characterize Graffiti playback timing." };
+    return {
+      status, established, rejected, unknowns, summary, claimUpdates: updates,
+      nextHint: "Black behavior is one prerequisite of static viability — it does not by itself make the Graffiti strategy usable. Continue with pixel/channel characterization.",
+    };
   },
 };
 
@@ -155,20 +159,48 @@ function interpretTiming(values: readonly ObservationValue[], stayTime: number):
   let summary: string;
   if (moved === "no") {
     const heldMs = onsetMs;
-    status = "passed";
-    summary = heldMs !== null
-      ? `The image stayed still for the observed ${formatDuration(heldMs)} ${parameterNote}.`
-      : `The image stayed still for the observed period ${parameterNote}.`;
-    established.push(`No movement was observed${heldMs !== null ? ` within ${formatDuration(heldMs)}` : ""} with stayTime=${stayTime}.`);
-    updates.push({ claimId: "graffiti.playback-stability", status: "verified", summary: `Raster remained static${heldMs !== null ? ` for ${formatDuration(heldMs)}` : ""} ${parameterNote}. Stability is scoped to the observed duration.` });
-    updates.push({ claimId: "static.strategy", status: "verified", summary: `Graffiti ${parameterNote} held a static raster for the observed period; candidate static strategy.` });
+    if (heldMs !== null && heldMs >= MINIMUM_STATIC_HOLD_MS) {
+      status = "passed";
+      summary = `The image stayed completely static for the measured ${formatDuration(heldMs)} ${parameterNote}.`;
+      established.push(`No movement within the measured ${formatDuration(heldMs)} with stayTime=${stayTime} — meets the ${MINIMUM_STATIC_HOLD_MS / 1000}s stability threshold.`);
+      updates.push({
+        claimId: "graffiti.playback-stability", status: "verified",
+        summary: `Raster remained static for the measured ${formatDuration(heldMs)} ${parameterNote}, meeting the required ${MINIMUM_STATIC_HOLD_MS / 1000}s observation window.`,
+        metrics: { [VISIBLE_STATIC_HOLD_METRIC]: heldMs },
+      });
+    } else {
+      // A "didn't move" answer without a sufficient MEASURED window never
+      // verifies stability; the exact observed duration is recorded.
+      status = "inconclusive";
+      summary = heldMs !== null
+        ? `The image stayed still for the measured ${formatDuration(heldMs)}, but the observation ended before the required ${MINIMUM_STATIC_HOLD_MS / 1000}s window ${parameterNote}.`
+        : `No movement was reported, but no measured observation window exists ${parameterNote}.`;
+      unknowns.push(heldMs !== null
+        ? `Static hold observed for only ${formatDuration(heldMs)} — below the ${MINIMUM_STATIC_HOLD_MS / 1000}s threshold; stability stays unverified.`
+        : "Stability cannot be verified without a measured observation window.");
+      updates.push({
+        claimId: "graffiti.playback-stability", status: "unresolved",
+        summary: heldMs !== null
+          ? `Static for the measured ${formatDuration(heldMs)} ${parameterNote}; observation stopped before the required ${MINIMUM_STATIC_HOLD_MS / 1000}s window.`
+          : `"Did not move" reported without a measured window ${parameterNote}; not accepted as verification.`,
+        ...(heldMs !== null ? { metrics: { [VISIBLE_STATIC_HOLD_METRIC]: heldMs } } : {}),
+      });
+    }
   } else if (moved === "yes") {
     status = "partial";
     const onsetText = onsetMs !== null ? ` Movement began after ${formatDuration(onsetMs)} (measured).` : "";
     summary = `The image rendered and then began moving ${parameterNote}.${onsetText}`;
     rejected.push(`The raster did not remain static with stayTime=${stayTime}.${onsetText}`);
     if (motion) established.push(`Motion character: ${motion}.`);
-    updates.push({ claimId: "graffiti.playback-stability", status: "rejected", summary: `Raster began moving${onsetMs !== null ? ` after ${onsetMs} ms` : ""} ${parameterNote}${motion ? `; motion: ${motion}` : ""}.` });
+    // Atomicity: baseline movement leaves the broad stability claim
+    // unresolved (another justified configuration may hold still); movement
+    // at stayTime=0 exhausts the justified configurations and rejects it.
+    updates.push({
+      claimId: "graffiti.playback-stability",
+      status: stayTime === 0 ? "rejected" : "unresolved",
+      summary: `Raster began moving${onsetMs !== null ? ` after the measured ${formatDuration(onsetMs)}` : ""} ${parameterNote}${motion ? `; motion: ${motion}` : ""}.${stayTime === 0 ? " Both justified Graffiti configurations (stayTime 3 and 0) move; no stable configuration remains." : " stayTime=0 remains the untested discriminator."}`,
+      ...(onsetMs !== null ? { metrics: { movementOnsetMs: onsetMs } } : {}),
+    });
   } else {
     status = "inconclusive";
     summary = "Movement behavior was not observed conclusively.";
@@ -177,11 +209,11 @@ function interpretTiming(values: readonly ObservationValue[], stayTime: number):
   }
   return {
     status, established, rejected, unknowns, summary, claimUpdates: updates,
-    ...(moved === "no" && stayTime === 0 ? {} : {}),
-    ...(status === "passed" ? { selectsRasterStrategy: "graffiti" as const } : {}),
     nextHint: moved === "yes" && stayTime === 3
       ? "Compare stayTime=0 with the same raster — the only other justified variant — to isolate the stayTime byte."
-      : "Validate the static raster via the Animation path as an alternative strategy.",
+      : moved === "yes" && stayTime === 0
+        ? "Characterize static black semantics and the pixel channels; the Animation fallback becomes appropriate only if Graffiti is conclusively non-viable."
+        : "Continue characterizing the native static path: black semantics, then pixel channels.",
   };
 }
 
@@ -279,25 +311,34 @@ function interpretAnimationStatic(values: readonly ObservationValue[], variant: 
   const tiles = booleanAnswer(values, "tiles-aligned");
   const flicker = booleanAnswer(values, "flicker");
   const label = variant === "single" ? "one-frame Animation" : "two-identical-frame Animation";
-  const strategy = variant === "single" ? "animation-single-frame" as const : "animation-identical-frames" as const;
-  const claimId = "animation.static-single-frame" as const;
+  // The two candidate strategies carry DISTINCT claims: a rejected
+  // single-frame result can never mask a successful identical-pair result.
+  const claimId = variant === "single" ? "animation.static-single-frame" as const : "animation.static-identical-pair" as const;
   const updates: ClaimUpdate[] = [];
   const established: string[] = [];
   const rejected: string[] = [];
   const unknowns: string[] = [];
   if (background === "yes") established.push("The literal 0x0000 background was off, re-confirming Animation black.");
+  else if (background === "no") {
+    // A result never claims more than the observation supports: a lit
+    // background contradicts the earlier Animation true-black evidence.
+    rejected.push("The literal 0x0000 background was NOT off — contradicting the earlier Animation true-black characterization.");
+    updates.push({ claimId: "animation.black-semantics", status: "unresolved", summary: `The 0x0000 background was not off during the ${label} test, contradicting the earlier true-black observation; Animation black needs recharacterization.` });
+  }
   if (tiles === "yes") established.push("All four tiles were aligned.");
   if (flicker === "yes") established.push("Flicker or a periodic reset was observed and recorded.");
   const passed = initial === "yes" && still === "yes" && tiles !== "no" && flicker !== "yes";
   if (passed) {
-    established.push(`The ${label} program held a stable static raster.`);
-    updates.push({ claimId, status: "verified", summary: `The ${label} program rendered the raster and held it stationary for ≥15 s with an off background.` });
-    updates.push({ claimId: "static.strategy", status: "verified", summary: `Validated static strategy: ${label} program.` });
+    established.push(`The ${label} program held a stable static raster for the reported ≥15 s observation.`);
+    updates.push({
+      claimId, status: "verified",
+      summary: `The ${label} program rendered the raster and held it stationary for the reported ≥15 s observation${background === "yes" ? " with an off background" : background === "no" ? "; the 0x0000 background was NOT off (recorded separately)" : "; background state unobserved"}.`,
+    });
     return {
       status: "passed", established, rejected, unknowns,
-      summary: `The ${label} program is a working static-image strategy for this display.`,
-      claimUpdates: updates, selectsRasterStrategy: strategy,
-      nextHint: "Characterize the raw pixel channels next — the Animation path is now the reliable substrate for it.",
+      summary: `The ${label} program held a stable static raster. Whether it is a USABLE static strategy is derived from all requirements, including black and channel semantics.`,
+      claimUpdates: updates,
+      nextHint: "Characterize the raw pixel channels next; strategy viability is derived from the full requirement set.",
     };
   }
   if (initial === "no") {
@@ -320,7 +361,7 @@ const animationStaticTest: GuidedTestDefinition = {
   driverId: "coolledux",
   title: "Show a still image via the animation path",
   category: "recommended",
-  targetClaims: ["animation.static-single-frame", "static.strategy"],
+  targetClaims: ["animation.static-single-frame"],
   prerequisites: [
     { claimId: "animation.frames", anyOf: ["verified"] },
     { claimId: "animation.black-semantics", anyOf: ["verified"] },
@@ -355,7 +396,7 @@ const animationStaticPairTest: GuidedTestDefinition = {
   driverId: "coolledux",
   title: "Still image via two identical animation frames",
   category: "optional",
-  targetClaims: ["animation.static-single-frame", "static.strategy"],
+  targetClaims: ["animation.static-identical-pair"],
   prerequisites: [
     { claimId: "animation.frames", anyOf: ["verified"] },
   ],
@@ -393,7 +434,7 @@ const pixelChannelTest: GuidedTestDefinition = {
   driverId: "coolledux",
   title: "Identify the color channels",
   category: "recommended",
-  targetClaims: ["pixel.channel-map", "pixel.white-channel"],
+  targetClaims: ["pixel.channel-map", "pixel.encoder-correctness", "pixel.fourth-channel"],
   prerequisites: [
     { claimId: "animation.frames", anyOf: ["verified"] },
     { claimId: "animation.black-semantics", anyOf: ["verified"] },
@@ -445,12 +486,18 @@ const pixelChannelTest: GuidedTestDefinition = {
     const allRgbAnswered = red !== null && green !== null && blue !== null;
     if (rgbAsHypothesized) {
       established.push("Raw 0x0F00 → red, 0x00F0 → green, 0x000F → blue: the RGB444 nibble mapping is confirmed on this panel.");
-      updates.push({ claimId: "pixel.channel-map", status: "verified", summary: "RGB444 mapping physically confirmed: byte0 low nibble = R, byte1 high nibble = G, byte1 low nibble = B." });
+      updates.push({ claimId: "pixel.channel-map", status: "verified", summary: "RGB444 mapping physically confirmed: byte0 low nibble = R, byte1 high nibble = G, byte1 low nibble = B.", details: { observedMap: "0x0F00→red, 0x00F0→green, 0x000F→blue", matchesRgb444: true } });
+      established.push("MatrixSmith's encoder already assumes this mapping: logical RGB values drive the intended channels.");
+      updates.push({ claimId: "pixel.encoder-correctness", status: "verified", summary: "The observed raw mapping matches the RGB444 ordering the encoder emits; logical colors reach the intended physical channels." });
     } else if (allRgbAnswered) {
       const observed = `0x0F00→${red}, 0x00F0→${green}, 0x000F→${blue}`;
-      established.push(`Observed single-nibble mapping: ${observed}.`);
-      rejected.push("The hypothesized RGB444 ordering does not match the observed colors.");
-      updates.push({ claimId: "pixel.channel-map", status: "verified", summary: `Channel mapping characterized as ${observed} — differs from the RGB444 hypothesis; the encoder needs a corrected ordering.` });
+      established.push(`Observed single-nibble mapping: ${observed}. The raw channel arrangement is now CHARACTERIZED.`);
+      rejected.push("The hypothesized RGB444 ordering does not match the observed colors: MatrixSmith's current encoder maps logical channels incorrectly on this panel.");
+      // Characterized raw mapping is distinct from encoder correctness: the
+      // map is verified knowledge, while normal rendering stays gated until
+      // the encoder is corrected in code and re-verified.
+      updates.push({ claimId: "pixel.channel-map", status: "verified", summary: `Raw channel mapping characterized as ${observed} — a permutation of the RGB444 hypothesis.`, details: { observedMap: observed, matchesRgb444: false } });
+      updates.push({ claimId: "pixel.encoder-correctness", status: "rejected", summary: `Encoder mismatch: MatrixSmith emits RGB444 ordering but the panel maps ${observed}. Driver/profile correction required, then a re-verification run. Normal image/text rendering must stay gated until then.`, details: { observedMap: observed, expectedMap: "0x0F00→red, 0x00F0→green, 0x000F→blue" } });
     } else {
       unknowns.push("Not all single-channel patches were observed; the channel map stays uncharacterized.");
       updates.push({ claimId: "pixel.channel-map", status: "unresolved", summary: "Single-channel patch observations were incomplete." });
@@ -460,14 +507,23 @@ const pixelChannelTest: GuidedTestDefinition = {
     if (litHighNibble.length > 0) {
       const details = litHighNibble.map((word) => `0x${word.toString(16).padStart(4, "0").toUpperCase()}→${answer(word)}`).join(", ");
       established.push(`High-nibble-only values produced light while all RGB bits were zero: ${details}. Strong evidence for a fourth physical channel.`);
-      const looksWhite = litHighNibble.some((word) => answer(word) === "neutral-white" || answer(word) === "tinted-white");
-      updates.push({ claimId: "pixel.white-channel", status: "verified", summary: `High-nibble-only words lit (${details}); a fourth physical channel exists${looksWhite ? " and appears white" : ", color as recorded"}. This does not by itself make the profile RGBW.` });
+      updates.push({ claimId: "pixel.fourth-channel", status: "verified", summary: `High-nibble-only words lit (${details}); a fourth physical channel EXISTS. This does not by itself make the profile RGBW, and colorModeRaw=3 semantics remain unknown.`, details: { observedAppearance: details } });
+      // Whether that channel is WHITE is a separate claim: an amber fourth
+      // channel exists without establishing any white channel.
+      const whiteAnswers = litHighNibble.map((word) => answer(word));
+      const allWhite = whiteAnswers.every((seen) => seen === "neutral-white" || seen === "tinted-white");
+      if (allWhite) {
+        updates.push({ claimId: "pixel.white-channel", status: "verified", summary: `The lit fourth channel appears white in every observation (${details}).` });
+      } else {
+        updates.push({ claimId: "pixel.white-channel", status: "unresolved", summary: `A fourth channel exists but its appearance (${details}) is not established as white.` });
+      }
     } else if (answeredHighNibble.length === HIGH_NIBBLE_WORDS.length) {
       established.push("Every high-nibble-only patch stayed off: the high nibble does not drive a physical emitter at these values.");
-      updates.push({ claimId: "pixel.white-channel", status: "rejected", summary: "All high-nibble-only patches (0x1000…0xF000) observed off; no fourth channel is driven by the high nibble." });
+      updates.push({ claimId: "pixel.fourth-channel", status: "rejected", summary: "All high-nibble-only patches (0x1000…0xF000) observed off; no fourth channel is driven by the high nibble." });
+      updates.push({ claimId: "pixel.white-channel", status: "rejected", summary: "No fourth channel exists, so no dedicated white channel exists." });
     } else {
       unknowns.push("High-nibble patches were not all observed; the fourth-channel hypothesis stays open.");
-      updates.push({ claimId: "pixel.white-channel", status: "unresolved", summary: "High-nibble patch observations were incomplete." });
+      updates.push({ claimId: "pixel.fourth-channel", status: "unresolved", summary: "High-nibble patch observations were incomplete." });
     }
     if (rgbMax === "tinted-white") established.push("RGB-max renders tinted rather than neutral white — matching earlier sessions.");
     if (rgbMax === "neutral-white") established.push("RGB-max renders neutral white on this observation.");

@@ -35,6 +35,7 @@ import type { ObservationValue } from "../investigation/observations";
 import { rankRecommendations, type Recommendation } from "../investigation/recommendations";
 import { generateForensicAppendix, generateInvestigationReport, generateTestReport } from "../investigation/reports";
 import { allContentGates, contentPathGate, type ContentGate, type ContentPathId } from "../investigation/gating";
+import { evaluateStaticViability, type StaticViabilityAssessment } from "../investigation/static-viability";
 
 export class MatrixController {
   readonly session = new MatrixSession();
@@ -400,6 +401,11 @@ export class MatrixController {
     return resolveOperationalTrust(this.allClaimEvidence());
   }
 
+  /** Derived static-image strategy viability over the current evidence. */
+  staticViability(): StaticViabilityAssessment {
+    return evaluateStaticViability(this.allClaimEvidence());
+  }
+
   startInvestigation(goal: InvestigationGoal): Investigation {
     // An active investigation is retargeted, never discarded: troubleshooting
     // keeps every completed test and claim as evidence toward the new goal.
@@ -531,6 +537,8 @@ export class MatrixController {
       claimId: update.claimId, status: update.status, scope: "current-session",
       provenance: update.provenance ?? "observed", summary: update.summary,
       recordedAt: completedAt, testId, transactionIds,
+      ...(update.metrics ? { metrics: update.metrics } : {}),
+      ...(update.details ? { details: update.details } : {}),
     }));
     const parameters = test.operation.type === "ShowDiagnostic" && test.operation.parameters ? { ...test.operation.parameters } : undefined;
     const completed: CompletedGuidedTest = {
@@ -541,12 +549,22 @@ export class MatrixController {
       ...(parameters ? { parameters } : {}),
     };
     this.#investigation = recordCompletedTest(this.ensureInvestigation(), completed, evidence, completedAt);
-    if (interpretation.selectsRasterStrategy) {
-      this.session.validatedRasterStrategy = interpretation.selectsRasterStrategy;
-      this.trace.record("raster-strategy.validated", { strategy: interpretation.selectsRasterStrategy, testId });
-    }
+    this.#deriveSessionRasterStrategy(testId);
     this.trace.record("guided-test.recorded", { testId, status: interpretation.status, claimUpdates: evidence.length });
     return completed;
+  }
+
+  /**
+   * The session's static-raster strategy is DERIVED from the viability
+   * evaluator over the full trusted evidence, never asserted by a single
+   * passing test.
+   */
+  #deriveSessionRasterStrategy(testId: string | null): void {
+    const selected = evaluateStaticViability(this.allClaimEvidence()).selected;
+    if (selected !== this.session.validatedRasterStrategy) {
+      this.session.validatedRasterStrategy = selected;
+      if (selected) this.trace.record("raster-strategy.validated", { strategy: selected, testId });
+    }
   }
 
   // ---- Investigation reports ---------------------------------------------

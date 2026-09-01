@@ -1,6 +1,5 @@
 import type { Persistence, RiskClass } from "../core/risk";
 import type { MatrixOperation } from "../core/operations";
-import type { RasterStrategy } from "../core/raster-strategy";
 import type { ClaimEvidence, ClaimId, ClaimState, ClaimStatus } from "./claims";
 import { claimState } from "./claims";
 import type { ObservationFieldSpec, ObservationValue } from "./observations";
@@ -60,8 +59,6 @@ export interface GuidedTestInterpretation {
   readonly summary: string;
   /** Claim evidence contributions; the engine stamps scope/test/transactions. */
   readonly claimUpdates: readonly ClaimUpdate[];
-  /** A raster strategy this outcome validates for the current session, if any. */
-  readonly selectsRasterStrategy?: RasterStrategy;
   readonly nextHint?: string;
 }
 
@@ -70,6 +67,10 @@ export interface ClaimUpdate {
   readonly status: ClaimStatus;
   readonly summary: string;
   readonly provenance?: ClaimEvidence["provenance"];
+  /** MatrixSmith-measured quantities backing the update (e.g. visibleStaticHoldMs). */
+  readonly metrics?: Readonly<Record<string, number>>;
+  /** Structured outcome facts for session-resolved behavior (e.g. zeroBehavior). */
+  readonly details?: Readonly<Record<string, string | number | boolean>>;
 }
 
 export interface GuidedTestDefinition {

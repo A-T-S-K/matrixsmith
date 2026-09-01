@@ -81,14 +81,16 @@ describe("guided test engine", () => {
     expect(completed.established.join(" ")).toContain("full raster appeared correctly");
     expect(completed.rejected.join(" ")).toContain("00:03.2");
     expect(claimStatus(controller, "graffiti.initial-render")).toBe("verified");
-    expect(claimStatus(controller, "graffiti.playback-stability")).toBe("rejected");
+    // Baseline movement leaves the broad stability claim unresolved: the
+    // stayTime=0 discriminator has not yet been exhausted.
+    expect(claimStatus(controller, "graffiti.playback-stability")).toBe("unresolved");
     expect(completed.parameters?.stayTime).toBe(3);
     // The stayTime discriminator becomes available once the baseline exists.
     const staytime = controller.guidedTests().find((entry) => entry.test.id === "coolledux-graffiti-staytime");
     expect(staytime?.available).toBe(true);
   });
 
-  it("selects the animation-single-frame raster strategy for the session on a pass", async () => {
+  it("derives the session raster strategy from full viability, not one passing test", async () => {
     const controller = await connectedController();
     const values: ObservationValue[] = [
       { kind: "boolean", fieldId: "initial-correct", value: "yes" },
@@ -99,10 +101,22 @@ describe("guided test engine", () => {
     ];
     const completed = controller.recordGuidedTestObservations("coolledux-animation-static", values, []);
     expect(completed.status).toBe("passed");
+    expect(claimStatus(controller, "animation.static-single-frame")).toBe("verified");
+    // The passing test alone does NOT make the strategy usable: channel
+    // mapping and encoder correctness are still uncharacterized.
+    expect(controller.session.validatedRasterStrategy).toBeNull();
+    expect(claimStatus(controller, "static.strategy")).toBe("unresolved");
+
+    // Once the channel probe confirms the RGB444 hypothesis (channel map +
+    // encoder correctness), the derived viability selects the strategy.
+    const patch = (word: number, optionId: string): ObservationValue => ({ kind: "choice", fieldId: `patch-0x${word.toString(16).padStart(4, "0")}`, optionId });
+    controller.recordGuidedTestObservations("coolledux-pixel-channels", [
+      patch(0x0000, "off"), patch(0x0f00, "red"), patch(0x00f0, "green"), patch(0x000f, "blue"), patch(0x0fff, "tinted-white"),
+      patch(0x1000, "off"), patch(0x2000, "off"), patch(0x4000, "off"), patch(0x8000, "off"), patch(0xf000, "off"), patch(0xffff, "tinted-white"),
+    ], []);
     expect(controller.session.validatedRasterStrategy).toBe("animation-single-frame");
     expect(claimStatus(controller, "static.strategy")).toBe("verified");
-    expect(claimStatus(controller, "animation.static-single-frame")).toBe("verified");
-    // Normal Use now routes ShowFrame through the validated strategy.
+    // Normal Use now routes ShowFrame through the derived strategy.
     const plan = controller.plan({ type: "ShowFrame", frame: (await import("../../src/render/patterns")).orientationPattern(32, 16) });
     expect(plan.metadata.rasterStrategy).toBe("animation-single-frame");
   });
@@ -117,6 +131,8 @@ describe("guided test engine", () => {
     const completed = controller.recordGuidedTestObservations("coolledux-pixel-channels", values, []);
     expect(completed.status).toBe("passed");
     expect(claimStatus(controller, "pixel.channel-map")).toBe("verified");
+    expect(claimStatus(controller, "pixel.encoder-correctness")).toBe("verified");
+    expect(claimStatus(controller, "pixel.fourth-channel")).toBe("rejected");
     expect(claimStatus(controller, "pixel.white-channel")).toBe("rejected");
     // Color/white characterization unlocks once the channel map is verified.
     expect(controller.guidedTests().find((entry) => entry.test.id === "coolledux-color-white")?.available).toBe(true);
@@ -131,8 +147,9 @@ describe("guided test engine", () => {
     ];
     const completed = controller.recordGuidedTestObservations("coolledux-pixel-channels", values, []);
     expect(completed.status).toBe("passed");
+    expect(claimStatus(controller, "pixel.fourth-channel")).toBe("verified");
     expect(claimStatus(controller, "pixel.white-channel")).toBe("verified");
-    const evidence = controller.investigation?.claimEvidence.find((entry) => entry.claimId === "pixel.white-channel");
+    const evidence = controller.investigation?.claimEvidence.find((entry) => entry.claimId === "pixel.fourth-channel");
     expect(evidence?.summary).toContain("does not by itself make the profile RGBW");
   });
 
