@@ -148,3 +148,11 @@ reviewed code.
 
 **Applicability**: the iLedHat characterization suite (`ILEDHAT_GUIDED_TESTS`) applies
 only to the iLedHat profile; other CoolLEDUX profiles receive only the generic suite.
+
+## Content processing and transfer lifecycle
+
+Imported images are decoded locally into an in-memory `DecodedImageSource`, then pass through explicit composition, conservative content analysis, and one of three pure reducers. Artwork uses a chroma-protected OKLab semantic palette, hard region rasterization, and bounded grid-phase search; photos use linear-light area reduction plus mild destination-scale edge enhancement; pixel art uses nearest-neighbor. RGB444 mapping happens once at the device boundary. Auto takes a semantic route only at high confidence; uncertain input uses Photo-safe processing. The Canvas reducer remains as Legacy / Smooth. Preview and send share the exact `ProcessedImage.frame`; raw bytes are never persisted.
+
+Create owns the semantic Auto / Still / Scroll text decision. Still text uses the selected static strategy. Scroll currently uses one shared `ScrollPlan` for animated preview and bounded raster Animation transmission. The source-derived guardrail is 48 frames and 16 KiB decoded bytes per 8×16 tile; it is not an iLedHat firmware-limit claim. The pinned source does not define native CoolLEDUX Text segments well enough for safe transmission, so that backend remains a documented hardware-validation deferral rather than a guessed packet format.
+
+The executor emits progress only after actual host-accepted writes. Create holds a best-effort Screen Wake Lock for active persistent sends, reacquires after visibility restoration, and releases it on completion or failure. Completion copy keeps host writes, protocol acknowledgement, device-state verification, and physical observation separate.

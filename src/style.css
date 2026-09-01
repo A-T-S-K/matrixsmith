@@ -75,7 +75,7 @@ input, textarea { min-width: 0; padding: .7rem; border: 1px solid #40566c; borde
 main { width: min(1200px, 100%); margin: 0 auto; padding: 0 1rem 2rem; }
 
 /* Toast */
-.toast { position: fixed; left: 50%; bottom: 4.6rem; transform: translateX(-50%); z-index: 30; display: flex; align-items: center; gap: .6rem; max-width: min(92vw, 34rem); padding: .65rem .95rem; border: 1px solid #2b4258; border-radius: .75rem; background: #0e1f31f2; color: #dbeafe; font-size: .9rem; box-shadow: 0 12px 40px #0006; }
+.toast { position: fixed; left: 50%; top: .5rem; transform: translateX(-50%); z-index: 30; display: flex; align-items: center; gap: .6rem; max-width: min(92vw, 34rem); padding: .65rem .95rem; border: 1px solid #2b4258; border-radius: .75rem; background: #0e1f31f2; color: #dbeafe; font-size: .9rem; box-shadow: 0 12px 40px #0006; }
 .toast.error { border-color: #fb718566; color: #fecdd3; }
 .toast button { display: grid; place-items: center; min-width: 24px; min-height: 24px; padding: 0; border: 0; background: none; color: inherit; font-size: 1.1rem; line-height: 1; }
 
@@ -269,6 +269,7 @@ main { width: min(1200px, 100%); margin: 0 auto; padding: 0 1rem 2rem; }
 
 /* Desktop */
 @media (min-width: 900px) {
+  .toast { top: auto; bottom: 2rem; }
   .workspace-shell { grid-template-columns: 13.5rem minmax(0, 1fr); gap: 1.4rem; }
   .safety-copy { justify-self: end; }
   .sidebar { display: block; position: sticky; top: 4.4rem; align-self: start; }
@@ -293,6 +294,9 @@ main { width: min(1200px, 100%); margin: 0 auto; padding: 0 1rem 2rem; }
   .transaction summary span { grid-column: 3; }
   .transaction summary small { grid-column: 4; grid-row: auto; text-align: right; }
   .report-layout { grid-template-columns: minmax(16rem, 22rem) minmax(0, 1fr); }
+}
+@media (max-width: 899px) {
+  .app-shell:has(~ .toast) { padding-top: 4rem; }
 }
 
 /* Content + validation additions */

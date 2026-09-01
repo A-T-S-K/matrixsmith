@@ -439,6 +439,7 @@ export class MatrixStore {
   #imageFile: Blob | null = null;
   #imageSource: DecodedImageSource | null = null;
   #imageName = "";
+  #imageVersion = 0;
   #imageState: ContentState["image"] | null = null;
   #gifBytes: Uint8Array | null = null;
   #gifState: ContentState["gif"] | null = null;
@@ -571,12 +572,15 @@ export class MatrixStore {
   setAnimationChoice(choice: "diagnostic" | "scroll-text"): void { this.#animationChoice = choice; this.#emit(); }
 
   async loadImage(file: Blob, name: string): Promise<void> {
+    const version = ++this.#imageVersion;
     await this.#run("Decoding image…", async () => {
       const profile = this.controller.session.profile;
       if (!profile) throw new Error("Connect and identify a display before importing an image.");
       const source = await decodeImageSource(file);
+      if (version !== this.#imageVersion) return;
       const processed = this.#settings.imageMode === "legacy" ? null : processImage(source, profile.width, profile.height, this.#imageRecipe(), ILEDHAT_RGB444);
       const decoded = processed ? { frame: processed.frame, sourceWidth: source.width, sourceHeight: source.height, fitMode: this.#settings.imageFitMode } : await decodeImageFile(file, profile.width, profile.height, this.#settings.imageFitMode);
+      if (version !== this.#imageVersion) return;
       this.#imageFile = file;
       this.#imageSource = source;
       this.#imageName = name;
@@ -590,18 +594,32 @@ export class MatrixStore {
     if (this.#imageFile) await this.loadImage(this.#imageFile, this.#imageName);
   }
 
-  async setImageProcessing(partial: { mode?: ImageMode; composition?: ContentSettings["imageComposition"]; opticalFit?: boolean; edgeStrength?: number }): Promise<void> {
+  async setImageProcessing(partial: { mode?: ImageMode; composition?: ContentSettings["imageComposition"]; opticalFit?: boolean; edgeStrength?: number; zoom?: number; offsetX?: number; offsetY?: number }): Promise<void> {
     this.updateContentSettings({
       ...(partial.mode ? { imageMode: partial.mode } : {}),
       ...(partial.composition ? { imageComposition: partial.composition, imageFitMode: partial.composition === "cover" ? "cover" : "contain" } : {}),
       ...(partial.opticalFit !== undefined ? { imageOpticalFit: partial.opticalFit } : {}),
       ...(partial.edgeStrength !== undefined ? { imageEdgeStrength: partial.edgeStrength } : {}),
+      ...(partial.zoom !== undefined ? { imageZoom: partial.zoom } : {}),
+      ...(partial.offsetX !== undefined ? { imageOffsetX: partial.offsetX } : {}),
+      ...(partial.offsetY !== undefined ? { imageOffsetY: partial.offsetY } : {}),
     });
-    if (this.#imageFile) await this.loadImage(this.#imageFile, this.#imageName);
+    if (this.#imageFile && this.#imageSource) await this.#reprocessImage();
   }
 
   #imageRecipe(): { mode: ImageMode; composition: ImageComposition; edgeStrength: number } {
-    return { mode: this.#settings.imageMode, composition: { mode: this.#settings.imageComposition, ...(this.#settings.imageOpticalFit ? { opticalScaleX: 1.35 } : {}) }, edgeStrength: this.#settings.imageEdgeStrength };
+    return { mode: this.#settings.imageMode, composition: { mode: this.#settings.imageComposition, zoom: this.#settings.imageZoom, offsetX: this.#settings.imageOffsetX, offsetY: this.#settings.imageOffsetY, ...(this.#settings.imageOpticalFit ? { opticalScaleX: 1.35 } : {}) }, edgeStrength: this.#settings.imageEdgeStrength };
+  }
+
+  async #reprocessImage(): Promise<void> {
+    const profile = this.controller.session.profile; const source = this.#imageSource; const file = this.#imageFile;
+    if (!profile || !source || !file) return; const version = ++this.#imageVersion;
+    await this.#run("Updating image preview…", async () => {
+      const processed = this.#settings.imageMode === "legacy" ? null : processImage(source, profile.width, profile.height, this.#imageRecipe(), ILEDHAT_RGB444);
+      const frame = processed ? processed.frame : (await decodeImageFile(file, profile.width, profile.height, this.#settings.imageFitMode)).frame;
+      if (version !== this.#imageVersion) return;
+      this.#imageState = { preview: frame, sourceWidth: source.width, sourceHeight: source.height, fitMode: this.#settings.imageFitMode, name: this.#imageName, processed };
+    });
   }
 
   async loadGif(file: Blob, name: string): Promise<void> {

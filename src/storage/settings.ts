@@ -19,6 +19,9 @@ export interface ContentSettings {
   readonly imageComposition: "contain" | "cover" | "foreground-trim" | "custom";
   readonly imageOpticalFit: boolean;
   readonly imageEdgeStrength: number;
+  readonly imageZoom: number;
+  readonly imageOffsetX: number;
+  readonly imageOffsetY: number;
   readonly lastBrightness: number | null;
 }
 
@@ -34,6 +37,9 @@ export const DEFAULT_CONTENT_SETTINGS: ContentSettings = Object.freeze({
   imageComposition: "contain",
   imageOpticalFit: false,
   imageEdgeStrength: 0.12,
+  imageZoom: 1,
+  imageOffsetX: 0,
+  imageOffsetY: 0,
   lastBrightness: null,
 });
 

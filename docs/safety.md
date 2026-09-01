@@ -37,6 +37,10 @@ Stored-program uploads replace the display's stored content; MatrixSmith never p
 
 Execution results keep three claims separate: browser/host acceptance, a matching protocol notification, and independently verified device state. Brightness echo establishes protocol acceptance; a following device-info readback can establish the resulting raw brightness.
 
+Raster scrolling is preflighted before BLE. MatrixSmith may increase pixel step and proportional frame delay, but blocks a send that still exceeds the conservative 48-frame / 16 KiB-decoded-per-tile source-derived budget. This is a software guard, not a claimed physical iLedHat limit. Persistent sends never retry automatically; a partial failure makes panel state unknown and leaves retry as an explicit action.
+
+For write-without-response content, “host accepted” means only that the browser/Bluetooth stack accepted every write. Normal UI says “Upload sent to display” and explicitly states when firmware acceptance and retention were not confirmed. Screen Wake Lock is best effort and never changes transfer success.
+
 The experimental unlock is memory-only and clears on disconnect or reload. It cannot bypass driver intent, validation, risk, source, confidence, or endpoint checks.
 
 ## Path-specific content gating (2026-08-31 revision, hardened)

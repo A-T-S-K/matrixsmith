@@ -81,9 +81,14 @@ function ContentEditor({ selected, snapshot, store }: { selected: ContentPathId;
         {content.image.processed && <p class="notice">{content.image.processed.analysis.likelyMode === content.image.processed.resolvedMode ? `${labelMode(content.image.processed.resolvedMode)} · ${content.image.processed.analysis.confidence} confidence` : `Auto used ${labelMode(content.image.processed.resolvedMode)}-safe processing · uncertain content type`}</p>}
         <p class="fineprint">32×16 · {content.image.processed?.resolvedMode ?? "Legacy / Smooth"} · {content.image.processed?.outputColorCount ?? "—"} colors · static delivery uses the selected device profile strategy.</p>
         {content.image.processed?.warnings.map((warning) => <p class="notice warning">{warning}</p>)}
+        {settings.imageComposition === "custom" && <div class="custom-crop-controls">
+          <label class="field"><span>Zoom</span><input type="range" min="1" max="4" step="0.1" value={settings.imageZoom} onChange={(event) => void store.setImageProcessing({ zoom: Number((event.currentTarget as HTMLInputElement).value) })}/></label>
+          <label class="field"><span>Horizontal focal offset</span><input type="range" min="-16" max="16" step="1" value={settings.imageOffsetX} onChange={(event) => void store.setImageProcessing({ offsetX: Number((event.currentTarget as HTMLInputElement).value) })}/></label>
+          <label class="field"><span>Vertical focal offset</span><input type="range" min="-8" max="8" step="1" value={settings.imageOffsetY} onChange={(event) => void store.setImageProcessing({ offsetY: Number((event.currentTarget as HTMLInputElement).value) })}/></label>
+        </div>}
         <details class="secondary-section"><summary>Advanced image processing</summary>
           {(settings.imageMode === "artwork" || content.image.processed?.analysis.likelyMode === "artwork") && <label class="check-row"><input type="checkbox" checked={settings.imageOpticalFit} onChange={(event) => void store.setImageProcessing({ opticalFit: (event.currentTarget as HTMLInputElement).checked })}/><span>Use more of display (previewed optical widening, max 1.35×)</span></label>}
-          <label class="field"><span>Photo edge strength</span><input type="range" min="0" max="0.25" step="0.01" value={settings.imageEdgeStrength} onInput={(event) => void store.setImageProcessing({ edgeStrength: Number((event.currentTarget as HTMLInputElement).value) })}/></label>
+          <label class="field"><span>Photo edge strength</span><input type="range" min="0" max="0.25" step="0.01" value={settings.imageEdgeStrength} onChange={(event) => void store.setImageProcessing({ edgeStrength: Number((event.currentTarget as HTMLInputElement).value) })}/></label>
           <button class="text-action" onClick={() => void store.setImageProcessing({ mode: "legacy" })}>Use Legacy / Smooth reducer</button>
         </details>
         <p class="fineprint">{content.image.name} · {content.image.sourceWidth}×{content.image.sourceHeight} source. Processed locally; raw image bytes are not persisted or uploaded.</p>
