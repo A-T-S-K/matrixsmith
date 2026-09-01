@@ -23,7 +23,7 @@ import { chooseTestBrightness, COOLLEDUX_DIAGNOSTIC_TOOLS, diagnosticRunId } fro
 import { CONTENT_VALIDATION_WORKFLOWS, evaluateValidationAnswers, sessionValidationId, type ContentValidationWorkflow, type ValidationAnswer } from "../diagnostics/validation";
 import { contentCompilationId } from "../diagnostics/content-evidence";
 import { diagnosticAnimation, orientationPattern } from "../render/patterns";
-import { resolveClaims, type ClaimEvidence, type ClaimState, type EvidenceScope } from "../investigation/claims";
+import { resolveClaims, resolveOperationalTrust, type ClaimEvidence, type ClaimState, type EvidenceScope, type OperationalTrust } from "../investigation/claims";
 import { claimEvidenceFromValidation } from "../investigation/legacy-bridge";
 import {
   createInvestigation, demoteInvestigationEvidence, recordCompletedTest, resumeInvestigation, stopInvestigation,
@@ -385,9 +385,19 @@ export class MatrixController {
     return [...shipped, ...bridged];
   }
 
-  /** Every claim's effective state for the current session. */
+  /** Every piece of claim evidence visible to this session. */
+  allClaimEvidence(): readonly ClaimEvidence[] {
+    return [...this.baselineClaimEvidence(), ...(this.#investigation?.claimEvidence ?? [])];
+  }
+
+  /** Every claim's effective/investigative state for the current session. */
   claims(): readonly ClaimState[] {
-    return resolveClaims([...this.baselineClaimEvidence(), ...(this.#investigation?.claimEvidence ?? [])]);
+    return resolveClaims(this.allClaimEvidence());
+  }
+
+  /** Operational trust per claim — the authorization basis for normal operations. */
+  operationalTrust(): readonly OperationalTrust[] {
+    return resolveOperationalTrust(this.allClaimEvidence());
   }
 
   startInvestigation(goal: InvestigationGoal): Investigation {
@@ -467,13 +477,13 @@ export class MatrixController {
     });
   }
 
-  /** Path-specific content gates derived from the atomic claims. */
+  /** Path-specific content gates derived from operationally trusted claims. */
   contentGates(): readonly ContentGate[] {
-    return allContentGates(this.claims());
+    return allContentGates(this.allClaimEvidence());
   }
 
   contentGate(path: ContentPathId): ContentGate {
-    return contentPathGate(path, this.claims());
+    return contentPathGate(path, this.allClaimEvidence());
   }
 
   guidedTest(testId: string): GuidedTestDefinition {

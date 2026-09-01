@@ -1,17 +1,16 @@
-import type { ClaimId, ClaimState, EvidenceScope } from "./claims";
+import type { ClaimEvidence, ClaimId } from "./claims";
+import { claimDefinition, operationalTrust } from "./claims";
 
 /**
  * Path-specific content safety gating. Each content path unlocks only when
- * ITS actual dependencies are verified — an inconclusive Graffiti validation
- * cannot unlock animation, and a successful animation never silently proves
- * Graffiti. Verification must come from trusted physical scopes: the current
- * session or shipped built-in profile evidence. Previous local sessions and
- * imported evidence inform investigation but never bypass gating.
+ * ITS actual dependencies hold OPERATIONAL TRUST — a verified basis from the
+ * current physical session or the shipped built-in profile (see
+ * operationalTrust in claims.ts). Historical local sessions and imported
+ * evidence inform investigation but never authorize an operation, and an
+ * inconclusive Graffiti validation cannot unlock animation or vice versa.
  */
 
 export type ContentPathId = "text" | "image" | "animation" | "gif";
-
-const TRUSTED_SCOPES: readonly EvidenceScope[] = ["current-session", "built-in-profile"];
 
 const PATH_REQUIREMENTS: Readonly<Record<ContentPathId, { readonly claims: readonly ClaimId[]; readonly label: string }>> = Object.freeze({
   text: { claims: ["stored-program.upload", "static.strategy"], label: "Text needs a validated static-image strategy" },
@@ -27,23 +26,18 @@ export interface ContentGate {
   readonly missingClaims: readonly ClaimId[];
 }
 
-function claimTrusted(state: ClaimState | undefined): boolean {
-  return state?.status === "verified" && state.decidedBy !== null && TRUSTED_SCOPES.includes(state.decidedBy.scope);
-}
-
-export function contentPathGate(path: ContentPathId, claims: readonly ClaimState[]): ContentGate {
-  const byId = new Map(claims.map((claim) => [claim.id, claim]));
+export function contentPathGate(path: ContentPathId, evidence: readonly ClaimEvidence[]): ContentGate {
   const requirement = PATH_REQUIREMENTS[path];
-  const missing = requirement.claims.filter((claimId) => !claimTrusted(byId.get(claimId)));
-  if (missing.length === 0) return { path, allowed: true, reason: "Required capabilities are physically verified.", missingClaims: [] };
-  const labels = missing.map((claimId) => byId.get(claimId)?.label ?? claimId).join(", ");
+  const missing = requirement.claims.filter((claimId) => !operationalTrust(claimId, evidence).trusted);
+  if (missing.length === 0) return { path, allowed: true, reason: "Required capabilities hold a trusted physical verification.", missingClaims: [] };
+  const labels = missing.map((claimId) => claimDefinition(claimId).label).join(", ");
   return {
     path, allowed: false,
-    reason: `${requirement.label}. Not yet verified on this device: ${labels}.`,
+    reason: `${requirement.label}. No trusted verification on this device for: ${labels}.`,
     missingClaims: missing,
   };
 }
 
-export function allContentGates(claims: readonly ClaimState[]): readonly ContentGate[] {
-  return (Object.keys(PATH_REQUIREMENTS) as ContentPathId[]).map((path) => contentPathGate(path, claims));
+export function allContentGates(evidence: readonly ClaimEvidence[]): readonly ContentGate[] {
+  return (Object.keys(PATH_REQUIREMENTS) as ContentPathId[]).map((path) => contentPathGate(path, evidence));
 }

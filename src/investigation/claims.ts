@@ -200,3 +200,75 @@ export function claimState(id: ClaimId, evidence: readonly ClaimEvidence[]): Cla
 export function isClaimSatisfied(id: ClaimId, evidence: readonly ClaimEvidence[], accept: readonly ClaimStatus[] = ["verified"]): boolean {
   return accept.includes(claimState(id, evidence).status);
 }
+
+// ---------------------------------------------------------------------------
+// Operational trust — distinct from the effective/investigative claim state.
+//
+// The effective state (resolveClaims) answers "what does ALL the evidence
+// currently say?", including historical and imported observations and their
+// contradictions. Operational trust answers a narrower question: "does this
+// exact prerequisite have a CURRENTLY trusted basis for performing a normal
+// operation?" Only the shipped built-in profile and the current physical
+// session can grant that. Historical/imported evidence informs
+// recommendations, exposes conflicts, and appears in reports — but it never
+// masquerades as operational authority, in either direction: it can neither
+// unlock an operation nor silently erase a shipped trust basis.
+// ---------------------------------------------------------------------------
+
+/** Scopes whose evidence can authorize normal operations. */
+export const TRUSTED_OPERATIONAL_SCOPES: readonly EvidenceScope[] = Object.freeze(["current-session", "built-in-profile"]);
+
+export interface OperationalTrust {
+  readonly claimId: ClaimId;
+  /** True when the claim has a currently trusted verified basis. */
+  readonly trusted: boolean;
+  /** Resolution over trusted scopes only (current-session outranks built-in-profile; contradictions within them win). */
+  readonly trustedStatus: ClaimStatus;
+  /** The trusted-scope evidence entry the decision rests on, if any. */
+  readonly basis: ClaimEvidence | null;
+  /**
+   * Historical/imported evidence disagrees with the trusted resolution
+   * (e.g. a previous local session rejected what the built-in profile
+   * verifies). Surfaces in reports and triggers revalidation
+   * recommendations without revoking the operational basis.
+   */
+  readonly historicalConflict: boolean;
+  /** The conflicting non-trusted evidence entries, for reports. */
+  readonly conflictingEvidence: readonly ClaimEvidence[];
+}
+
+function isTrustedScope(scope: EvidenceScope): boolean {
+  return TRUSTED_OPERATIONAL_SCOPES.includes(scope);
+}
+
+export function operationalTrust(id: ClaimId, evidence: readonly ClaimEvidence[]): OperationalTrust {
+  // Prerequisite blocking also respects the trust boundary: filtering the
+  // whole pool means a historical rejection of a prerequisite cannot revoke
+  // an operational basis, and a poisoned historical verification cannot
+  // satisfy one.
+  const trustedPool = evidence.filter((entry) => isTrustedScope(entry.scope));
+  const state = claimState(id, trustedPool);
+  const trusted = state.status === "verified";
+  const untrusted = evidence.filter((entry) => entry.claimId === id && !isTrustedScope(entry.scope));
+  const conflicting = untrusted.filter((entry) =>
+    (state.status === "verified" && (entry.status === "rejected" || entry.status === "unresolved"))
+    || (state.status === "rejected" && entry.status === "verified"));
+  return {
+    claimId: id,
+    trusted,
+    trustedStatus: state.status,
+    basis: state.decidedBy,
+    historicalConflict: conflicting.length > 0,
+    conflictingEvidence: conflicting,
+  };
+}
+
+/** Every claim's operational trust, for gating, reports, and conflict surfacing. */
+export function resolveOperationalTrust(evidence: readonly ClaimEvidence[]): readonly OperationalTrust[] {
+  return CLAIM_DEFINITIONS.map((definition) => operationalTrust(definition.id, evidence));
+}
+
+/** Claims whose trusted basis is contradicted by historical/imported evidence; candidates for revalidation. */
+export function claimConflicts(evidence: readonly ClaimEvidence[]): readonly OperationalTrust[] {
+  return resolveOperationalTrust(evidence).filter((trust) => trust.historicalConflict);
+}
