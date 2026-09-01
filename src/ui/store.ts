@@ -1385,7 +1385,14 @@ export class MatrixStore {
       nextTest: recommendationView(this.controller.recommendations()[0] ?? null),
       guidedFlow: this.#guidedFlowView(),
       storedInvestigation: this.#storedInvestigationView(),
-      rasterStrategyLabel: this.controller.session.validatedRasterStrategy ? RASTER_STRATEGY_LABELS[this.controller.session.validatedRasterStrategy] : null,
+      // The strategy in EFFECT, which on a characterized profile is derived
+      // from shipped evidence and needs no session validation. Reading only
+      // the session value made a known, working display announce that no way
+      // to show a still image had been found.
+      rasterStrategyLabel: (() => {
+        const selected = this.controller.session.validatedRasterStrategy ?? this.controller.staticViability().selected;
+        return selected ? RASTER_STRATEGY_LABELS[selected] : null;
+      })(),
       symptoms: SYMPTOM_ROWS,
       coreProgress: this.#coreProgressView(),
       cycleWarning: this.controller.recommendationCycle.cycling ? this.controller.recommendationCycle.detail : null,

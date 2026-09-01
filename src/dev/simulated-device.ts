@@ -41,11 +41,18 @@ export class SimulatedIledHatTransport implements MatrixTransport {
   failNextWrite = false;
   readonly #listeners = new Set<(bytes: Uint8Array) => void>();
 
-  constructor(unit = "simulated-iledhat") { this.unit = unit; }
+  /**
+   * Present as a display MatrixSmith knows nothing about: the same FFF0/FFF1
+   * transport, a different name, no manufacturer data. The conservative
+   * unknown-device path is otherwise unreachable by hand from the simulator.
+   */
+  readonly unknown: boolean;
+
+  constructor(unit = "simulated-iledhat", unknown = false) { this.unit = unit; this.unknown = unknown; }
 
   async selectAndConnect(_options: DeviceSelectionOptions): Promise<DeviceFingerprint> {
     this.state = "connected";
-    this.fingerprint = simulatedFingerprint(this.unit);
+    this.fingerprint = simulatedFingerprint(this.unit, this.unknown);
     return this.fingerprint;
   }
 
@@ -83,15 +90,14 @@ export class SimulatedIledHatTransport implements MatrixTransport {
   }
 }
 
-function simulatedFingerprint(unit: string): DeviceFingerprint {
+function simulatedFingerprint(unit: string, unknown = false): DeviceFingerprint {
   return {
     schemaVersion: 1,
     transportKind: "web-bluetooth",
     browserDeviceId: unit,
-    name: "iLedHat",
+    name: unknown ? "Generic LED Panel" : "iLedHat",
     advertisedServices: ["0000fff0-0000-1000-8000-00805f9b34fb"],
-    rawAdvertisementHex: ILEDHAT_ADVERTISEMENT_HEX,
-    manufacturerDataHex: "AE315EEA07000001100020031E",
+    ...(unknown ? {} : { rawAdvertisementHex: ILEDHAT_ADVERTISEMENT_HEX, manufacturerDataHex: "AE315EEA07000001100020031E" }),
     services: [{
       uuid: "0000fff0-0000-1000-8000-00805f9b34fb",
       isPrimary: true,
@@ -100,7 +106,7 @@ function simulatedFingerprint(unit: string): DeviceFingerprint {
         properties: { read: true, notify: true, indicate: false, write: false, writeWithoutResponse: true },
       }],
     }],
-    manuallyConfirmedGeometry: { width: 32, height: 16 },
+    ...(unknown ? {} : { manuallyConfirmedGeometry: { width: 32, height: 16 } }),
     evidenceRefs: ["iledhat-advertisement", "iledhat-gatt", "manual-geometry"],
     notes: [`Simulated device ${unit} for local UX review — not evidence.`],
   };

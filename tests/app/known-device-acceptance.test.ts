@@ -148,6 +148,16 @@ describe("a fresh session on the known iLedHat is immediately usable", () => {
     expect(snapshot.device?.support).toBe("Supported");
     expect(snapshot.view).toBe("control");
   });
+
+  it("names the static strategy in effect rather than claiming none was found", async () => {
+    const { store } = await freshKnownDevice();
+    // The label reads the strategy in EFFECT. Reading only a session-
+    // validated value made a known, working display announce that no way to
+    // show a still image had been found.
+    expect(store.getSnapshot().rasterStrategyLabel).toBeTruthy();
+    expect(store.controller.session.validatedRasterStrategy).toBeNull();
+    expect(store.getSnapshot().coreProgress?.complete).toBe(true);
+  });
 });
 
 describe("recognizing a known display does not weaken unknown-device safety", () => {

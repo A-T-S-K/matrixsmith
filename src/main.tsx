@@ -18,7 +18,12 @@ const trace = new TraceRecorder();
 const simulation = import.meta.env.DEV ? new URLSearchParams(location.search).get("sim") : null;
 const simulated = import.meta.env.DEV && new URLSearchParams(location.search).has("sim");
 const transport = simulated
-  ? new (await import("./dev/simulated-device")).SimulatedIledHatTransport(simulation ? `simulated-iledhat-${simulation}` : "simulated-iledhat")
+  ? new (await import("./dev/simulated-device")).SimulatedIledHatTransport(
+    simulation ? `simulated-iledhat-${simulation}` : "simulated-iledhat",
+    // `?sim=unknown` is the same shared transport on a display nothing is
+    // known about — the conservative path, reachable by hand.
+    simulation === "unknown",
+  )
   : new WebBluetoothTransport(trace);
 const store = new MatrixStore(new MatrixController(transport, trace), transport);
 trace.record("app.started", { webBluetoothSupported: "bluetooth" in navigator });

@@ -137,10 +137,13 @@ export function generateInvestigationReport(input: InvestigationReportInput): st
   if (input.coreProgress) section("Investigation progress", coreProgressText(input.coreProgress));
   if (input.panelProgram) section("Display program state", panelProgramText(input.panelProgram, input.liveSession ?? false));
   if (input.cycleDetail) section("Workflow warning", `MatrixSmith detected a recommendation loop: ${input.cycleDetail}`);
-  section("Next step", input.nextRecommendation
-    ? `${input.nextRecommendation.title} — ${input.nextRecommendation.why} (~${input.nextRecommendation.estimatedObservationTime})`
-    : input.coreProgress?.complete
-      ? "Core characterization is complete. Remaining work is optional characterization."
+  // Completeness wins. A report that says "6 of 6 resolved — COMPLETE" and
+  // then hands over a next test contradicts itself, and reads as though the
+  // work were not finished after all.
+  section("Next step", input.coreProgress?.complete
+    ? `Core characterization is complete. Remaining work is optional.${input.nextRecommendation ? ` The highest-ranked optional test is "${input.nextRecommendation.title}"; it is offered, never automatic.` : ""}`
+    : input.nextRecommendation
+      ? `${input.nextRecommendation.title} — ${input.nextRecommendation.why} (~${input.nextRecommendation.estimatedObservationTime})`
       : "No further test is currently recommended.");
   if (input.experiments && input.experiments.length > 0) {
     section("Experiments and attempts", experimentsText(input.experiments, input.coreProgress ?? null));

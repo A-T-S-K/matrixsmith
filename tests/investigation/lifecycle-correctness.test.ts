@@ -191,6 +191,19 @@ describe("derived claims report their derivation", () => {
   }, 30000);
 });
 
+describe("a complete core plan reads as complete", () => {
+  it("does not hand over a next test in the same breath as declaring completion", async () => {
+    const transport = new ScriptedCoolLedUxDevice(knownIledHatFingerprint());
+    const controller = new MatrixController(transport, new TraceRecorder());
+    await controller.connect();
+    const report = controller.investigationReportMarkdown();
+    expect(report).toContain("6 / 6 slots resolved");
+    expect(report).toContain("Core characterization is complete. Remaining work is optional.");
+    // Optional work may be named, but never as the next thing to go and do.
+    expect(report).toContain("offered, never automatic");
+  }, 30000);
+});
+
 describe("the report says why each test ran", () => {
   it("records origins in the guided workflow trail", async () => {
     const { store } = await uncharacterizedStore();
