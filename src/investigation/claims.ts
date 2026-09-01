@@ -1,0 +1,200 @@
+/**
+ * Atomic hardware claims. A claim is one narrowly scoped statement about
+ * this device's behavior ("Animation frames decode", "Graffiti 0x0000 is
+ * black") with explicit evidence, scope, and provenance. Broad UI "support"
+ * always derives from these; a single passing sub-question can never verify
+ * an unrelated or broader area, and a rejected prerequisite blocks its
+ * dependents from being presented as verified.
+ */
+
+export type ClaimId =
+  | "transport.bluetooth"
+  | "protocol.coolledux"
+  | "device-info.query"
+  | "brightness.control"
+  | "power.control"
+  | "stored-program.upload"
+  | "stored-program.receipts"
+  | "raster.tiling"
+  | "raster.orientation"
+  | "graffiti.initial-render"
+  | "graffiti.playback-stability"
+  | "graffiti.black-semantics"
+  | "graffiti.color-mapping"
+  | "animation.frames"
+  | "animation.timing"
+  | "animation.tile-sync"
+  | "animation.autonomous-loop"
+  | "animation.black-semantics"
+  | "animation.static-single-frame"
+  | "pixel.channel-map"
+  | "pixel.white-channel"
+  | "pixel.color-calibration"
+  | "static.strategy"
+  | "text.rendering"
+  | "image.rendering"
+  | "gif.playback"
+  | "power-cycle.persistence"
+  | "recovery.manual-reset";
+
+/**
+ * Claim status vocabulary:
+ * - "verified": physically observed to behave as claimed.
+ * - "source-supported": supported by reference/source evidence on other
+ *   hardware or by a conformant offline implementation; not physically
+ *   demonstrated on this device.
+ * - "unresolved": physically tested, but the observation contradicted or
+ *   failed to confirm the expectation; needs a better discriminator.
+ * - "rejected": physically observed NOT to behave as claimed.
+ * - "unknown": no evidence either way.
+ */
+export type ClaimStatus = "verified" | "source-supported" | "unresolved" | "rejected" | "unknown";
+
+/**
+ * Where a piece of claim evidence comes from. Session observations never
+ * silently rewrite built-in profile facts; each scope stays distinguishable
+ * in reports and support views.
+ */
+export type EvidenceScope =
+  | "source-reference"
+  | "built-in-profile"
+  | "current-session"
+  | "previous-local-session"
+  | "imported-external";
+
+export type EvidenceProvenance = "observed" | "corroborated" | "source-derived" | "inferred" | "speculative";
+
+export interface ClaimEvidence {
+  readonly claimId: ClaimId;
+  readonly status: ClaimStatus;
+  readonly scope: EvidenceScope;
+  readonly provenance: EvidenceProvenance;
+  readonly summary: string;
+  readonly recordedAt?: string;
+  /** Guided test or validation workflow that produced this evidence. */
+  readonly testId?: string;
+  readonly transactionIds?: readonly string[];
+  readonly observationIds?: readonly string[];
+  /** Optional 0..1 confidence for physically observed evidence. */
+  readonly confidence?: number;
+}
+
+export type ClaimCategory = "core" | "content" | "optional";
+
+export interface ClaimDefinition {
+  readonly id: ClaimId;
+  readonly label: string;
+  readonly category: ClaimCategory;
+  /** Claims that must not be rejected for this claim to be meaningful. */
+  readonly prerequisites: readonly ClaimId[];
+  readonly description: string;
+}
+
+export const CLAIM_DEFINITIONS: readonly ClaimDefinition[] = Object.freeze([
+  { id: "transport.bluetooth", label: "Bluetooth transport", category: "core", prerequisites: [], description: "FFF0/FFF1 GATT transport connects and accepts writes." },
+  { id: "protocol.coolledux", label: "Protocol identified", category: "core", prerequisites: ["transport.bluetooth"], description: "The CoolLEDUX protocol family answers the structured 0x1F query." },
+  { id: "device-info.query", label: "Device state", category: "core", prerequisites: ["protocol.coolledux"], description: "Device info (power, brightness) reads back as structured fields." },
+  { id: "brightness.control", label: "Brightness", category: "core", prerequisites: ["protocol.coolledux"], description: "Brightness opcode 0x04 changes and reads back correctly." },
+  { id: "power.control", label: "Power", category: "optional", prerequisites: ["protocol.coolledux"], description: "Power opcode changes the panel's power state." },
+  { id: "stored-program.upload", label: "Stored-program upload", category: "content", prerequisites: ["protocol.coolledux"], description: "A compiled stored program is accepted and rendered by the device." },
+  { id: "stored-program.receipts", label: "Upload receipts", category: "optional", prerequisites: ["stored-program.upload"], description: "The device emits announce/chunk receipt notifications during upload." },
+  { id: "raster.tiling", label: "Raster tiling", category: "content", prerequisites: ["stored-program.upload"], description: "Tiled 8-column segments reconstruct the full canvas." },
+  { id: "raster.orientation", label: "Orientation", category: "content", prerequisites: ["raster.tiling"], description: "Corners and axes land where the logical framebuffer places them." },
+  { id: "graffiti.initial-render", label: "Static-image initial render", category: "content", prerequisites: ["stored-program.upload"], description: "A Graffiti program initially renders the intended raster." },
+  { id: "graffiti.playback-stability", label: "Static-image stability", category: "content", prerequisites: ["graffiti.initial-render"], description: "A Graffiti raster stays still instead of scrolling or cycling." },
+  { id: "graffiti.black-semantics", label: "Static-image black", category: "content", prerequisites: ["graffiti.initial-render"], description: "How the Graffiti path renders a literal 0x0000 pixel on this exact device." },
+  { id: "graffiti.color-mapping", label: "Static-image colors", category: "content", prerequisites: ["graffiti.initial-render"], description: "Graffiti pixel colors map to the intended channels." },
+  { id: "animation.frames", label: "Animation frames", category: "content", prerequisites: ["stored-program.upload"], description: "Animation programs decode into distinct frames." },
+  { id: "animation.timing", label: "Animation timing", category: "content", prerequisites: ["animation.frames"], description: "Per-frame delays play at approximately the declared durations." },
+  { id: "animation.tile-sync", label: "Animation tile sync", category: "content", prerequisites: ["animation.frames"], description: "All tiles switch frames together with no lagging strip." },
+  { id: "animation.autonomous-loop", label: "Autonomous playback", category: "content", prerequisites: ["animation.frames"], description: "Animation keeps looping without further Bluetooth traffic. Distinct from power-cycle persistence." },
+  { id: "animation.black-semantics", label: "Animation black", category: "content", prerequisites: ["animation.frames"], description: "How the Animation path renders a literal 0x0000 pixel on this exact device." },
+  { id: "animation.static-single-frame", label: "Static raster via Animation", category: "content", prerequisites: ["animation.frames"], description: "A one-frame Animation program renders a stable static raster." },
+  { id: "pixel.channel-map", label: "Pixel channel mapping", category: "content", prerequisites: ["stored-program.upload"], description: "Which nibbles of the 16-bit pixel word drive which physical channels." },
+  { id: "pixel.white-channel", label: "White channel", category: "content", prerequisites: ["pixel.channel-map"], description: "Whether the unused high nibble drives a dedicated physical emitter." },
+  { id: "pixel.color-calibration", label: "Color calibration", category: "optional", prerequisites: ["pixel.channel-map"], description: "Whether rendered colors, including white, look visually correct." },
+  { id: "static.strategy", label: "Static-image strategy", category: "content", prerequisites: ["stored-program.upload"], description: "A validated strategy exists for showing a stable static image." },
+  { id: "text.rendering", label: "Text", category: "content", prerequisites: ["static.strategy"], description: "Rendered text displays correctly via the selected raster strategy." },
+  { id: "image.rendering", label: "Images", category: "content", prerequisites: ["static.strategy"], description: "Imported images display correctly via the selected raster strategy." },
+  { id: "gif.playback", label: "GIF", category: "optional", prerequisites: ["stored-program.upload"], description: "Native GIF programs decode and play." },
+  { id: "power-cycle.persistence", label: "Power-cycle persistence", category: "optional", prerequisites: ["stored-program.upload"], description: "Stored content survives a physical power cycle. Not implied by autonomous looping." },
+  { id: "recovery.manual-reset", label: "Manual recovery", category: "optional", prerequisites: [], description: "A manual hardware reset restores default content." },
+]);
+
+const DEFINITIONS_BY_ID = new Map(CLAIM_DEFINITIONS.map((definition) => [definition.id, definition]));
+
+export function claimDefinition(id: ClaimId): ClaimDefinition {
+  const definition = DEFINITIONS_BY_ID.get(id);
+  if (!definition) throw new Error(`Unknown claim ${id}.`);
+  return definition;
+}
+
+export interface ClaimState {
+  readonly id: ClaimId;
+  readonly label: string;
+  readonly category: ClaimCategory;
+  readonly status: ClaimStatus;
+  /** The evidence entry that determined the effective status. */
+  readonly decidedBy: ClaimEvidence | null;
+  /** Every evidence entry for this claim, strongest scope first. */
+  readonly evidence: readonly ClaimEvidence[];
+  /** True when a prerequisite claim is rejected, blocking a "verified" presentation. */
+  readonly blockedByPrerequisite: ClaimId | null;
+}
+
+/** Scope authority for deciding the effective status; higher wins. */
+const SCOPE_PRIORITY: Readonly<Record<EvidenceScope, number>> = {
+  "current-session": 50,
+  "previous-local-session": 40,
+  "imported-external": 30,
+  "built-in-profile": 20,
+  "source-reference": 10,
+};
+
+/** Within one scope, physical contradictions outrank optimistic evidence. */
+const STATUS_PRIORITY: Readonly<Record<ClaimStatus, number>> = {
+  rejected: 50,
+  unresolved: 40,
+  verified: 30,
+  "source-supported": 20,
+  unknown: 10,
+};
+
+export function scopePriority(scope: EvidenceScope): number { return SCOPE_PRIORITY[scope]; }
+
+/**
+ * Deterministically resolve every claim's effective status from its evidence.
+ * Higher-authority scope wins; within a scope a rejection or unresolved
+ * result outranks verification, so a later "yes" can never paper over an
+ * observed contradiction from the same scope. Missing evidence is honest
+ * "unknown".
+ */
+export function resolveClaims(evidence: readonly ClaimEvidence[]): readonly ClaimState[] {
+  return CLAIM_DEFINITIONS.map((definition) => resolveClaim(definition, evidence));
+}
+
+function resolveClaim(definition: ClaimDefinition, allEvidence: readonly ClaimEvidence[]): ClaimState {
+  const entries = allEvidence
+    .filter((entry) => entry.claimId === definition.id)
+    .slice()
+    .sort((a, b) => SCOPE_PRIORITY[b.scope] - SCOPE_PRIORITY[a.scope] || STATUS_PRIORITY[b.status] - STATUS_PRIORITY[a.status]);
+  const decidedBy = entries[0] ?? null;
+  const status = decidedBy?.status ?? "unknown";
+  const blockedBy = definition.prerequisites.find((prerequisiteId) => {
+    const prerequisite = DEFINITIONS_BY_ID.get(prerequisiteId);
+    return prerequisite ? resolveClaim(prerequisite, allEvidence).status === "rejected" : false;
+  }) ?? null;
+  return {
+    id: definition.id, label: definition.label, category: definition.category,
+    status: blockedBy && status === "verified" ? "unresolved" : status,
+    decidedBy, evidence: entries, blockedByPrerequisite: blockedBy,
+  };
+}
+
+export function claimState(id: ClaimId, evidence: readonly ClaimEvidence[]): ClaimState {
+  return resolveClaim(claimDefinition(id), evidence);
+}
+
+export function isClaimSatisfied(id: ClaimId, evidence: readonly ClaimEvidence[], accept: readonly ClaimStatus[] = ["verified"]): boolean {
+  return accept.includes(claimState(id, evidence).status);
+}
