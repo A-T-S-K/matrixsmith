@@ -343,10 +343,11 @@ legitimate retry and an accidental resend are identical.
 
 ```text
 Investigation
-  CorePlan                 — bounded, numbered milestones
-    ExperimentRun          — one experiment: definition + parameters
-      ObservationAttempt   — one human attempt at observing it
-        TransferRecord     — one transmission, with a reason
+  orchestration            — bound to ONE physical display (see phase 5)
+    CorePlan               — bounded, numbered milestones
+      ExperimentRun        — one experiment: definition + parameters
+        ExperimentAttempt  — one attempt at running and observing it
+          TransferRecord   — one transmission, with a reason
 ```
 
 `src/investigation/orchestration.ts` defines these. Nothing duplicates protocol
@@ -386,12 +387,16 @@ The loop had a specific cause. A `partial` timing result left its target claim
 unresolved, so the identical experiment kept scoring as the best next move —
 forever. Only `passed` tests were excluded from the rotation.
 
-A **concluded** experiment — anything except `abandoned` — now leaves the
-automatic rotation. Re-running it would produce the identical non-answer.
-Reopening is an explicit act that records why. `continueToNextTest` refuses to
-launch a concluded experiment even if the engine offers one, and a
-recommendation-sequence guard watches for a test recurring with no new
-evidence in between.
+A **concluded** experiment — anything except `abandoned` — leaves the automatic
+rotation. Re-running it would produce the identical non-answer. Reopening is an
+explicit act that records why. `continueToNextTest` refuses to launch a
+concluded experiment even if the engine offers one, and a
+recommendation-sequence guard watches for a test recurring with no new evidence
+in between.
+
+> Superseded by phase 5. "Anything except abandoned" was too coarse: it
+> retired experiments whose measurement simply ran out of time. See
+> *Experiment resolution* below.
 
 ## Two claim-status corrections
 
@@ -416,7 +421,11 @@ A driver contributes a plan for a profile (`driver.corePlan`). Milestones are
 numbered **slots**, not a script: a slot is satisfied by trusted evidence
 (verified *or* conclusively rejected — "this path does not work" is an answer),
 or skipped when the branch taken makes it unnecessary. Skipped slots keep their
-place in the list and leave the denominator, so progress never moves backwards.
+place in the list **and their number**, so progress never moves backwards.
+
+> Phase 5 correction: skipped slots originally left the denominator, which
+> turned "Test 6 of 6" into "Test 5 of 5" mid-investigation. See *Stable
+> numbering* below.
 
 The iLedHat plan:
 
@@ -484,3 +493,220 @@ timing event says nothing about whether the plan converges.
 Transmission-count assertions cover the hard invariant: one spatial test sends
 once, and navigating between eleven zone questions or editing answers causes
 zero BLE writes.
+
+---
+
+# Orchestration lifecycle (2026-09-01, phase 5)
+
+Phase 4 built the right model and put it in the wrong place. An independent
+review of the pushed code found the semantic state — experiments, transfers,
+the active-diagnostic identity, reopen state, the recommendation trail —
+living on `MatrixController` rather than on the Investigation whose evidence it
+explains. Everything below follows from fixing that, plus the lifecycle holes
+the same review found around it.
+
+## Ownership: orchestration belongs to the investigation
+
+The device boundary already detached and demoted an Investigation when a
+different physical display connected. The orchestration collections were not
+part of that boundary, so they survived it — one panel's execution history
+could speak for another's.
+
+`Investigation.orchestration` now holds all of it:
+
+```ts
+Investigation {
+  …
+  orchestration: {
+    experiments          // ExperimentRun[]
+    transfers            // TransferRecord[]
+    panelProgram         // what is believed to be on the display
+    reopened             // deliberate reopens, with reasons
+    recommendationTrail  // what the user was actually sent to do
+    cycleVerdict
+  }
+}
+```
+
+**The invariant:** no guided orchestration evidence outlives or crosses the
+physical-device boundary independently of its Investigation.
+
+| Event | Orchestration | Panel certainty |
+| --- | --- | --- |
+| Same authorized device reconnects | continues | **unknown** — the link dropped |
+| Different physical device connects | detaches with its investigation; the new one starts empty | unknown |
+| New investigation on the same device | previous keeps its own; new one starts empty | unknown |
+| Stored record resumed on the same device | continues | unknown |
+| Stored record resumed on a *different* device | **reset**; evidence resumes as history | unknown |
+| Imported bundle | kept as external history | unknown |
+| Browser restart | restored as history | unknown |
+| Forget local history | removed with the investigation | unknown |
+
+The resume case is the one that is easy to miss. `adoptInvestigation` rebinds
+to the current display; without the reset, resuming unit A's record on unit B
+would let B continue A's experiment runs and attempt numbering as its own. The
+resume panel states which case it is before the user commits.
+
+## Physical device identity
+
+`DiagnosticExecutionFingerprint.deviceBindingId` was populated from
+`profileId`. A profile is a **model**. Two units of the same model therefore
+shared one execution identity, and each could be told its diagnostic was
+already showing because the other had received it.
+
+The fingerprint now carries three separate things:
+
+- `physicalDeviceKey` — the browser-authorized device id, or `null`
+- `deviceIdentityBasis` — `browser-authorized-device` | `fingerprint-shape` |
+  `unidentified`
+- `profileId` — recorded for reports, never used as identity
+
+When the display cannot be strongly identified the fingerprint says so rather
+than inventing a stable id. A fingerprint shape identifies a *kind* of display
+and is labelled as exactly that. The duplicate guard never assumes same
+profile means same physical unit.
+
+## Panel program identity
+
+`activeExecution` only moved when `runGuidedTestTransfer` succeeded. Every
+other persistent write — Create → Send Image, Send Text, Send Animation, Send
+GIF, legacy validation — replaced the stored program without telling it, so the
+guard stayed convinced a diagnostic was showing and refused a legitimate
+re-run as a duplicate.
+
+A stored-program display holds exactly one program. `PanelProgramState` is now
+settled in `#execute`, the single path every persistent write goes through:
+
+- `known-active` — this exact program was written and accepted
+- `known-replaced` — something else was written since
+- `unknown` — the panel's contents cannot be established from this session
+
+Certainty drops to `unknown` on a failed or partial write, a device change, an
+import, a reconnect, and on restore from storage. The guard asks *"is THIS
+diagnostic presumed active right now?"* — not *"were these bytes ever sent?"*.
+
+## Experiment resolution
+
+Status describes the hardware. Resolution describes the **experiment**:
+
+| Resolution | Meaning | Behaviour |
+| --- | --- | --- |
+| `settled` | the question was answered, positively or negatively | leaves automatic rotation; rerun needs an explicit reopen |
+| `retryable-incomplete` | not enough usable observation | leaves automatic rotation but is offered as *Measure again*, at the same number |
+| `invalid` | measurement or transfer failed | no claim conclusion; retry allowed |
+| `abandoned` | the user stopped observing | transmission evidence kept, no hardware conclusions |
+
+The case that forced this: stability verification requires a measured 15s hold.
+A user who stops at 7 seconds has not verified stability, has not disproved it,
+and has not concluded anything. Phase 4 called that `inconclusive` and retired
+the only test that could settle the question, then reported "No further test is
+recommended". It is now `retryable-incomplete`: the milestone stays current,
+the result screen leads with **Measure again**, and the plan resumes when a
+sufficient measurement lands. `continueToNextTest` will not advance past a
+milestone waiting on one — moving to a controlled variant of a baseline nobody
+actually observed would read as though the short measurement had counted.
+
+## Attempts: one authoritative identity
+
+`ExperimentAttempt` is the attempt. Timing detail nests under it as
+`attempt.timing` and borrows its number; there is no second numbered list to
+drift from it. Numbers are monotonic within their experiment and never
+recycled.
+
+A transfer that throws now **settles its attempt** — previously it left one
+in progress forever. The transfer is recorded with its failure reason and any
+transactions that did land, so a report can say the display may have been
+partly written, and `attemptFailureKind` keeps a radio failure distinct from a
+mistimed human tap:
+
+```text
+Attempt 1  INVALID  transfer-failed        (no hardware conclusion)
+Attempt 2  INVALID  human-missed
+Attempt 3  VALID    ~3.2 s hold
+```
+
+An experiment left `retryable-incomplete` is **continued** by a measure-again
+rather than replaced, so its attempts keep counting up instead of producing a
+pile of near-identical runs.
+
+## Stable numbering
+
+`total` is every slot in the plan and never changes during an investigation.
+A skipped milestone keeps its ordinal and is shown as skipped at it.
+`displayPosition` returns the slot's own `ordinal`, never a running count.
+
+```text
+1 ✓ Still image baseline
+2 ✓ Does it stay still?
+3 – Black behavior — skipped, not needed: …
+4 → Color mapping
+5 ○ Fallback still image
+6 ○ Support decision            ← still 6, not 5
+```
+
+Completion is `resolved === total` where `resolved = completed + skipped`. The
+UI reports `"3 of 6 done · 2 complete, 1 skipped"`: the split is stated
+separately rather than deducted from the denominator.
+
+## Cycle guard
+
+The guard exists to catch the **engine** looping, not a person choosing to
+measure something again. Trail entries carry an origin
+(`automatic-recommendation` | `explicit-retry` | `explicit-reopen`) and only
+automatic entries are examined. A user repeating an incomplete measurement is
+the workflow working; the engine proposing a settled test again with nothing
+learned in between still trips it.
+
+## Persistence
+
+Local storage is at **schema v2**. It persists experiment runs, attempts (valid
+and invalid), transfer records and reasons, fingerprints, transaction id
+references, reopen state and the recommendation trail. v1 records still load;
+missing structure becomes empty structure, and structurally invalid entries are
+dropped without taking the rest with them.
+
+Nothing operational survives. Restored orchestration is historical metadata:
+the panel-program belief is **always** reloaded as `unknown`, whatever the
+record claims, so a saved file cannot suppress a legitimate transmission by
+asserting a diagnostic is live. Safety bypasses, persistent-send confirmation
+tokens, experimental TX unlocks and raw content are never written at all.
+
+Reports follow the same rule. A persisted report says *"Last known program
+sent: …"* and *"Currently on the display: UNKNOWN"*; only a live session that
+made the write says otherwise.
+
+## Ownership boundary: ExperimentRun vs CompletedGuidedTest
+
+Both exist and neither is redundant.
+
+- **`ExperimentRun` owns execution.** Attempt identity and numbering, transfer
+  linkage, execution fingerprint, resolution. It is the source of truth for
+  *what was run and how many times*.
+- **`CompletedGuidedTest` owns the claim record.** One submitted result: its
+  observations, interpretation, claim evidence and the timing attempts behind
+  it. It is the source of truth for *what was concluded*.
+
+One run can produce more than one completed test (a measure-again after an
+incomplete result). A completed test always belongs to exactly one run. The
+run's `resolution` and the completed test's `resolution` are the same value —
+`settleExperiment` is called with `completedTestResolution(result)` — so the
+two can never disagree about whether the plan may move on.
+
+## Testing
+
+- `orchestration-lifecycle` — device boundary, execution identity, panel
+  program across every persistent write, attempt lifecycle and failure
+- `experiment-resolution` — sub-15s retryability, settled rotation, cycle-guard
+  origins, controlled-variant identity
+- `orchestration-persistence` — round-trip, invalid-attempt survival, v1
+  migration, corrupt-entry rejection, panel certainty never restored
+- `core-numbering` — stable denominator and ordinals
+- `resume-and-reset` — the full restart story plus all six reset boundaries
+- `core-finishability` — PATH E (a short measurement offers measure-again, does
+  not advance, and the valid retry finishes the plan) and a denominator
+  invariant on every branch
+
+The dev simulator supports `?sim` and `?sim=b` — two units sharing profile,
+name and GATT shape, differing only in browser authorization id — plus a
+one-shot write failure, so both device isolation and the transfer-failure path
+can be driven by hand.
