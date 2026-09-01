@@ -41,12 +41,12 @@ button:disabled { opacity: .35; cursor: not-allowed; }
 button.primary { border-color: #5eead4; background: #5eead4; color: #041218; font-weight: 750; }
 button.secondary { border-color: #40566c; background: #0b1b2c; color: #dbeafe; }
 button.quiet { border-style: dashed; background: transparent; }
-button.small { min-height: 34px; padding: .3rem .7rem; font-size: .82rem; }
+button.small { min-height: var(--target-sm); padding: .3rem .7rem; font-size: var(--text-sm); }
 button.copy { min-height: 30px; padding: .15rem .55rem; font-size: .72rem; font-weight: 700; letter-spacing: .06em; color: #99f6e4; background: #16283a; border-color: #2b4258; border-radius: .45rem; }
 button.text-action, label.text-action { display: inline-flex; align-items: center; min-height: 0; padding: 0; border: 0; color: #5eead4; background: none; font-weight: 700; cursor: pointer; }
 label.file-action { position: relative; }
 label.file-action input { position: absolute; width: 1px; height: 1px; opacity: 0; }
-button.close { min-height: 0; padding: .1rem .6rem; font-size: 1.3rem; border: 0; background: none; color: #9fb3c8; }
+button.close { flex: none; display: grid; place-items: center; min-width: var(--target-sm); min-height: var(--target-sm); padding: 0; font-size: 1.3rem; line-height: 1; border: 0; background: none; color: var(--fg-dim); }
 input, textarea { min-width: 0; padding: .7rem; border: 1px solid #40566c; border-radius: .6rem; color: #dbeafe; background: #06101b; }
 
 /* Shared text treatments */
@@ -134,7 +134,7 @@ main { width: min(1200px, 100%); margin: 0 auto; padding: 0 1rem 2rem; }
 .state-grid dt { color: #7ea0bd; font-size: .74rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
 .state-grid dd { margin: 0; font-size: 1.08rem; font-weight: 700; overflow-wrap: anywhere; }
 .big-value { font-size: 2rem; font-variant-numeric: tabular-nums; color: #5eead4; }
-.range { width: 100%; margin: 1rem 0 .2rem; padding: 0; border: 0; background: none; accent-color: #5eead4; }
+.range { width: 100%; height: var(--target-sm); margin: var(--s2) 0 0; padding: 0; border: 0; background: none; accent-color: var(--accent); }
 .range-labels { display: flex; justify-content: space-between; color: #71879c; font-size: .74rem; margin-bottom: .8rem; }
 .brightness-panel .primary { width: 100%; }
 .capability-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); gap: .6rem; }
@@ -314,8 +314,14 @@ main { width: min(1200px, 100%); margin: 0 auto; padding: 0 1rem 2rem; }
 .confirm-check input { margin-top: .2rem; }
 .validation-questions { display: grid; gap: .8rem; margin: 0; padding-left: 1.2rem; }
 .validation-questions p { margin: 0 0 .35rem; }
-.answer-buttons { display: flex; gap: .4rem; }
-.answer-buttons button { border: 1px solid #1c3043; background: #0a1524; color: #9fb3c8; border-radius: .5rem; padding: .35rem .8rem; font-size: .78rem; }
+/* Physical-observation answers are the primary action of the OBSERVE stage,
+   so they get full touch targets rather than form-control sizing. A chosen
+   answer is marked with a check as well as a fill, so the selection does not
+   depend on colour alone. */
+.answer-buttons { display: flex; flex-wrap: wrap; gap: var(--s2); }
+.answer-buttons button { min-height: var(--target); border: 1px solid var(--border-soft); background: var(--surface-2); color: var(--fg-dim); border-radius: var(--r2); padding: var(--s2) var(--s3); font-size: var(--text-sm); font-weight: 650; }
+.answer-buttons button.active { border-color: var(--accent); background: #5eead41f; color: var(--fg); font-weight: 800; }
+.answer-buttons button.active::before { content: "\2713"; margin-right: .35em; font-weight: 900; }
 .answer-buttons button.active.yes { background: #22c55e22; border-color: #22c55e; color: #86efac; }
 .answer-buttons button.active.no { background: #ef444422; border-color: #ef4444; color: #fca5a5; }
 .answer-buttons button.active.unsure { background: #f59e0b22; border-color: #f59e0b; color: #fcd34d; }
@@ -521,7 +527,10 @@ main { width: min(1200px, 100%); margin: 0 auto; padding: 0 1rem 2rem; }
 .retry-confirm h2 { font-size: var(--text-lg); }
 
 /* ---- Guided dialog shell ---- */
-.guided-header { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--s3); }
+/* The title block must be allowed to shrink, or a long test name pushes the
+   close control off the edge of a phone screen. */
+.guided-header { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--s2); }
+.guided-header > div:first-child { min-width: 0; }
 .guided-header h1 { font-size: var(--text-lg); }
 .about-preview { display: grid; gap: var(--s1); justify-items: start; margin: var(--s2) 0; }
 .about-preview small { color: var(--fg-quiet); font-size: var(--text-xs); }
