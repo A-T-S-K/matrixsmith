@@ -1,4 +1,5 @@
 import type { DeviceProfile } from "../core/device";
+import { ILEDHAT_QUIRKS } from "../core/quirks";
 
 export const ILEDHAT_PROFILE_ID = "iledhat-31ae-32x16";
 export const ILEDHAT_ADVERTISEMENT_HEX = "0201060303F0FF0EFFAE315EEA07000001100020031E0809694C6564486174";
@@ -30,4 +31,5 @@ export const iledHat31aeProfile: DeviceProfile = {
     initialBrightnessRaw: 0xcc,
     verifiedBrightnessRaw: 0x40,
   },
+  quirks: ILEDHAT_QUIRKS,
 };

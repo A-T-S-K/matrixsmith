@@ -161,14 +161,79 @@ function compileProgram(segments: readonly Uint8Array[], compression: Compressio
   };
 }
 
+export interface GraffitiPlaybackOptions {
+  readonly mode?: number;
+  readonly speed?: number;
+  readonly stayTime?: number;
+}
+
 /**
  * Compile a full logical framebuffer into a tiled Graffiti program. Uses the
  * safe/all-literal compressor: hardware evidence shows back-reference LZSS is
  * unreliable for multi-color raw-pixel frames over write-without-response.
+ * Playback options default to the upstream-used values (mode=0, speed=0,
+ * stayTime=3); diagnostics may vary exactly one at a time.
  */
-export function compileGraffitiFrame(frame: Framebuffer, tileWidth = DEFAULT_TILE_WIDTH): CompiledProgram {
+export function compileGraffitiFrame(frame: Framebuffer, tileWidth = DEFAULT_TILE_WIDTH, playback: GraffitiPlaybackOptions = {}): CompiledProgram {
   const segments = tileColumns(frame.width, tileWidth).map((tile) =>
-    graffitiSegment(encodeFrameRegion(frame, tile.startColumn, tile.width, "graffiti"), tile.width, frame.height, { startColumn: tile.startColumn }));
+    graffitiSegment(encodeFrameRegion(frame, tile.startColumn, tile.width, "graffiti"), tile.width, frame.height, { startColumn: tile.startColumn, ...playback }));
+  return compileProgram(segments, "lzss-safe", tileWidth);
+}
+
+/**
+ * Encode a region of a raw 16-bit pixel-word grid (row-major, width×height)
+ * as the column-major two-byte wire stream, byte-for-byte with NO off-color
+ * substitution or transfer curve. Diagnostic-only: callers are the fixed
+ * diagnostic builders, never user content or a general raw writer.
+ */
+export function encodeRawWordRegion(words: Uint16Array, width: number, height: number, startColumn: number, regionWidth: number): Uint8Array {
+  if (words.length !== width * height) throw new RangeError("Raw word grid does not match the declared dimensions.");
+  if (startColumn < 0 || startColumn + regionWidth > width) throw new RangeError("Region is outside the raw word grid.");
+  const out = new Uint8Array(regionWidth * height * 2);
+  let offset = 0;
+  for (let x = startColumn; x < startColumn + regionWidth; x += 1) {
+    for (let y = 0; y < height; y += 1) {
+      const word = words[y * width + x] ?? 0;
+      out[offset] = (word >>> 8) & 0xff;
+      out[offset + 1] = word & 0xff;
+      offset += 2;
+    }
+  }
+  return out;
+}
+
+/** Compile a raw 16-bit word grid into a tiled Graffiti program, preserving every word exactly. Diagnostic-only. */
+export function compileGraffitiRawWords(words: Uint16Array, width: number, height: number, playback: GraffitiPlaybackOptions = {}, tileWidth = DEFAULT_TILE_WIDTH): CompiledProgram {
+  const segments = tileColumns(width, tileWidth).map((tile) =>
+    graffitiSegment(encodeRawWordRegion(words, width, height, tile.startColumn, tile.width), tile.width, height, { startColumn: tile.startColumn, ...playback }));
+  return compileProgram(segments, "lzss-safe", tileWidth);
+}
+
+/** Compile raw 16-bit word frames into a tiled Animation program, preserving every word exactly. Diagnostic-only. */
+export function compileAnimationRawWords(frames: readonly Uint16Array[], delaysMs: readonly number[], width: number, height: number, tileWidth = DEFAULT_TILE_WIDTH): CompiledProgram {
+  const segments = tileColumns(width, tileWidth).map((tile) =>
+    animationSegment(
+      frames.map((frame) => encodeRawWordRegion(frame, width, height, tile.startColumn, tile.width)),
+      delaysMs, tile.width, height, { startColumn: tile.startColumn },
+    ));
+  return compileProgram(segments, "lzss-safe", tileWidth);
+}
+
+/**
+ * Compile ONE logical framebuffer as a tiled Animation program: the
+ * candidate static-raster delivery strategies. "single" carries exactly one
+ * frame per tile; "identical-pair" carries the same frame twice. The pair
+ * variant exists as a separately confirmed follow-up and is never chosen
+ * automatically.
+ */
+export function compileAnimationStaticFrame(frame: Framebuffer, variant: "single" | "identical-pair", frameDelayMs = 1000, tileWidth = DEFAULT_TILE_WIDTH): CompiledProgram {
+  const frames = variant === "single" ? [frame] : [frame, frame];
+  const delays = frames.map(() => frameDelayMs);
+  const segments = tileColumns(frame.width, tileWidth).map((tile) =>
+    animationSegment(
+      frames.map((value) => encodeFrameRegion(value, tile.startColumn, tile.width, "animation")),
+      delays, tile.width, frame.height, { startColumn: tile.startColumn },
+    ));
   return compileProgram(segments, "lzss-safe", tileWidth);
 }
 

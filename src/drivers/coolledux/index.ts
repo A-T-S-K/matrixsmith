@@ -8,7 +8,10 @@ import { notificationMatchesExpectation, type DriverContext, type MatrixDriver }
 import { matchCoolLedUx } from "./matcher";
 import { decodeCoolLedUxNotification } from "./notifications";
 import { COOLLEDUX_OPCODES, encodeBrightness, encodeDeviceInfoQuery, encodePower } from "./protocol";
-import { compileAnimation, compileGif, compileGraffitiFrame, type CompiledProgram } from "./content";
+import { compileAnimation, compileAnimationStaticFrame, compileGif, compileGraffitiFrame, type CompiledProgram } from "./content";
+import { diagnosticContent, type BuiltDiagnosticContent } from "./diagnostics";
+import type { RasterStrategy } from "../../core/raster-strategy";
+import type { Framebuffer } from "../../render/framebuffer";
 
 export const coolLedUxDriver: MatrixDriver = {
   id: "coolledux", family: "CoolLEDUX",
@@ -53,7 +56,7 @@ export function coolLedUxCapabilities(profile: DeviceProfile): readonly Capabili
 
 export function createCoolLedUxPlan(operation: MatrixOperation, context: DriverContext, purpose: "operation" | "probe" = "operation"): TransmissionPlan {
   if (context.profile.driverId !== "coolledux") throw new Error("CoolLEDUX cannot plan for a profile owned by another driver.");
-  if (operation.type === "ShowFrame" || operation.type === "ShowAnimation" || operation.type === "ShowText" || operation.type === "ShowGif") {
+  if (operation.type === "ShowFrame" || operation.type === "ShowAnimation" || operation.type === "ShowText" || operation.type === "ShowGif" || operation.type === "ShowDiagnostic") {
     return createContentPlan(operation, context);
   }
   let bytes: Uint8Array;
@@ -92,23 +95,49 @@ export function createCoolLedUxPlan(operation: MatrixOperation, context: DriverC
  * experimental session unlock before live transmission. Dimensions always
  * come from the profile; nothing assumes 64x16 or a global 32x16.
  */
-function createContentPlan(operation: Extract<MatrixOperation, { type: "ShowFrame" | "ShowAnimation" | "ShowText" | "ShowGif" }>, context: DriverContext): TransmissionPlan {
+/**
+ * Compile a static raster through the session's delivery strategy. The
+ * default remains Graffiti, but a session that physically validated an
+ * Animation-based strategy routes images and text through it instead —
+ * "ShowFrame" no longer hardwires one content opcode.
+ */
+function compileStaticRaster(frame: Framebuffer, strategy: RasterStrategy | undefined): { compiled: CompiledProgram; strategy: RasterStrategy } {
+  const selected = strategy ?? "graffiti";
+  switch (selected) {
+    case "animation-single-frame": return { compiled: compileAnimationStaticFrame(frame, "single"), strategy: selected };
+    case "animation-identical-frames": return { compiled: compileAnimationStaticFrame(frame, "identical-pair"), strategy: selected };
+    case "graffiti": return { compiled: compileGraffitiFrame(frame), strategy: selected };
+  }
+}
+
+function createContentPlan(operation: Extract<MatrixOperation, { type: "ShowFrame" | "ShowAnimation" | "ShowText" | "ShowGif" | "ShowDiagnostic" }>, context: DriverContext): TransmissionPlan {
   const { profile } = context;
   let compiled: CompiledProgram;
   let contentType: string;
   let frameCount = 1;
+  let rasterStrategyUsed: RasterStrategy | null = null;
+  let diagnostic: BuiltDiagnosticContent | null = null;
+  let diagnosticId: string | null = null;
   switch (operation.type) {
-    case "ShowFrame":
+    case "ShowFrame": {
       assertGeometry(operation.frame.width, operation.frame.height, profile);
-      compiled = compileGraffitiFrame(operation.frame);
-      contentType = "graffiti";
+      const routed = compileStaticRaster(operation.frame, context.rasterStrategy);
+      compiled = routed.compiled;
+      rasterStrategyUsed = routed.strategy;
+      contentType = routed.strategy === "graffiti" ? "graffiti" : "animation";
+      frameCount = routed.strategy === "animation-identical-frames" ? 2 : 1;
       break;
-    case "ShowText":
+    }
+    case "ShowText": {
       if (!operation.frame) throw new Error("ShowText needs a locally rendered Framebuffer; the native text content path is not the primary route.");
       assertGeometry(operation.frame.width, operation.frame.height, profile);
-      compiled = compileGraffitiFrame(operation.frame);
+      const routed = compileStaticRaster(operation.frame, context.rasterStrategy);
+      compiled = routed.compiled;
+      rasterStrategyUsed = routed.strategy;
       contentType = "text";
+      frameCount = routed.strategy === "animation-identical-frames" ? 2 : 1;
       break;
+    }
     case "ShowAnimation":
       assertGeometry(operation.sequence.width, operation.sequence.height, profile);
       compiled = compileAnimation(operation.sequence);
@@ -120,6 +149,15 @@ function createContentPlan(operation: Extract<MatrixOperation, { type: "ShowFram
       compiled = compileGif(operation.gifBytes, operation.width, operation.height);
       contentType = "gif";
       break;
+    case "ShowDiagnostic": {
+      const definition = diagnosticContent(operation.diagnosticId);
+      diagnostic = definition.build(profile, operation.parameters);
+      diagnosticId = definition.id;
+      compiled = diagnostic.compiled;
+      contentType = diagnostic.contentType;
+      frameCount = diagnostic.frameCount;
+      break;
+    }
   }
   const packets = compiled.packets.map((bytes, index) => ({
     index, endpoint: COOLLED_ENDPOINT, writeMode: "without-response" as const, bytes, hex: packetHex(bytes),
@@ -149,8 +187,11 @@ function createContentPlan(operation: Extract<MatrixOperation, { type: "ShowFram
       tileWidth: compiled.tileWidth,
       pacingMs: compiled.pacingMs,
       frameCount,
-      width: operation.type === "ShowGif" ? operation.width : operation.type === "ShowAnimation" ? operation.sequence.width : operation.frame!.width,
-      height: operation.type === "ShowGif" ? operation.height : operation.type === "ShowAnimation" ? operation.sequence.height : operation.frame!.height,
+      width: operation.type === "ShowGif" ? operation.width : operation.type === "ShowAnimation" ? operation.sequence.width : operation.type === "ShowDiagnostic" ? profile.width : operation.frame!.width,
+      height: operation.type === "ShowGif" ? operation.height : operation.type === "ShowAnimation" ? operation.sequence.height : operation.type === "ShowDiagnostic" ? profile.height : operation.frame!.height,
+      ...(rasterStrategyUsed ? { rasterStrategy: rasterStrategyUsed } : {}),
+      ...(diagnosticId ? { diagnosticId } : {}),
+      ...(diagnostic?.playback ? { graffitiMode: diagnostic.playback.mode, graffitiSpeed: diagnostic.playback.speed, graffitiStayTime: diagnostic.playback.stayTime } : {}),
     },
   });
 }

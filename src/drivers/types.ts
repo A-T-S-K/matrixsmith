@@ -19,6 +19,12 @@ export interface DriverContext {
   readonly profile: DeviceProfile;
   readonly fingerprint: DeviceFingerprint;
   readonly source: "live" | "imported" | "fake" | "replay";
+  /**
+   * The session's validated static-raster delivery strategy, when one has
+   * been physically established. Drivers route ShowFrame/ShowText through it
+   * instead of hardcoding one content opcode.
+   */
+  readonly rasterStrategy?: import("../core/raster-strategy").RasterStrategy;
 }
 
 export interface DriverNotificationContext {

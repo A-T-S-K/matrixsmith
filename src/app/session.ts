@@ -10,6 +10,12 @@ export class MatrixSession {
   source: "live" | "imported" | "fake" | "replay" = "live";
   readonly notifications: NotificationRecord[] = [];
   protocolResolution: { readonly driverId: string; readonly probeId: string; readonly summary: string; readonly source: "live-probe" | "replay" } | null = null;
+  /**
+   * The static-raster delivery strategy physical evidence validated THIS
+   * session. Built-in profile preferences are never mutated; this is the
+   * session-scoped selection Normal Use routes through.
+   */
+  validatedRasterStrategy: import("../core/raster-strategy").RasterStrategy | null = null;
   #experimentalTxEnabled = false;
   #confirmedPersistentPlanId: string | null = null;
 
@@ -35,6 +41,7 @@ export class MatrixSession {
     this.profile = null;
     this.notifications.length = 0;
     this.protocolResolution = null;
+    this.validatedRasterStrategy = null;
     this.#experimentalTxEnabled = false;
     this.#confirmedPersistentPlanId = null;
   }

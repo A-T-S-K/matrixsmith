@@ -48,6 +48,8 @@ export interface DeviceProfile {
   readonly validation: ValidationStatus;
   readonly evidence: readonly EvidenceReference[];
   readonly metadata: Readonly<Record<string, string | number | boolean | readonly string[]>>;
+  /** Structured behavior/quirks facts; immutable at runtime. */
+  readonly quirks?: import("./quirks").ProfileQuirks;
 }
 
 export interface GattEndpoint {
