@@ -7,7 +7,7 @@ import type { CompletedGuidedTest, Investigation } from "./investigation";
 import type { GuidedTestDefinition } from "./tests";
 import { formatDuration, observationValueSummary, type ObservationValue } from "./observations";
 import { approximateSeconds, describeAttempt } from "./timing";
-import type { Recommendation } from "./recommendations";
+import { RECOMMENDATION_ORIGIN_LABELS, type Recommendation, type RecommendationTrailEntry } from "./recommendations";
 import type { DiagnosticRegion } from "./regions";
 import type { CorePlanProgress } from "./core-plan";
 import {
@@ -118,6 +118,8 @@ export interface InvestigationReportInput {
   readonly panelProgram?: PanelProgramState | null;
   /** Whether this report is being written against a live physical session. */
   readonly liveSession?: boolean;
+  /** What the user was actually sent to do, and who decided. */
+  readonly recommendationTrail?: readonly RecommendationTrailEntry[];
 }
 
 export function generateInvestigationReport(input: InvestigationReportInput): string {
@@ -144,6 +146,9 @@ export function generateInvestigationReport(input: InvestigationReportInput): st
     section("Experiments and attempts", experimentsText(input.experiments, input.coreProgress ?? null));
   }
   if (input.transfers && input.transfers.length > 0) section("Diagnostic transfer summary", transferSummaryText(input.transfers));
+  if (input.recommendationTrail && input.recommendationTrail.length > 0) {
+    section("Guided workflow trail", recommendationTrailText(input.recommendationTrail, input.tests));
+  }
   section("Device identity", deviceText(device));
   section("Advertisement / manufacturer evidence", advertisementText(device));
   section("Transport / GATT", gattText(device.fingerprint));
@@ -209,7 +214,14 @@ function claimLabel(id: ClaimId): string {
 
 function formatClaim(claim: ClaimState | undefined): string {
   if (!claim) return "unknown claim";
-  const basis = claim.decidedBy ? ` — ${SCOPE_LABEL[claim.decidedBy.scope]}: ${claim.decidedBy.summary}` : " — no evidence recorded";
+  // A derived claim has no evidence entry of its own by design — its
+  // evaluator IS its basis. Printing "verified — no evidence recorded" made
+  // the report contradict its own strategy assessment two sections later.
+  const basis = claim.decidedBy
+    ? ` — ${SCOPE_LABEL[claim.decidedBy.scope]}: ${claim.decidedBy.summary}`
+    : claim.derivedSummary
+      ? ` — ${claim.derivedSummary}`
+      : " — no evidence recorded";
   const blocked = claim.blockedByPrerequisite ? ` [prerequisite ${claim.blockedByPrerequisite} rejected]` : "";
   return `\`${claim.id}\` (${claim.label}): **${claim.status}**${blocked}${basis}`;
 }
@@ -362,7 +374,7 @@ function panelProgramText(state: PanelProgramState, liveSession: boolean): strin
       ? "This report was generated without a live physical session, so the display's current contents were not observed."
       : state.uncertaintyReason ?? "The display's current contents were not observed.";
     return [
-      `Last known program sent: ${state.label}${state.at ? ` (${state.at})` : ""}`,
+      `Last known program sent: ${state.label}${state.writtenAt ? ` (written at ${state.writtenAt})` : ""}`,
       "",
       `Currently on the display: UNKNOWN. ${reason}`,
     ].join("\n");
@@ -373,7 +385,8 @@ function panelProgramText(state: PanelProgramState, liveSession: boolean): strin
   return [
     heading,
     ...(state.fingerprint ? ["", `Execution identity: \`${state.fingerprint.key}\``] : []),
-    ...(state.at ? ["", `Written at ${state.at}.`] : []),
+    // The final host-accepted write, not the moment the transfer began.
+    ...(state.writtenAt ? ["", `Written at ${state.writtenAt} (final host-accepted write).`] : []),
   ].join("\n");
 }
 
@@ -423,6 +436,27 @@ function experimentsText(experiments: readonly ExperimentRun[], progress: CorePl
     return lines.join("\n").trimEnd();
   });
   return blocks.join("\n\n");
+}
+
+/**
+ * How each test came to be run.
+ *
+ * Reading a report, "the engine kept sending me here" and "I chose to look at
+ * this" are completely different stories, and the trail is the only place
+ * that difference survives. Without it an optional colour test that a person
+ * deliberately opened is indistinguishable from one the workflow pushed on
+ * them — and the fix for one is the opposite of the fix for the other.
+ */
+function recommendationTrailText(trail: readonly RecommendationTrailEntry[], tests: readonly GuidedTestDefinition[]): string {
+  const titles = new Map(tests.map((test) => [test.id, test.title]));
+  const lines: string[] = [];
+  for (const entry of trail) {
+    const origin = entry.origin ?? "automatic-recommendation";
+    lines.push(`- ${titles.get(entry.testId) ?? entry.testId} (\`${entry.testId}\`) — origin: ${RECOMMENDATION_ORIGIN_LABELS[origin] ?? origin}${entry.at ? `, ${entry.at}` : ""}`);
+  }
+  const automatic = trail.filter((entry) => (entry.origin ?? "automatic-recommendation") === "automatic-recommendation").length;
+  lines.push("", `${automatic} of ${trail.length} run${trail.length === 1 ? "" : "s"} were opened by the recommendation engine; the rest were user decisions.`);
+  return lines.join("\n");
 }
 
 /**

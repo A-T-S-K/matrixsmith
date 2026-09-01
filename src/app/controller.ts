@@ -30,6 +30,7 @@ import { evaluateCorePlan, stepForTest, type CorePlan, type CorePlanProgress } f
 import { detectRecommendationCycle, retryableIncompleteTestIds, type CycleVerdict, type RecommendationOrigin, type RecommendationTrailEntry } from "../investigation/recommendations";
 import { findImporter, type ImportedEvidence } from "../diagnostics/importers";
 import { chooseTestBrightness, COOLLEDUX_DIAGNOSTIC_TOOLS, diagnosticRunId } from "../diagnostics/workflows";
+import { diagnosticRasterStrategy } from "../drivers/coolledux/diagnostics";
 import { CONTENT_VALIDATION_WORKFLOWS, evaluateValidationAnswers, sessionValidationId, type ContentValidationWorkflow, type ValidationAnswer } from "../diagnostics/validation";
 import { contentCompilationId } from "../diagnostics/content-evidence";
 import { diagnosticAnimation, orientationPattern } from "../render/patterns";
@@ -126,6 +127,10 @@ export class MatrixController {
   }
 
   async disconnect(): Promise<void> {
+    // The last program sent stays as history; the belief that it is on the
+    // panel does not. Waiting for a reconnect to say so would leave a report
+    // written while disconnected claiming a diagnostic was live.
+    this.#invalidatePanelProgram("The display disconnected; what it is showing now cannot be established.");
     await Promise.all([...this.#notificationSubscriptions.values()].map((unsubscribe) => unsubscribe().catch(() => undefined)));
     this.#notificationSubscriptions.clear();
     await this.transport.disconnect();
@@ -290,11 +295,15 @@ export class MatrixController {
       const result = await this.#executor.execute(decision.authorized, driver);
       this.#recordTransaction(plan, result, startedAt, notificationStart, source, diagnosticRunIdValue, null);
       if (replacesStoredProgram) {
-        this.#setPanelProgram(staged ?? {
-          certainty: "known-replaced", kind: "ordinary-content", fingerprint: null,
+        // "Written at" is the final host-accepted write, never the moment the
+        // transfer began — a report that labels transfer-start as accepted is
+        // reporting a time the panel had not yet been changed.
+        const base = staged ?? {
+          certainty: "known-replaced" as const, kind: "ordinary-content" as const, fingerprint: null,
           label: `${plan.operation.type} (${plan.purpose})`,
-          at: new Date().toISOString(), uncertaintyReason: null,
-        });
+          startedAt, writtenAt: null, uncertaintyReason: null,
+        };
+        this.#setPanelProgram({ ...base, writtenAt: result.finalWriteAcceptedAt ?? new Date().toISOString() });
       }
       return result;
     } catch (error) {
@@ -767,7 +776,8 @@ export class MatrixController {
     // diagnostic is showing.
     this.#stagedPanelProgram = {
       certainty: "known-active", kind: "guided-diagnostic", fingerprint,
-      label: `guided diagnostic ${test.title}`, at: startedAt, uncertaintyReason: null,
+      label: `guided diagnostic ${test.title}`,
+      startedAt, writtenAt: null, uncertaintyReason: null,
     };
     try {
       const result = await this.sendPersistentContent(plan, { confirmedConsequence: true });
@@ -835,7 +845,13 @@ export class MatrixController {
       diagnosticId: operation.type === "ShowDiagnostic" ? operation.diagnosticId : operation.type,
       parameters: operation.type === "ShowDiagnostic" ? operation.parameters : undefined,
       programCrc32,
-      rasterStrategy: this.session.validatedRasterStrategy,
+      // The strategy of the EXPERIMENT, not of the session. Using whatever
+      // static strategy happened to be selected labelled the two-identical-
+      // frame run "animation-single-frame" — an identity describing the
+      // session's preference rather than the thing being executed.
+      rasterStrategy: operation.type === "ShowDiagnostic"
+        ? diagnosticRasterStrategy(operation.diagnosticId, operation.parameters)
+        : this.session.validatedRasterStrategy,
     });
   }
 
@@ -1182,6 +1198,7 @@ export class MatrixController {
       cycleDetail: this.orchestration.cycleVerdict.cycling ? this.orchestration.cycleVerdict.detail : null,
       panelProgram: this.panelProgram(),
       liveSession: this.session.source === "live" && this.transport.state === "connected",
+      recommendationTrail: this.orchestration.recommendationTrail,
     });
   }
 
@@ -1305,7 +1322,8 @@ export class MatrixController {
     // anything else; naming it keeps the guided guard honest afterwards.
     this.#stagedPanelProgram = {
       certainty: "known-replaced", kind: "validation", fingerprint: null,
-      label: `legacy validation ${workflow.label}`, at: new Date().toISOString(), uncertaintyReason: null,
+      label: `legacy validation ${workflow.label}`,
+      startedAt: new Date().toISOString(), writtenAt: null, uncertaintyReason: null,
     };
     const result = await this.sendPersistentContent(plan, { confirmedConsequence: true });
     const transactionIds = this.#transactions.slice(transactionIndex).map(({ id }) => id);

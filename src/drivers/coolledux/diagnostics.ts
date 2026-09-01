@@ -2,6 +2,7 @@ import { compileAnimationStaticFrame, compileGraffitiFrame, compileGraffitiRawWo
 import { orientationPattern } from "../../render/patterns";
 import { Framebuffer } from "../../render/framebuffer";
 import { rawWordHex, type DiagnosticRegion } from "../../investigation/regions";
+import type { RasterStrategy } from "../../core/raster-strategy";
 
 /**
  * Fixed CoolLEDUX diagnostic content. Every program here is deterministic
@@ -50,8 +51,20 @@ export interface DiagnosticContentDefinition {
   readonly label: string;
   readonly description: string;
   readonly parameters: readonly DiagnosticParameter[];
+  /**
+   * The static-raster strategy this diagnostic is a test OF, when it is one.
+   *
+   * Null for probes that merely use a delivery path they already trust — the
+   * raw pixel-channel and colour probes ride the Animation container to ask a
+   * question about pixels, not about Animation. Recording them under a
+   * strategy identity would label an experiment by an unrelated property, and
+   * an execution identity that borrows the session's current preference
+   * describes the session rather than the experiment.
+   */
+  rasterStrategy?(parameters?: Readonly<Record<string, number>>): RasterStrategy | null;
   build(profile: { readonly width: number; readonly height: number }, parameters?: Readonly<Record<string, number>>): BuiltDiagnosticContent;
 }
+
 
 /** Raw words probed by the pixel-channel diagnostic, in patch order. */
 export const PIXEL_CHANNEL_PROBE_WORDS: readonly number[] = Object.freeze([
@@ -141,6 +154,7 @@ function requireParameter(definition: DiagnosticContentDefinition, parameters: R
  */
 const graffitiBlackProbe: DiagnosticContentDefinition = {
   id: "graffiti-black-probe",
+  rasterStrategy: () => "graffiti",
   label: "Graffiti black/off probe",
   description: "Alternating 8-column regions of literal raw 0x0000 and raw 0x0004 on the Graffiti path.",
   parameters: [],
@@ -246,6 +260,7 @@ function orientationRegions(width: number, height: number): DiagnosticRegion[] {
  */
 const graffitiTimingProbe: DiagnosticContentDefinition = {
   id: "graffiti-timing-probe",
+  rasterStrategy: () => "graffiti",
   label: "Graffiti playback timing probe",
   description: "Deterministic high-contrast Graffiti raster with mode=0, speed=0, and a declared stayTime.",
   parameters: [{ id: "stayTime", label: "Graffiti stayTime byte", allowed: [3, 0], defaultValue: 3 }],
@@ -272,6 +287,10 @@ const animationStaticRaster: DiagnosticContentDefinition = {
   label: "Static raster via Animation",
   description: "The orientation raster compiled as a tiled Animation program with literal 0x0000 background.",
   parameters: [{ id: "frames", label: "Frame count", allowed: [1, 2], defaultValue: 1 }],
+  // The two frame counts are genuinely different experiments, and the
+  // identity says so: one frame is the single-frame strategy, two identical
+  // frames the identical-pair one.
+  rasterStrategy: (parameters) => (parameters?.frames ?? 1) === 2 ? "animation-identical-frames" : "animation-single-frame",
   build(profile, parameters) {
     const frames = requireParameter(this, parameters, "frames");
     const frame = orientationPattern(profile.width, profile.height);
@@ -414,6 +433,12 @@ const colorWhiteProbe: DiagnosticContentDefinition = {
     };
   },
 };
+
+/** The strategy identity of a diagnostic, or null when it tests no strategy. */
+export function diagnosticRasterStrategy(diagnosticId: string, parameters?: Readonly<Record<string, number>>): RasterStrategy | null {
+  const definition = COOLLEDUX_DIAGNOSTIC_CONTENT.find((candidate) => candidate.id === diagnosticId);
+  return definition?.rasterStrategy?.(parameters) ?? null;
+}
 
 export const COOLLEDUX_DIAGNOSTIC_CONTENT: readonly DiagnosticContentDefinition[] = Object.freeze([
   graffitiBlackProbe, graffitiTimingProbe, animationStaticRaster, pixelChannelProbe, colorWhiteProbe,

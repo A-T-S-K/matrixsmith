@@ -292,7 +292,15 @@ export interface PanelProgramState {
   readonly fingerprint: DiagnosticExecutionFingerprint | null;
   /** Human description of the last program MatrixSmith wrote. */
   readonly label: string;
-  readonly at: string | null;
+  /** When the transfer began. Not when the panel changed. */
+  readonly startedAt: string | null;
+  /**
+   * The final host-accepted write — the moment the panel's stored program
+   * actually changed. Null while a write is staged but not yet accepted.
+   * Reports must use this, never startedAt: labelling transfer-start as
+   * "written at" reports a time the display had not been touched.
+   */
+  readonly writtenAt: string | null;
   /** Why certainty was lost, when it was. */
   readonly uncertaintyReason: string | null;
 }
@@ -302,7 +310,8 @@ export const UNKNOWN_PANEL_PROGRAM: PanelProgramState = Object.freeze({
   kind: "none",
   fingerprint: null,
   label: "unknown",
-  at: null,
+  startedAt: null,
+  writtenAt: null,
   uncertaintyReason: "Nothing has been written to the display in this session.",
 });
 

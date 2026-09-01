@@ -106,7 +106,7 @@ function investigationWithOrchestration(): Investigation {
     transfers: TRANSFERS,
     panelProgram: {
       certainty: "known-active", kind: "guided-diagnostic", fingerprint: FINGERPRINT,
-      label: "guided diagnostic timing", at: "2026-09-01T10:01:00.000Z", uncertaintyReason: null,
+      label: "guided diagnostic timing", startedAt: "2026-09-01T10:00:59.000Z", writtenAt: "2026-09-01T10:01:00.000Z", uncertaintyReason: null,
     },
     reopened: [{ testId: "coolledux-graffiti-black", reason: "double-checking", at: "2026-09-01T10:02:00.000Z" }],
     recommendationTrail: [{ testId: "coolledux-graffiti-timing", at: "2026-09-01T10:00:00.000Z", evidenceCount: 0, origin: "automatic-recommendation" }],
@@ -187,7 +187,7 @@ describe("restored orchestration carries no operational authority", () => {
             ...emptyOrchestration(),
             panelProgram: {
               certainty: "known-active", kind: "guided-diagnostic", fingerprint: FINGERPRINT,
-              label: "forged", at: "2026-09-01T10:00:00.000Z", uncertaintyReason: null,
+              label: "forged", startedAt: "2026-09-01T10:00:00.000Z", writtenAt: "2026-09-01T10:00:00.000Z", uncertaintyReason: null,
             },
           },
         },

@@ -9,6 +9,7 @@ import type { ProtocolTransaction } from "./transactions";
 import type { SessionValidationResult } from "./validation";
 import type { ContentCompilationRecord } from "./content-evidence";
 import type { Investigation } from "../investigation/investigation";
+import { sanitizeInvestigation } from "../investigation/serialization";
 
 export interface ImportedEvidenceSummary {
   readonly provenance: string;
@@ -116,7 +117,12 @@ export function parseDiagnosticBundle(json: string): DiagnosticBundle {
     validations: (value.validations ?? []) as DiagnosticBundle["validations"],
     contentCompilations: (value.contentCompilations ?? []) as DiagnosticBundle["contentCompilations"],
     importedEvidence: (value.importedEvidence ?? []) as DiagnosticBundle["importedEvidence"],
-    investigation: (isObject(value.investigation) ? value.investigation : null) as DiagnosticBundle["investigation"],
+    // Bundles are untrusted user-supplied files. The investigation goes
+    // through the SAME structural validation local storage uses, rather than
+    // being asserted into shape: malformed orchestration or attempt data is
+    // dropped, and the panel-program belief is rebuilt as unknown, because a
+    // file cannot testify about a display this session has never seen.
+    investigation: sanitizeInvestigation(value.investigation, "This investigation was imported from a bundle; the display it describes was never connected to this session."),
   };
   return migrated;
 }

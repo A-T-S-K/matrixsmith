@@ -255,7 +255,21 @@ export type RecommendationOrigin =
   /** The user asked to repeat this measurement. */
   | "explicit-retry"
   /** The user deliberately reopened a settled experiment. */
-  | "explicit-reopen";
+  | "explicit-reopen"
+  /**
+   * The user picked this test themselves — from the catalogue, or by choosing
+   * to continue past a complete core plan. Recording it as automatic would
+   * tell a reader the workflow made them run it, which is the opposite of
+   * what happened and points at the opposite fix.
+   */
+  | "manual-selection";
+
+export const RECOMMENDATION_ORIGIN_LABELS: Readonly<Record<RecommendationOrigin, string>> = Object.freeze({
+  "automatic-recommendation": "automatic recommendation",
+  "explicit-retry": "explicit retry",
+  "explicit-reopen": "explicit reopen of a completed experiment",
+  "manual-selection": "user selected optional characterization",
+});
 
 export interface RecommendationTrailEntry {
   readonly testId: string;

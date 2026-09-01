@@ -794,10 +794,19 @@ export class MatrixStore {
       const test = this.controller.guidedTest(testId);
       const availability = this.controller.guidedTests().find((entry) => entry.test.id === testId);
       if (availability && !availability.available) throw new Error(availability.reason ?? "This test's prerequisites are not met.");
-      const run = this.controller.beginExperiment(testId);
       // How the user got here decides whether a repeat is an algorithmic loop
-      // or a deliberate re-measurement. Only the former is a cycle.
-      this.controller.noteRecommendationTaken(testId, origin);
+      // or a deliberate re-measurement. Only the former is a cycle — and a
+      // detected cycle has to STOP the workflow here, before an experiment is
+      // opened and long before anything is transmitted. A warning the user
+      // reads after the panel has been rewritten is not a guard.
+      const verdict = this.controller.noteRecommendationTaken(testId, origin);
+      if (verdict.cycling) {
+        throw new Error(
+          "MatrixSmith detected a recommendation cycle and stopped before running another test. "
+          + `${verdict.detail ?? ""} Reopen a test deliberately if you want to measure it again.`.trim(),
+        );
+      }
+      const run = this.controller.beginExperiment(testId);
       const plan = this.controller.planGuidedTest(testId);
       // The resolved operation (evidence-aware where declared) drives the
       // preview and region diagram, so About always shows the actual run.
@@ -1179,7 +1188,10 @@ export class MatrixStore {
       this.#emit();
       return;
     }
-    if (next && !settled) { this.startGuidedTest(next.testId); return; }
+    if (next && !settled) {
+      this.startGuidedTest(next.testId, options.includeOptional ? "manual-selection" : "automatic-recommendation");
+      return;
+    }
     if (next && settled) {
       this.#error = "MatrixSmith was about to repeat a test that already produced a result, so it stopped. Reopen it deliberately if you want to measure it again.";
       this.#emit();

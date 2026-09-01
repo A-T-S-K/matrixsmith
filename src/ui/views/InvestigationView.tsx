@@ -311,7 +311,7 @@ function TestCatalogue({ snapshot, store }: { snapshot: AppSnapshot; store: Matr
         <small>{test.category} · {test.estimatedObservationTime}</small>
       </div>
       {test.lastStatus && <StatusBadge tone={test.lastStatus === "passed" ? "good" : test.lastStatus === "failed" ? "bad" : "warn"}>{test.lastStatus}</StatusBadge>}
-      <button class="secondary small" disabled={!test.available || snapshot.busy !== null} title={test.reason ?? ""} onClick={() => store.startGuidedTest(test.id)}>{test.lastStatus ? "Again" : "Start"}</button>
+      <button class="secondary small" disabled={!test.available || snapshot.busy !== null} title={test.reason ?? ""} onClick={() => store.startGuidedTest(test.id, "manual-selection")}>{test.lastStatus ? "Again" : "Start"}</button>
     </div>
     {!test.available && test.reason && <p class="fineprint">{test.reason}</p>}
   </li>)}</ul>;
