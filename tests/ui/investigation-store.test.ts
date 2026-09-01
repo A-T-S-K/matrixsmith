@@ -118,8 +118,8 @@ describe("guided flow state machine", () => {
     store.startTroubleshoot("content-moves-unexpectedly");
     expect(controller.investigation?.goal.kind).toBe("troubleshoot");
     expect(store.getSnapshot().view).toBe("diagnose");
-    // The recommendation must discriminate one of the symptom's focus claims
-    // (playback stability or the static strategy), never unrelated work.
-    expect(["coolledux-graffiti-timing", "coolledux-animation-static"]).toContain(store.getSnapshot().nextTest?.testId);
+    // The symptom's primary focus claim (playback stability) selects the
+    // movement measurement as the first discriminator.
+    expect(store.getSnapshot().nextTest?.testId).toBe("coolledux-graffiti-timing");
   });
 });

@@ -332,11 +332,17 @@ export class MatrixController {
   }
 
   startInvestigation(goal: InvestigationGoal): Investigation {
-    this.#investigation = createInvestigation({
-      profileId: this.session.profile?.id ?? null,
-      deviceName: this.session.fingerprint?.name ?? null,
-      goal,
-    });
+    // An active investigation is retargeted, never discarded: troubleshooting
+    // keeps every completed test and claim as evidence toward the new goal.
+    if (this.#investigation && this.#investigation.status === "active") {
+      this.#investigation = { ...this.#investigation, goal, updatedAt: new Date().toISOString() };
+    } else {
+      this.#investigation = createInvestigation({
+        profileId: this.session.profile?.id ?? null,
+        deviceName: this.session.fingerprint?.name ?? null,
+        goal,
+      });
+    }
     this.trace.record("investigation.started", { goal: goal.kind, symptom: goal.symptomId ?? null });
     return this.#investigation;
   }

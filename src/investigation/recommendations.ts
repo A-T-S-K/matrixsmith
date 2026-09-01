@@ -62,7 +62,9 @@ export function rankRecommendations(input: RecommendationInput): readonly Recomm
   const claims = resolveClaims(input.evidence);
   const byId = new Map(claims.map((claim) => [claim.id, claim]));
   const passedTestIds = new Set(input.completedTests.filter((test) => test.status === "passed").map((test) => test.testId));
-  const focusClaims = new Set(input.goal?.symptomId ? SYMPTOM_FOCUS_CLAIMS[input.goal.symptomId] : []);
+  const focusList = input.goal?.symptomId ? SYMPTOM_FOCUS_CLAIMS[input.goal.symptomId] : [];
+  const focusClaims = new Set(focusList);
+  const primaryFocus = focusList[0] ?? null;
   const usabilityBlockers = new Set(USABILITY_CLAIMS.filter((claimId) => {
     const status = byId.get(claimId)?.status;
     return status === "unresolved" || status === "unknown" || status === "rejected";
@@ -79,7 +81,10 @@ export function rankRecommendations(input: RecommendationInput): readonly Recomm
     if (targets.length === 0) continue;
     const informationValue = targets.reduce((total, claimId) => total + STATUS_VALUE[byId.get(claimId)?.status ?? "unknown"], 0);
     const unblocksUsability = targets.some((claimId) => usabilityBlockers.has(claimId) || claimDefinitionUnblocks(claimId, usabilityBlockers));
-    const focusBoost = targets.some((claimId) => focusClaims.has(claimId)) ? 60 : 0;
+    // The symptom's FIRST focus claim is its most direct discriminator and
+    // outweighs secondary focus claims.
+    const focusBoost = (targets.some((claimId) => focusClaims.has(claimId)) ? 60 : 0)
+      + (primaryFocus !== null && targets.includes(primaryFocus) ? 30 : 0);
     // An advanced test that is the discriminator for a usability blocker is
     // temporarily treated as recommended.
     const effectiveCategory: GuidedTestCategory = unblocksUsability && availability.test.category === "advanced" ? "recommended" : availability.test.category;
