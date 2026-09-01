@@ -81,7 +81,34 @@ export class MatrixController {
     this.session.source = "live";
     const fingerprint = await this.transport.selectAndConnect({ mode, hints: this.registry.discoveryHints(), serviceHints });
     this.applyFingerprint(fingerprint, "live");
+    this.#enrichAdvertisementEvidence();
     return fingerprint;
+  }
+
+  /** Reconnect a previously browser-authorized device without a chooser; the caller falls back to connect() on failure. */
+  async reconnectAuthorized(deviceId: string): Promise<DeviceFingerprint> {
+    if (!this.transport.reconnectAuthorized) throw new Error("This transport cannot reconnect without the device chooser.");
+    this.session.clearConnection();
+    this.session.source = "live";
+    const fingerprint = await this.transport.reconnectAuthorized(deviceId, { mode: "registered", hints: this.registry.discoveryHints() });
+    this.applyFingerprint(fingerprint, "live");
+    this.#enrichAdvertisementEvidence();
+    return fingerprint;
+  }
+
+  /**
+   * Fire-and-forget structured advertisement enrichment. Failure or lack of
+   * browser support must never affect the connection; a successful
+   * observation updates the session fingerprint in place.
+   */
+  #enrichAdvertisementEvidence(): void {
+    const observe = this.transport.observeAdvertisements?.bind(this.transport);
+    if (!observe) return;
+    void observe().then((observation) => {
+      if (!observation) return;
+      const updated = this.transport.fingerprint;
+      if (updated && this.session.source === "live") this.session.fingerprint = updated;
+    }).catch(() => undefined);
   }
 
   async disconnect(): Promise<void> {

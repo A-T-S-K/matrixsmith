@@ -17,7 +17,9 @@ import type { Framebuffer } from "../../render/framebuffer";
 
 export const coolLedUxDriver: MatrixDriver = {
   id: "coolledux", family: "CoolLEDUX",
-  discoveryHints: () => ({ filters: [{ services: [COOLLED_SERVICE_UUID] }], optionalServices: [COOLLED_SERVICE_UUID] }),
+  // 0x31AE is the observed iLedHat company identifier; requesting it lets the
+  // browser expose that manufacturer data without narrowing the chooser.
+  discoveryHints: () => ({ filters: [{ services: [COOLLED_SERVICE_UUID] }], optionalServices: [COOLLED_SERVICE_UUID], optionalManufacturerData: [0x31ae] }),
   match: matchCoolLedUx, profiles: () => [iledHat31aeProfile], resolveProfile: resolveIledHatProfile,
   capabilities: coolLedUxCapabilities, endpoints: () => [COOLLED_ENDPOINT],
   probes: () => [{

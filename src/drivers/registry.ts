@@ -31,7 +31,8 @@ export class DriverRegistry {
   discoveryHints(): DiscoveryHints {
     const filters = this.#drivers.flatMap((driver) => driver.discoveryHints().filters);
     const optionalServices = [...new Set(this.#drivers.flatMap((driver) => driver.discoveryHints().optionalServices).map(String))];
-    return { filters, optionalServices };
+    const optionalManufacturerData = [...new Set(this.#drivers.flatMap((driver) => driver.discoveryHints().optionalManufacturerData ?? []))];
+    return { filters, optionalServices, ...(optionalManufacturerData.length > 0 ? { optionalManufacturerData } : {}) };
   }
 
   resolve(driverId: string, fingerprint: DeviceFingerprint, reason: string): DriverSelection {

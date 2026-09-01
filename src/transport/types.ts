@@ -6,6 +6,8 @@ export type ConnectionState = "idle" | "selecting" | "connecting" | "connected" 
 export interface DiscoveryHints {
   readonly filters: readonly BluetoothLEScanFilter[];
   readonly optionalServices: readonly BluetoothServiceUUID[];
+  /** Company identifiers requested via optionalManufacturerData where the browser supports it. */
+  readonly optionalManufacturerData?: readonly number[];
 }
 
 export interface DeviceSelectionOptions {
@@ -30,4 +32,12 @@ export interface MatrixTransport {
   read(endpoint: GattEndpoint): Promise<Uint8Array>;
   subscribe(endpoint: GattEndpoint, listener: (bytes: Uint8Array) => void): Promise<() => Promise<void>>;
   write(endpoint: GattEndpoint, bytes: Uint8Array, mode: WriteMode): Promise<TransportReceipt>;
+  /** Reconnect a previously browser-authorized device without a chooser, where getDevices() is supported. */
+  reconnectAuthorized?(deviceId: string, options: DeviceSelectionOptions): Promise<DeviceFingerprint>;
+  /**
+   * Best-effort structured advertisement observation via watchAdvertisements().
+   * Returns null when unsupported or nothing arrives in time; must never
+   * throw in a way that affects the connection.
+   */
+  observeAdvertisements?(timeoutMs?: number): Promise<import("../core/device").AdvertisementObservation | null>;
 }
