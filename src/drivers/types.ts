@@ -67,6 +67,10 @@ export interface MatrixDriver {
   capabilities(profile: DeviceProfile): readonly Capability[];
   endpoints(profile: DeviceProfile): readonly GattEndpoint[];
   probes?(context: DriverContext): readonly DriverProbe[];
+  /** Driver-contributed guided hardware tests (ABOUT → RUN → OBSERVE → RESULT workflows). */
+  guidedTests?(profile: DeviceProfile): readonly import("../investigation/tests").GuidedTestDefinition[];
+  /** Baseline atomic-claim evidence this driver ships for a profile. */
+  claimEvidence?(profile: DeviceProfile): readonly import("../investigation/claims").ClaimEvidence[];
   plan(operation: MatrixOperation, context: DriverContext): TransmissionPlan;
   decodeNotification?(packet: Uint8Array, context: DriverNotificationContext): DecodedNotification | null;
   responseMatches?(notification: DecodedNotification, expectation: ResponseExpectation): boolean;

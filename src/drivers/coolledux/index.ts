@@ -10,6 +10,8 @@ import { decodeCoolLedUxNotification } from "./notifications";
 import { COOLLEDUX_OPCODES, encodeBrightness, encodeDeviceInfoQuery, encodePower } from "./protocol";
 import { compileAnimation, compileAnimationStaticFrame, compileGif, compileGraffitiFrame, type CompiledProgram } from "./content";
 import { diagnosticContent, type BuiltDiagnosticContent } from "./diagnostics";
+import { coolLedUxGuidedTests } from "./guided-tests";
+import { coolLedUxBaselineClaimEvidence } from "./claims";
 import type { RasterStrategy } from "../../core/raster-strategy";
 import type { Framebuffer } from "../../render/framebuffer";
 
@@ -27,6 +29,8 @@ export const coolLedUxDriver: MatrixDriver = {
   plan: (operation, context) => createCoolLedUxPlan(operation, context),
   decodeNotification: decodeCoolLedUxNotification,
   responseMatches: notificationMatchesExpectation,
+  guidedTests: coolLedUxGuidedTests,
+  claimEvidence: coolLedUxBaselineClaimEvidence,
 };
 
 function resolveIledHatProfile(fingerprint: DeviceFingerprint): DeviceProfile | null {

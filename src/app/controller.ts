@@ -23,6 +23,14 @@ import { chooseTestBrightness, COOLLEDUX_DIAGNOSTIC_TOOLS, diagnosticRunId } fro
 import { CONTENT_VALIDATION_WORKFLOWS, evaluateValidationAnswers, sessionValidationId, type ContentValidationWorkflow, type ValidationAnswer } from "../diagnostics/validation";
 import { contentCompilationId } from "../diagnostics/content-evidence";
 import { diagnosticAnimation, orientationPattern } from "../render/patterns";
+import { resolveClaims, type ClaimEvidence, type ClaimState } from "../investigation/claims";
+import { claimEvidenceFromValidation } from "../investigation/legacy-bridge";
+import {
+  createInvestigation, recordCompletedTest, resumeInvestigation, stopInvestigation,
+  type CompletedGuidedTest, type Investigation, type InvestigationGoal,
+} from "../investigation/investigation";
+import { evaluateTestAvailability, type GuidedTestAvailability, type GuidedTestDefinition } from "../investigation/tests";
+import type { ObservationValue } from "../investigation/observations";
 
 export class MatrixController {
   readonly session = new MatrixSession();
@@ -271,6 +279,132 @@ export class MatrixController {
     const run: DiagnosticRun = { id, toolId, driverId: tool.driverId, startedAt, completedAt, purpose: tool.purpose, safety: { risk: tool.risk, persistence: tool.persistence, validation: tool.validation, explanation: tool.explanation }, status, steps, findings: status === "passed" ? [toolId === "coolledux-brightness-round-trip" ? "Brightness response and readback were validated; baseline restoration was verified." : "The expected structured read-only response was received."] : [error ?? "Diagnostic failed."], error, restorationAttempted, restorationVerified, observationIds: [] };
     this.#diagnosticRuns.push(run);
     return run;
+  }
+
+  // ---- Guided investigation engine ---------------------------------------
+
+  #investigation: Investigation | null = null;
+
+  get investigation(): Investigation | null { return this.#investigation; }
+
+  /** Baseline claim evidence: driver-shipped profile/source facts plus bridged legacy validations. */
+  baselineClaimEvidence(): readonly ClaimEvidence[] {
+    const driver = this.session.selection?.selected;
+    const profile = this.session.profile;
+    const shipped = driver?.claimEvidence && profile ? driver.claimEvidence(profile) : [];
+    const bridged = this.#validations.flatMap((validation) => claimEvidenceFromValidation(validation));
+    return [...shipped, ...bridged];
+  }
+
+  /** Every claim's effective state for the current session. */
+  claims(): readonly ClaimState[] {
+    return resolveClaims([...this.baselineClaimEvidence(), ...(this.#investigation?.claimEvidence ?? [])]);
+  }
+
+  startInvestigation(goal: InvestigationGoal): Investigation {
+    this.#investigation = createInvestigation({
+      profileId: this.session.profile?.id ?? null,
+      deviceName: this.session.fingerprint?.name ?? null,
+      goal,
+    });
+    this.trace.record("investigation.started", { goal: goal.kind, symptom: goal.symptomId ?? null });
+    return this.#investigation;
+  }
+
+  /** Returns the active investigation, creating a default develop-goal one if needed. */
+  ensureInvestigation(): Investigation {
+    if (!this.#investigation || this.#investigation.status === "stopped") {
+      if (this.#investigation?.status === "stopped") this.#investigation = resumeInvestigation(this.#investigation);
+      else this.startInvestigation({ kind: "develop", description: "Characterize and develop support for this display." });
+    }
+    return this.#investigation!;
+  }
+
+  stopActiveInvestigation(): Investigation | null {
+    if (this.#investigation && this.#investigation.status === "active") this.#investigation = stopInvestigation(this.#investigation);
+    return this.#investigation;
+  }
+
+  /** Adopt a previously persisted investigation (its evidence is historical, not current-session). */
+  adoptInvestigation(investigation: Investigation): void {
+    this.#investigation = resumeInvestigation(investigation);
+    this.trace.record("investigation.resumed", { id: investigation.id, completedTests: investigation.completedTests.length });
+  }
+
+  guidedTestDefinitions(): readonly GuidedTestDefinition[] {
+    const driver = this.session.selection?.selected;
+    const profile = this.session.profile;
+    if (!driver?.guidedTests || !profile) return [];
+    return driver.guidedTests(profile);
+  }
+
+  guidedTests(): readonly GuidedTestAvailability[] {
+    const evidence = [...this.baselineClaimEvidence(), ...(this.#investigation?.claimEvidence ?? [])];
+    const completed = this.#investigation?.completedTests.map((test) => test.testId) ?? [];
+    return this.guidedTestDefinitions().map((test) => evaluateTestAvailability(test, evidence, completed));
+  }
+
+  guidedTest(testId: string): GuidedTestDefinition {
+    const test = this.guidedTestDefinitions().find(({ id }) => id === testId);
+    if (!test) throw new Error(`Unknown guided test ${testId}.`);
+    return test;
+  }
+
+  planGuidedTest(testId: string): TransmissionPlan {
+    return this.plan(this.guidedTest(testId).operation);
+  }
+
+  /**
+   * Transmit a guided test's fixed diagnostic program. Requires explicit
+   * consequence confirmation like every persistent send; returns the
+   * transaction ids and the real timestamp of the final host-accepted write
+   * so observation stopwatches measure from the correct moment.
+   */
+  async runGuidedTestTransfer(testId: string, options: { readonly confirmedConsequence: boolean }): Promise<{ readonly transactionIds: readonly string[]; readonly finalWriteAcceptedAt: string | null }> {
+    const test = this.guidedTest(testId);
+    if (!options.confirmedConsequence) throw new Error(`Explicit confirmation required. ${test.consequence}`);
+    if (this.session.source !== "live") throw new Error("Guided hardware tests require a live connection.");
+    const availability = this.guidedTests().find((entry) => entry.test.id === testId);
+    if (availability && !availability.available) throw new Error(availability.reason ?? "This test's prerequisites are not met.");
+    this.ensureInvestigation();
+    const plan = this.planGuidedTest(testId);
+    const transactionIndex = this.#transactions.length;
+    const result = await this.sendPersistentContent(plan, { confirmedConsequence: true });
+    const transactionIds = this.#transactions.slice(transactionIndex).map(({ id }) => id);
+    this.trace.record("guided-test.transferred", { testId, transactionCount: transactionIds.length, finalWriteAcceptedAt: result.finalWriteAcceptedAt });
+    return { transactionIds, finalWriteAcceptedAt: result.finalWriteAcceptedAt };
+  }
+
+  /**
+   * Record the structured physical observations for a guided test: the
+   * driver's interpreter turns them into atomic claim evidence scoped to the
+   * current session, and the investigation advances. A validated raster
+   * strategy from the outcome is applied to this session only.
+   */
+  recordGuidedTestObservations(testId: string, values: readonly ObservationValue[], transactionIds: readonly string[] = [], startedAt = new Date().toISOString()): CompletedGuidedTest {
+    const test = this.guidedTest(testId);
+    const interpretation = test.interpret(values);
+    const completedAt = new Date().toISOString();
+    const evidence: ClaimEvidence[] = interpretation.claimUpdates.map((update) => ({
+      claimId: update.claimId, status: update.status, scope: "current-session",
+      provenance: update.provenance ?? "observed", summary: update.summary,
+      recordedAt: completedAt, testId, transactionIds,
+    }));
+    const parameters = test.operation.type === "ShowDiagnostic" && test.operation.parameters ? { ...test.operation.parameters } : undefined;
+    const completed: CompletedGuidedTest = {
+      testId, title: test.title, startedAt, completedAt,
+      status: interpretation.status, observations: [...values],
+      established: interpretation.established, rejected: interpretation.rejected, unknowns: interpretation.unknowns,
+      summary: interpretation.summary, transactionIds: [...transactionIds],
+      ...(parameters ? { parameters } : {}),
+    };
+    this.#investigation = recordCompletedTest(this.ensureInvestigation(), completed, evidence, completedAt);
+    if (interpretation.selectsRasterStrategy) {
+      this.session.validatedRasterStrategy = interpretation.selectsRasterStrategy;
+      this.trace.record("raster-strategy.validated", { strategy: interpretation.selectsRasterStrategy, testId });
+    }
+    this.trace.record("guided-test.recorded", { testId, status: interpretation.status, claimUpdates: evidence.length });
+    return completed;
   }
 
   recordObservation(summary: string, confidence: ManualObservation["confidence"] = "observed"): ManualObservation {

@@ -13,7 +13,8 @@ export type DiagnosticContentId =
   | "graffiti-black-probe"
   | "graffiti-timing-probe"
   | "animation-static-raster"
-  | "pixel-channel-probe";
+  | "pixel-channel-probe"
+  | "color-white-probe";
 
 export interface DiagnosticRegion {
   /** Raw 16-bit pixel word, exactly as transmitted (no substitution, no transfer curve). */
@@ -197,8 +198,57 @@ const pixelChannelProbe: DiagnosticContentDefinition = {
   },
 };
 
+/**
+ * TEST F content — color/white characterization. Runs only after channel-map
+ * evidence exists. Moderate 8×6 bands compare pure R, G, B, and RGB-max
+ * white; when the high-nibble emitter has been established, a second row
+ * adds high-nibble-only and combined bands. No gain/calibration magic: the
+ * raw words are exactly what the wire carries.
+ */
+const colorWhiteProbe: DiagnosticContentDefinition = {
+  id: "color-white-probe",
+  label: "Color / white probe",
+  description: "Labeled bands of pure red, green, blue, RGB-max white, and (when established) the high-nibble channel.",
+  parameters: [{ id: "includeHighNibble", label: "Include high-nibble white bands", allowed: [0, 1], defaultValue: 0 }],
+  build(profile, parameters) {
+    const includeHighNibble = requireParameter(this, parameters, "includeHighNibble") === 1;
+    const { width, height } = profile;
+    const words = new Uint16Array(width * height);
+    const regions: DiagnosticRegion[] = [];
+    const topBands: readonly { word: number; label: string; expected?: string }[] = [
+      { word: 0x0f00, label: "pure red band", expected: RGB444_EXPECTATIONS[0x0f00]! },
+      { word: 0x00f0, label: "pure green band", expected: RGB444_EXPECTATIONS[0x00f0]! },
+      { word: 0x000f, label: "pure blue band", expected: RGB444_EXPECTATIONS[0x000f]! },
+      { word: 0x0fff, label: "RGB-max band", expected: RGB444_EXPECTATIONS[0x0fff]! },
+    ];
+    const bandWidth = Math.floor(width / topBands.length);
+    topBands.forEach((band, index) => {
+      const x = index * bandWidth;
+      for (let px = x; px < x + bandWidth; px += 1) for (let py = 1; py < Math.min(7, height); py += 1) words[py * width + px] = band.word;
+      regions.push({ rawWord: band.word, x, y: 1, width: bandWidth, height: Math.min(6, height - 1), label: band.label, expectedUnderRgb444: band.expected! });
+    });
+    if (includeHighNibble && height >= 16) {
+      const bottomBands: readonly { word: number; label: string }[] = [
+        { word: 0xf000, label: "high-nibble-only band (raw 0xF000)" },
+        { word: 0xffff, label: "combined band (raw 0xFFFF)" },
+      ];
+      const bottomWidth = Math.floor(width / bottomBands.length);
+      bottomBands.forEach((band, index) => {
+        const x = index * bottomWidth;
+        for (let px = x; px < x + bottomWidth; px += 1) for (let py = 9; py < Math.min(15, height); py += 1) words[py * width + px] = band.word;
+        regions.push({ rawWord: band.word, x, y: 9, width: bottomWidth, height: 6, label: band.label });
+      });
+    }
+    return {
+      compiled: compileAnimationRawWords([words], [60000], width, height),
+      contentType: "animation", frameCount: 1, regions,
+      frameDelaysMs: [60000],
+    };
+  },
+};
+
 export const COOLLEDUX_DIAGNOSTIC_CONTENT: readonly DiagnosticContentDefinition[] = Object.freeze([
-  graffitiBlackProbe, graffitiTimingProbe, animationStaticRaster, pixelChannelProbe,
+  graffitiBlackProbe, graffitiTimingProbe, animationStaticRaster, pixelChannelProbe, colorWhiteProbe,
 ]);
 
 export function diagnosticContent(id: string): DiagnosticContentDefinition {

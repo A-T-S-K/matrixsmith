@@ -158,7 +158,7 @@ describe("no general raw writer", () => {
 
   it("exposes a fixed catalogue of diagnostic content", () => {
     expect(COOLLEDUX_DIAGNOSTIC_CONTENT.map(({ id }) => id)).toEqual([
-      "graffiti-black-probe", "graffiti-timing-probe", "animation-static-raster", "pixel-channel-probe",
+      "graffiti-black-probe", "graffiti-timing-probe", "animation-static-raster", "pixel-channel-probe", "color-white-probe",
     ]);
   });
 

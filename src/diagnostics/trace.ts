@@ -7,7 +7,9 @@ export type TraceEventType =
   | "tx.plan.created" | "tx.plan.authorized" | "tx.plan.blocked" | "tx.packet.started"
   | "tx.packet.hostAccepted" | "tx.packet.failed" | "tx.ack" | "tx.completed"
   | "tx.response.matched" | "tx.response.timeout" | "protocol.probe.started" | "protocol.probe.resolved" | "protocol.probe.rejected"
-  | "observation.recorded" | "evidence.imported" | "validation.recorded" | "content.compiled" | "disconnect" | "error";
+  | "observation.recorded" | "evidence.imported" | "validation.recorded" | "content.compiled" | "disconnect" | "error"
+  | "investigation.started" | "investigation.resumed" | "guided-test.transferred" | "guided-test.recorded" | "raster-strategy.validated"
+  | "advertisement.observed";
 
 export interface TraceEvent {
   readonly timestamp: string;
