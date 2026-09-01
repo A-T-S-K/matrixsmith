@@ -7,6 +7,7 @@ import {
 import { operationalTrust } from "../../investigation/claims";
 import { ILEDHAT_PROFILE_ID } from "../../profiles/iledhat-31ae-32x16";
 import { formatDuration } from "../../investigation/observations";
+import { approximateSeconds } from "../../investigation/timing";
 import { MINIMUM_STATIC_HOLD_MS, VISIBLE_STATIC_HOLD_METRIC } from "../../investigation/static-viability";
 import { PIXEL_CHANNEL_PROBE_WORDS, pixelChannelZoneId } from "./diagnostics";
 
@@ -210,7 +211,7 @@ function interpretTiming(values: readonly ObservationValue[], stayTime: number):
   const renderMetrics: Record<string, number> = t1 !== null ? { renderLatencyMs: t1 } : {};
   if (initial === "yes") {
     established.push(t1 !== null
-      ? `The full raster appeared correctly; render latency (final accepted write → full raster visible) was the measured ${formatDuration(t1)}.`
+      ? `The full image appeared correctly, about ${approximateSeconds(t1)} after the upload finished.`
       : "The full raster appeared correctly after upload.");
     updates.push({ claimId: "graffiti.initial-render", status: "verified", summary: `Full tiled raster rendered correctly after upload ${parameterNote}${t1 !== null ? `; render latency ${formatDuration(t1)} (measured)` : ""}.`, ...(t1 !== null ? { metrics: { renderLatencyMs: t1 } } : {}) });
   } else if (initial === "no") {
@@ -233,8 +234,8 @@ function interpretTiming(values: readonly ObservationValue[], stayTime: number):
     const heldMs = t1 !== null && end !== null ? Math.max(0, end - t1) : null;
     if (heldMs !== null && heldMs >= MINIMUM_STATIC_HOLD_MS) {
       status = "passed";
-      summary = `The image stayed completely static for the measured ${formatDuration(heldMs)} ${parameterNote}.`;
-      established.push(`No movement within the measured ${formatDuration(heldMs)} with stayTime=${stayTime} — meets the ${MINIMUM_STATIC_HOLD_MS / 1000}s stability threshold.`);
+      summary = `The image stayed completely still for ${approximateSeconds(heldMs)}.`;
+      established.push(`No movement within ${approximateSeconds(heldMs)} of observation — past the ${MINIMUM_STATIC_HOLD_MS / 1000}s stability threshold.`);
       updates.push({
         claimId: "graffiti.playback-stability", status: "verified",
         summary: `Raster remained static for the measured ${formatDuration(heldMs)} from full-raster-visible ${parameterNote}, meeting the required ${MINIMUM_STATIC_HOLD_MS / 1000}s observation window.`,
@@ -245,11 +246,11 @@ function interpretTiming(values: readonly ObservationValue[], stayTime: number):
       // verifies stability; the exact observed duration is recorded.
       status = "inconclusive";
       summary = heldMs !== null
-        ? `The image stayed still for the measured ${formatDuration(heldMs)}, but the observation ended before the required ${MINIMUM_STATIC_HOLD_MS / 1000}s window ${parameterNote}.`
-        : `No movement was reported, but no measured observation window exists ${parameterNote}.`;
+        ? `The image stayed still for ${approximateSeconds(heldMs)}, but watching stopped before the ${MINIMUM_STATIC_HOLD_MS / 1000}s needed to call it stable.`
+        : "No movement was reported, but nothing was timed, so stability stays unverified.";
       unknowns.push(heldMs !== null
-        ? `Static hold observed for only ${formatDuration(heldMs)} — below the ${MINIMUM_STATIC_HOLD_MS / 1000}s threshold; stability stays unverified.`
-        : "Stability cannot be verified without a measured observation window.");
+        ? `Only ${approximateSeconds(heldMs)} of stillness was observed — below the ${MINIMUM_STATIC_HOLD_MS / 1000}s threshold, so stability stays unverified.`
+        : "Stability cannot be verified without a timed observation window.");
       updates.push({
         claimId: "graffiti.playback-stability", status: "unresolved",
         summary: heldMs !== null
@@ -261,11 +262,16 @@ function interpretTiming(values: readonly ObservationValue[], stayTime: number):
   } else if (moved === "yes") {
     status = "partial";
     const heldMs = t1 !== null && t2 !== null ? Math.max(0, t2 - t1) : null;
-    const onsetText = t2 !== null
-      ? ` Movement began at the measured ${formatDuration(t2)} after the final accepted write${heldMs !== null ? ` — a visible static hold of ${formatDuration(heldMs)} from full-raster-visible` : ""}.`
-      : "";
-    summary = `The image rendered and then began moving ${parameterNote}.${onsetText}`;
-    rejected.push(`The raster did not remain static with stayTime=${stayTime}.${onsetText}`);
+    // Prefer the visible static hold (T2 − T1) — how long the finished image
+    // actually stayed put. Without a T1 mark, fall back to the onset measured
+    // from the upload, which is a different quantity and is named as such.
+    const onset = heldMs !== null
+      ? `after about ${approximateSeconds(heldMs).replace("~", "")} of stillness`
+      : t2 !== null ? `about ${approximateSeconds(t2).replace("~", "")} after the upload finished` : null;
+    summary = onset ? `The image appeared correctly, then started moving ${onset}.` : "The image appeared correctly and then started moving.";
+    rejected.push(onset
+      ? `It did not stay still: movement began ${onset}${heldMs === null && t2 !== null ? ` (exact mark ${formatDuration(t2)})` : ""}.`
+      : "It did not stay still at this setting.");
     if (motion) established.push(`Motion character: ${motion}.`);
     // Atomicity: baseline movement leaves the broad stability claim
     // unresolved (another justified configuration may hold still); movement

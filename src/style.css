@@ -357,9 +357,6 @@ main { width: min(1200px, 100%); margin: 0 auto; padding: 0 1rem 2rem; }
 .resume-panel { border-color: #5eead455; }
 .more-tools { margin-top: 1.4rem; }
 .more-tools > summary { cursor: pointer; color: #9fb3c8; font-weight: 650; margin-bottom: .8rem; }
-.secondary-section { margin-top: 1rem; border: 1px solid #24334a; border-radius: .85rem; padding: .7rem .95rem; }
-.secondary-section > summary { cursor: pointer; color: #9fb3c8; font-weight: 650; }
-.secondary-section[open] > summary { margin-bottom: .8rem; }
 .what-we-know p:first-of-type { margin: 0 0 .35rem; }
 .recent-result h2 { font-size: 1.05rem; }
 .sidebar-secondary { margin-top: 1.1rem; display: flex; flex-direction: column; gap: .3rem; }
@@ -557,4 +554,29 @@ main { width: min(1200px, 100%); margin: 0 auto; padding: 0 1rem 2rem; }
   .view-title, .goal-line, .next-action { grid-column: 1; }
   .know-strip, .recent-result, .previous-investigation, .troubleshoot-link, .troubleshoot-open { grid-column: 2; }
   .secondary-section { grid-column: 1 / -1; }
+}
+
+/* ---- Create ---- */
+.view.create { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--section-gap); padding-top: 0; }
+.type-tabs { display: flex; gap: var(--s1); padding: var(--s1); border: 1px solid var(--border); border-radius: var(--r2); background: var(--surface-2); }
+.type-tab { flex: 1; min-width: 0; min-height: var(--target); padding: 0 var(--s1); border: 0; border-radius: var(--r1); background: none; color: var(--fg-dim); font-size: var(--text-sm); font-weight: 700; white-space: nowrap; }
+.type-tab.active { background: var(--accent); color: var(--accent-ink); }
+/* A locked type is marked with a glyph as well as dimmed text, so the state
+   does not depend on colour alone. */
+.type-tab .lock { font-size: .6em; vertical-align: .3em; opacity: .8; }
+.type-tab:not(.active) .lock { color: var(--warn); }
+.content-editor { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--s3); }
+.content-editor .send { min-height: var(--target); margin-top: var(--s1); }
+.locked-notice { display: grid; gap: var(--s2); padding: var(--s3); border: 1px solid #f59e0b44; border-radius: var(--r2); background: #f59e0b0c; }
+.locked-notice p { margin: 0; color: var(--fg-dim); font-size: var(--text-sm); }
+.locked-notice strong { color: var(--warn); }
+.frame-strip { display: flex; gap: var(--s3); flex-wrap: wrap; }
+.frame-strip small { display: block; color: var(--fg-quiet); font-size: var(--text-xs); }
+.device-controls { display: grid; gap: var(--s2); }
+.brightness-row { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s3); }
+
+@media (min-width: 60rem) {
+  .view.create { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; column-gap: var(--s6); }
+  .view-title, .type-tabs, .content-editor { grid-column: 1; }
+  .view.create .secondary-section { grid-column: 2; border-top: 0; }
 }
