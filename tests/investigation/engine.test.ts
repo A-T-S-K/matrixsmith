@@ -40,12 +40,12 @@ describe("guided test engine", () => {
 
   it("refuses a guided transfer without explicit consequence confirmation", async () => {
     const controller = await connectedController();
-    await expect(controller.runGuidedTestTransfer("coolledux-graffiti-black", { confirmedConsequence: false })).rejects.toThrow(/confirmation required/i);
+    await expect(controller.runGuidedTestTransfer("coolledux-graffiti-black", { confirmedConsequence: false, reason: "initial-experiment", attemptId: "attempt:test" })).rejects.toThrow(/confirmation required/i);
   });
 
   it("transfers the diagnostic and reports the final host-accepted write time", async () => {
     const controller = await connectedController();
-    const result = await controller.runGuidedTestTransfer("coolledux-graffiti-black", { confirmedConsequence: true });
+    const result = await controller.runGuidedTestTransfer("coolledux-graffiti-black", { confirmedConsequence: true, reason: "initial-experiment", attemptId: "attempt:test" });
     expect(result.transactionIds.length).toBeGreaterThan(0);
     expect(result.finalWriteAcceptedAt).not.toBeNull();
     const transaction = controller.transactions.find(({ id }) => id === result.transactionIds[0]);

@@ -15,7 +15,7 @@ async function controllerWithBlackTest(): Promise<MatrixController> {
   transport.notificationOnWrite = parseHexBytes(infoFixture.rxHex);
   await controller.probe();
   transport.notificationOnWrite = null;
-  const transfer = await controller.runGuidedTestTransfer("coolledux-graffiti-black", { confirmedConsequence: true });
+  const transfer = await controller.runGuidedTestTransfer("coolledux-graffiti-black", { confirmedConsequence: true, reason: "initial-experiment", attemptId: "attempt:test" });
   const values: ObservationValue[] = [
     { kind: "choice", fieldId: "zero-appearance", optionId: "bright-white" },
     { kind: "choice", fieldId: "workaround-appearance", optionId: "dim-blue", note: "clearly blue-ish" },

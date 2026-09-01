@@ -32,6 +32,7 @@ import {
   ATTEMPT_INVALIDATION_LABELS, aggregateAttemptDurations, describeAggregate,
   type AttemptValidity, type ObservationAttempt, type PhysicalTimingMark,
 } from "../investigation/timing";
+import type { TransferReason } from "../investigation/orchestration";
 import { forgetInvestigationHistory, latestInvestigationFor, saveInvestigation, toHistoricalInvestigation } from "../storage/investigations";
 
 export type WorkspaceView = "control" | "diagnose" | "develop";
@@ -305,6 +306,11 @@ interface GuidedFlowInternal {
   attempts: ObservationAttempt[];
   marks: PhysicalTimingMark[];
   awaitingRetryConfirmation: boolean;
+  /** Semantic identity of this run, so retries stay one numbered test. */
+  experimentRunId: string;
+  attemptId: string | null;
+  /** Why the NEXT transmission happens. Never defaulted to a generic resend. */
+  pendingTransferReason: TransferReason;
 }
 
 export class MatrixStore {
@@ -668,6 +674,7 @@ export class MatrixStore {
       const test = this.controller.guidedTest(testId);
       const availability = this.controller.guidedTests().find((entry) => entry.test.id === testId);
       if (availability && !availability.available) throw new Error(availability.reason ?? "This test's prerequisites are not met.");
+      const run = this.controller.beginExperiment(testId);
       const plan = this.controller.planGuidedTest(testId);
       // The resolved operation (evidence-aware where declared) drives the
       // preview and region diagram, so About always shows the actual run.
@@ -691,6 +698,11 @@ export class MatrixStore {
         stepIndex: 0,
         parameters: operationParameters(this.controller.guidedTestOperation(testId)),
         attempts: [], marks: [], awaitingRetryConfirmation: false,
+        experimentRunId: run.experimentRunId,
+        attemptId: null,
+        // Reopening a concluded experiment is a different act from starting
+        // one, and the report must be able to say which happened.
+        pendingTransferReason: run.reopenReason ? "explicit-reopen" : "initial-experiment",
       };
     } catch (error) {
       this.#error = error instanceof Error ? error.message : String(error);
@@ -704,7 +716,11 @@ export class MatrixStore {
     flow.stage = "running";
     flow.transferProgress = `Uploading diagnostic program (${flow.planSummary?.packetCount ?? "?"} packets at ${flow.planSummary?.pacingMs ?? "?"} ms pacing)…`;
     await this.#run("Transferring diagnostic content…", async () => {
-      const { transactionIds, finalWriteAcceptedAt } = await this.controller.runGuidedTestTransfer(flow.testId, { confirmedConsequence: true });
+      const attempt = this.controller.beginAttempt(flow.experimentRunId, flow.pendingTransferReason);
+      flow.attemptId = attempt.attemptId;
+      const { transactionIds, finalWriteAcceptedAt } = await this.controller.runGuidedTestTransfer(flow.testId, {
+        confirmedConsequence: true, reason: flow.pendingTransferReason, attemptId: attempt.attemptId,
+      });
       flow.transactionIds = [...flow.transactionIds, ...transactionIds];
       flow.finalWriteAcceptedAt = finalWriteAcceptedAt;
       flow.stage = "observe";
@@ -724,6 +740,14 @@ export class MatrixStore {
           startedAt: new Date().toISOString(), endedAt: null,
         });
         if (finalWriteAcceptedAt) { this.#startTimerTicks(); this.#signalTimingStart(); }
+      } else {
+        // A test with no timeline still has exactly one attempt per transfer.
+        flow.attempts.push({
+          attemptNumber: flow.attempts.length + 1, parameters: { ...flow.parameters },
+          t0: finalWriteAcceptedAt, marks: [], values: [],
+          validity: "incomplete", invalidationReason: null, note: null,
+          startedAt: new Date().toISOString(), endedAt: null,
+        });
       }
       this.#info = "Diagnostic content transferred. Watch the physical panel now.";
     });
@@ -785,6 +809,7 @@ export class MatrixStore {
     if (!flow?.timerSpec || flow.timerStopped) return;
     this.#discardAttemptValues();
     this.#completeAttempt(reason);
+    flow.pendingTransferReason = "explicit-retry-missed-observation";
     flow.awaitingRetryConfirmation = true;
     this.#info = "Measurement attempt discarded. Nothing about the display was concluded from it.";
     this.#emit();
@@ -811,6 +836,9 @@ export class MatrixStore {
   requestTimingRetry(): void {
     const flow = this.#guidedFlow;
     if (!flow) return;
+    // Asking to measure again is a different intent from recovering a missed
+    // mark, and reports keep them apart.
+    if (flow.pendingTransferReason !== "explicit-retry-missed-observation") flow.pendingTransferReason = "explicit-measure-again";
     flow.awaitingRetryConfirmation = true;
     this.#emit();
   }
@@ -834,6 +862,8 @@ export class MatrixStore {
     flow.awaitingRetryConfirmation = false;
     flow.stage = "about";
     await this.confirmGuidedTransfer();
+    // The next transmission is a fresh intent, not a repeat of this one.
+    flow.pendingTransferReason = "explicit-measure-again";
   }
 
   /** Close the open attempt, recording what it may and may not establish. */
@@ -844,7 +874,7 @@ export class MatrixStore {
     this.#stopTimerTicks();
     const open = flow.attempts.at(-1);
     if (!open || open.endedAt !== null) return;
-    flow.attempts[flow.attempts.length - 1] = {
+    const settled: ObservationAttempt = {
       ...open,
       marks: [...flow.marks],
       values: validity === "valid" ? Object.values(flow.values) : [],
@@ -852,6 +882,18 @@ export class MatrixStore {
       invalidationReason: validity === "valid" ? null : ATTEMPT_INVALIDATION_LABELS[validity],
       endedAt: new Date().toISOString(),
     };
+    flow.attempts[flow.attempts.length - 1] = settled;
+    // Mirror the outcome onto the semantic attempt. An invalid attempt is
+    // never removed: it is part of what happened, and the report has to be
+    // able to say a measurement was discarded rather than silently omit it.
+    if (flow.attemptId) {
+      this.controller.settleAttempt(flow.attemptId, {
+        validity: validity === "valid" ? "valid" : "invalid",
+        invalidationReason: settled.invalidationReason,
+        observations: settled.values,
+        timing: settled,
+      });
+    }
   }
 
   /** Drop everything the failed attempt wrote, including timeline booleans. */
@@ -928,7 +970,13 @@ export class MatrixStore {
     if (!flow || flow.stage !== "observe") return;
     try {
       const values = Object.values(flow.values);
+      // A non-timed test settles its single attempt here; timed tests already
+      // settled theirs when the timeline closed.
+      if (!flow.timerSpec && flow.attemptId) {
+        this.controller.settleAttempt(flow.attemptId, { validity: "valid", observations: values, timing: null });
+      }
       flow.result = this.controller.recordGuidedTestObservations(flow.testId, values, flow.transactionIds, flow.startedAt, flow.attempts);
+      this.controller.settleExperiment(flow.experimentRunId, flow.result.status, flow.result.summary);
       flow.stage = "result";
       this.#stopTimerTicks();
       this.#persistInvestigation();
@@ -955,12 +1003,35 @@ export class MatrixStore {
     catch (error) { this.#error = error instanceof Error ? error.message : String(error); this.#emit(); }
   }
 
-  /** Continue: close this test and immediately open the next recommended one. */
+  /**
+   * Continue to the next distinct experiment.
+   *
+   * If the engine ever hands back an experiment that already concluded, that
+   * is a workflow-cycle condition, not a next step — running it would send the
+   * same pattern to the display for the same non-answer. The guard stops
+   * there rather than letting the user discover the loop by living through it.
+   */
   continueToNextTest(): void {
     const next = this.controller.recommendations()[0] ?? null;
+    const concluded = this.controller.investigation?.completedTests
+      .some((test) => next !== null && test.testId === next.testId && test.status !== "abandoned") ?? false;
     this.closeGuidedTest();
-    if (next) this.startGuidedTest(next.testId);
-    else { this.#info = "No further test is recommended right now."; this.#emit(); }
+    if (next && !concluded) { this.startGuidedTest(next.testId); return; }
+    if (next && concluded) {
+      this.#error = "MatrixSmith was about to repeat a test that already produced a result, so it stopped. Reopen it deliberately if you want to measure it again.";
+      this.#emit();
+      return;
+    }
+    this.#info = this.controller.corePlanProgress()?.complete
+      ? "Core characterization is complete."
+      : "No further test is recommended right now.";
+    this.#emit();
+  }
+
+  /** Deliberately run a concluded experiment again, with a stated reason. */
+  reopenExperiment(testId: string, reason: string): void {
+    this.controller.reopenExperiment(testId, reason);
+    this.startGuidedTest(testId);
   }
 
   closeGuidedTest(): void {
@@ -984,7 +1055,9 @@ export class MatrixStore {
       // An abandoned run still closes its open attempt, so the report can
       // say the observation stopped rather than silently losing the timeline.
       if (flow.timerSpec && !flow.timerStopped) this.#completeAttempt("incomplete");
-      this.controller.abandonGuidedTest(flow.testId, Object.values(flow.values), flow.transactionIds, flow.startedAt, flow.attempts);
+      else if (flow.attemptId) this.controller.settleAttempt(flow.attemptId, { validity: "invalid", invalidationReason: "Observation stopped before completion." });
+      const abandoned = this.controller.abandonGuidedTest(flow.testId, Object.values(flow.values), flow.transactionIds, flow.startedAt, flow.attempts);
+      this.controller.settleExperiment(flow.experimentRunId, abandoned.status, abandoned.summary);
       this.#persistInvestigation();
       this.#info = "Observation stopped. The test was recorded as incomplete — the transmitted content and automatic capture remain as evidence, and its report is available.";
     } catch (error) {

@@ -75,7 +75,7 @@ describe("investigation report content", () => {
 
   it("includes the measured T0/T1/T2 timeline in the scoped test report", async () => {
     const controller = await connectedController();
-    await controller.runGuidedTestTransfer("coolledux-graffiti-timing", { confirmedConsequence: true });
+    await controller.runGuidedTestTransfer("coolledux-graffiti-timing", { confirmedConsequence: true, reason: "initial-experiment", attemptId: "attempt:test" });
     const transactionIds = controller.transactions.slice(-1).map((transaction) => transaction.id);
     controller.recordGuidedTestObservations("coolledux-graffiti-timing", [
       { kind: "boolean", fieldId: "initial-correct", value: "yes" },

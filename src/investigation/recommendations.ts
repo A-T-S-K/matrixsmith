@@ -35,6 +35,25 @@ export interface RecommendationInput {
   readonly evidence: readonly ClaimEvidence[];
   readonly availabilities: readonly GuidedTestAvailability[];
   readonly completedTests: readonly CompletedGuidedTest[];
+  /**
+   * Experiments the user deliberately reopened. A completed experiment is
+   * never recommended on its own; reopening is always an explicit act.
+   */
+  readonly reopenedTestIds?: readonly string[];
+}
+
+/**
+ * A completed experiment has produced its answer, whatever that answer was.
+ *
+ * Only "abandoned" leaves the question genuinely unanswered — the content was
+ * transmitted but nothing was observed. Every other status is a conclusion,
+ * including "partial" and "inconclusive": re-running the identical experiment
+ * with identical parameters would produce the identical non-answer. Treating
+ * those as still-pending is precisely what made guided mode feel like an
+ * endless loop of the same static-image test.
+ */
+export function isConcludedTest(test: CompletedGuidedTest): boolean {
+  return test.status !== "abandoned";
 }
 
 /** How much resolving a claim in this status is worth. */
@@ -81,8 +100,13 @@ const REPEATED_TEST_PENALTY = 25;
 export function rankRecommendations(input: RecommendationInput): readonly Recommendation[] {
   const claims = resolveClaims(input.evidence);
   const byId = new Map(claims.map((claim) => [claim.id, claim]));
-  const passedTestIds = new Set(input.completedTests.filter((test) => test.status === "passed").map((test) => test.testId));
-  const completedTestIds = new Set(input.completedTests.map((test) => test.testId));
+  const reopened = new Set(input.reopenedTestIds ?? []);
+  // Concluded experiments leave the automatic rotation entirely. Anything
+  // that should run again does so because the user asked for it.
+  const concludedTestIds = new Set(
+    input.completedTests.filter((test) => isConcludedTest(test) && !reopened.has(test.testId)).map((test) => test.testId),
+  );
+  const attemptedTestIds = new Set(input.completedTests.map((test) => test.testId));
   const assessment = evaluateStaticViability(input.evidence);
   const pursuedIndex = assessment.pursued ? STRATEGY_PREFERENCE.indexOf(assessment.pursued) : STRATEGY_PREFERENCE.length;
   // Historical/imported contradictions of a trusted basis make revalidation
@@ -99,7 +123,7 @@ export function rankRecommendations(input: RecommendationInput): readonly Recomm
   const scored: Recommendation[] = [];
   for (const availability of input.availabilities) {
     if (!availability.available) continue;
-    if (passedTestIds.has(availability.test.id)) continue;
+    if (concludedTestIds.has(availability.test.id)) continue;
     const targets = availability.test.targetClaims.filter((claimId) => {
       const status = byId.get(claimId)?.status ?? "unknown";
       return status !== "verified" || conflictedClaims.has(claimId);
@@ -127,7 +151,7 @@ export function rankRecommendations(input: RecommendationInput): readonly Recomm
       + (availability.test.risk === "read-only" ? 5 : 0)
       + firstOpenBoost
       - (isFallbackStrategyTest ? FALLBACK_STRATEGY_PENALTY : 0)
-      - (completedTestIds.has(availability.test.id) ? REPEATED_TEST_PENALTY : 0);
+      - (attemptedTestIds.has(availability.test.id) ? REPEATED_TEST_PENALTY : 0);
     scored.push({
       id: `recommend:${availability.test.id}`,
       kind: "guided-test",
@@ -170,4 +194,55 @@ function buildWhy(availability: GuidedTestAvailability, targets: readonly ClaimI
 
 export function recommendNextTest(input: RecommendationInput): Recommendation | null {
   return rankRecommendations(input)[0] ?? null;
+}
+
+/**
+ * Recommendation cycle detection.
+ *
+ * Excluding concluded experiments makes a plain A→A cycle structurally
+ * impossible, but that is a property of the current scoring rules rather than
+ * a guarantee. This guard is the backstop: it watches the actual sequence of
+ * recommendations and refuses to let the user discover an algorithmic loop by
+ * spending twenty minutes re-running the same hardware pattern.
+ */
+export interface RecommendationTrailEntry {
+  readonly testId: string;
+  readonly at: string;
+  /**
+   * How much evidence existed when this was recommended. A repeat with an
+   * unchanged count means nothing was learned in between, which is the
+   * signature of a loop rather than of progress.
+   */
+  readonly evidenceCount: number;
+}
+
+export interface CycleVerdict {
+  readonly cycling: boolean;
+  readonly testIds: readonly string[];
+  readonly detail: string | null;
+}
+
+const CYCLE_WINDOW = 6;
+
+export function detectRecommendationCycle(trail: readonly RecommendationTrailEntry[]): CycleVerdict {
+  const window = trail.slice(-CYCLE_WINDOW);
+  if (window.length < 3) return { cycling: false, testIds: [], detail: null };
+  const seen = new Map<string, RecommendationTrailEntry[]>();
+  for (const entry of window) {
+    seen.set(entry.testId, [...(seen.get(entry.testId) ?? []), entry]);
+  }
+  for (const [testId, entries] of seen) {
+    if (entries.length < 2) continue;
+    const first = entries[0]!;
+    const last = entries[entries.length - 1]!;
+    // Same experiment recommended again with no new evidence in between.
+    if (last.evidenceCount <= first.evidenceCount) {
+      return {
+        cycling: true,
+        testIds: [...new Set(window.map((entry) => entry.testId))],
+        detail: `"${testId}" was recommended ${entries.length} times without any new evidence being recorded in between.`,
+      };
+    }
+  }
+  return { cycling: false, testIds: [], detail: null };
 }

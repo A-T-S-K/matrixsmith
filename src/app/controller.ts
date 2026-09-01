@@ -19,6 +19,13 @@ import type { ProtocolTransaction, TransactionSource } from "../diagnostics/tran
 import { transactionId } from "../diagnostics/transactions";
 import type { DiagnosticRun, DiagnosticStepResult } from "../diagnostics/workflows";
 import type { ObservationAttempt } from "../investigation/timing";
+import {
+  buildExecutionFingerprint, classifyTransfers, newId,
+  type DiagnosticExecutionFingerprint, type ExperimentAttempt, type ExperimentRun,
+  type TransferReason, type TransferRecord,
+} from "../investigation/orchestration";
+import { evaluateCorePlan, stepForTest, type CorePlan, type CorePlanProgress } from "../investigation/core-plan";
+import { detectRecommendationCycle, type CycleVerdict, type RecommendationTrailEntry } from "../investigation/recommendations";
 import { findImporter, type ImportedEvidence } from "../diagnostics/importers";
 import { chooseTestBrightness, COOLLEDUX_DIAGNOSTIC_TOOLS, diagnosticRunId } from "../diagnostics/workflows";
 import { CONTENT_VALIDATION_WORKFLOWS, evaluateValidationAnswers, sessionValidationId, type ContentValidationWorkflow, type ValidationAnswer } from "../diagnostics/validation";
@@ -367,6 +374,15 @@ export class MatrixController {
   // ---- Guided investigation engine ---------------------------------------
 
   #investigation: Investigation | null = null;
+  // ---- Guided orchestration -------------------------------------------
+  #experiments: ExperimentRun[] = [];
+  #transfers: TransferRecord[] = [];
+  /** Execution presumed to be on the panel right now, for duplicate detection. */
+  #activeExecution: DiagnosticExecutionFingerprint | null = null;
+  /** Experiments the user deliberately reopened, with their stated reason. */
+  #reopened = new Map<string, string>();
+  #recommendationTrail: RecommendationTrailEntry[] = [];
+  #cycleVerdict: CycleVerdict = { cycling: false, testIds: [], detail: null };
   #detachedInvestigation: Investigation | null = null;
   /** Increments on every applied fingerprint; ties an investigation to one unbroken (or same-authorized-device) session. */
   #connectionEpoch = 0;
@@ -530,7 +546,20 @@ export class MatrixController {
    * transaction ids and the real timestamp of the final host-accepted write
    * so observation stopwatches measure from the correct moment.
    */
-  async runGuidedTestTransfer(testId: string, options: { readonly confirmedConsequence: boolean }): Promise<{ readonly transactionIds: readonly string[]; readonly finalWriteAcceptedAt: string | null }> {
+  /**
+   * Transmit a guided test's diagnostic.
+   *
+   * Every transmission must name a semantic reason. Replacing what is on
+   * someone's display is a real side effect, and identical bytes can mean
+   * completely different things: a legitimate retry after a missed timing
+   * observation looks exactly like an accidental resend on the wire. Making
+   * the reason mandatory is what lets the product, and its reports, tell
+   * those apart afterwards.
+   */
+  async runGuidedTestTransfer(
+    testId: string,
+    options: { readonly confirmedConsequence: boolean; readonly reason: TransferReason; readonly attemptId: string },
+  ): Promise<{ readonly transactionIds: readonly string[]; readonly finalWriteAcceptedAt: string | null; readonly transferId: string }> {
     const test = this.guidedTest(testId);
     if (!options.confirmedConsequence) throw new Error(`Explicit confirmation required. ${test.consequence}`);
     if (this.session.source !== "live") throw new Error("Guided hardware tests require a live connection.");
@@ -538,12 +567,161 @@ export class MatrixController {
     if (availability && !availability.available) throw new Error(availability.reason ?? "This test's prerequisites are not met.");
     this.ensureInvestigation();
     const plan = this.planGuidedTest(testId);
+    const fingerprint = this.guidedExecutionFingerprint(testId, typeof plan.metadata.crc32 === "string" ? plan.metadata.crc32 : null);
+    // The guard: a reason that asserts novelty ("initial experiment", "a
+    // controlled variant") cannot be true of a diagnostic already on the
+    // panel. Repeat reasons are expected to match — that is what they mean.
+    if (this.#activeExecution && this.#activeExecution.key === fingerprint.key
+      && (options.reason === "initial-experiment" || options.reason === "controlled-variant")) {
+      this.trace.record("guided-test.duplicate-blocked", { testId, reason: options.reason, fingerprint: fingerprint.key });
+      throw new Error(
+        "This diagnostic is already showing on the display and no reason for resending it was recorded. "
+        + "MatrixSmith prevented an unnecessary resend.",
+      );
+    }
     const transactionIndex = this.#transactions.length;
+    const startedAt = new Date().toISOString();
     const result = await this.sendPersistentContent(plan, { confirmedConsequence: true });
     const transactionIds = this.#transactions.slice(transactionIndex).map(({ id }) => id);
-    this.trace.record("guided-test.transferred", { testId, transactionCount: transactionIds.length, finalWriteAcceptedAt: result.finalWriteAcceptedAt });
-    return { transactionIds, finalWriteAcceptedAt: result.finalWriteAcceptedAt };
+    const transferId = newId("transfer");
+    this.#transfers.push({
+      transferId, attemptId: options.attemptId, diagnosticId: fingerprint.diagnosticId,
+      reason: options.reason, fingerprint, transactionIds, startedAt,
+      finalWriteAcceptedAt: result.finalWriteAcceptedAt,
+    });
+    this.#activeExecution = fingerprint;
+    this.trace.record("guided-test.transferred", {
+      testId, transferId, attemptId: options.attemptId, reason: options.reason,
+      fingerprint: fingerprint.key, crc32: fingerprint.programCrc32,
+      transactionCount: transactionIds.length, finalWriteAcceptedAt: result.finalWriteAcceptedAt,
+    });
+    return { transactionIds, finalWriteAcceptedAt: result.finalWriteAcceptedAt, transferId };
   }
+
+  /** Identity of a guided test's resolved diagnostic on this device. */
+  guidedExecutionFingerprint(testId: string, programCrc32: string | null = null): DiagnosticExecutionFingerprint {
+    const operation = this.guidedTestOperation(testId);
+    return buildExecutionFingerprint({
+      deviceBindingId: this.#investigation?.deviceBinding?.profileId ?? this.session.profile?.id ?? null,
+      testId,
+      diagnosticId: operation.type === "ShowDiagnostic" ? operation.diagnosticId : operation.type,
+      parameters: operation.type === "ShowDiagnostic" ? operation.parameters : undefined,
+      programCrc32,
+      rasterStrategy: this.session.validatedRasterStrategy,
+    });
+  }
+
+  // ---- Guided orchestration accessors ----------------------------------
+
+  get experiments(): readonly ExperimentRun[] { return this.#experiments; }
+  get transfers(): readonly TransferRecord[] { return this.#transfers; }
+  get recommendationCycle(): CycleVerdict { return this.#cycleVerdict; }
+  transferSummary(): ReturnType<typeof classifyTransfers> { return classifyTransfers(this.#transfers); }
+
+  /** The driver-contributed core plan for the resolved profile, if any. */
+  corePlan(): CorePlan | null {
+    const driver = this.session.selection?.selected;
+    const profile = this.session.profile;
+    if (!driver?.corePlan || !profile) return null;
+    return driver.corePlan(profile);
+  }
+
+  corePlanProgress(): CorePlanProgress | null {
+    const plan = this.corePlan();
+    if (!plan) return null;
+    return evaluateCorePlan(plan, this.allClaimEvidence(), this.#investigation?.completedTests ?? []);
+  }
+
+  /** Open an experiment run, or return the in-progress one for this test. */
+  beginExperiment(testId: string): ExperimentRun {
+    const existing = this.#experiments.find((run) => run.definitionId === testId && run.status === "in-progress");
+    if (existing) return existing;
+    const test = this.guidedTest(testId);
+    const operation = this.guidedTestOperation(testId);
+    const parameters = operation.type === "ShowDiagnostic" && operation.parameters ? { ...operation.parameters } : {};
+    const step = stepForTest(this.corePlan(), testId);
+    const run: ExperimentRun = {
+      experimentRunId: newId("experiment"),
+      definitionId: testId,
+      title: test.title,
+      corePlanStepId: step?.id ?? null,
+      variant: Object.entries(parameters).map(([key, value]) => `${key}=${value}`).join(", ") || null,
+      parameters,
+      fingerprint: this.guidedExecutionFingerprint(testId),
+      status: "in-progress",
+      startedAt: new Date().toISOString(),
+      completedAt: null,
+      attempts: [],
+      conclusion: null,
+      reopenReason: this.#reopened.get(testId) ?? null,
+    };
+    this.#experiments.push(run);
+    return run;
+  }
+
+  /** Add an attempt to an open experiment run. */
+  beginAttempt(experimentRunId: string, reason: TransferReason): ExperimentAttempt {
+    const index = this.#experiments.findIndex((run) => run.experimentRunId === experimentRunId);
+    const run = this.#experiments[index];
+    if (!run) throw new Error(`Unknown experiment run ${experimentRunId}.`);
+    const attempt: ExperimentAttempt = {
+      attemptId: newId("attempt"),
+      attemptNumber: run.attempts.length + 1,
+      reason,
+      startedAt: new Date().toISOString(),
+      transferIds: [], observations: [], timing: null,
+      validity: "in-progress", invalidationReason: null,
+    };
+    this.#experiments[index] = { ...run, attempts: [...run.attempts, attempt] };
+    return attempt;
+  }
+
+  /** Close an attempt with its outcome; invalid attempts are always retained. */
+  settleAttempt(attemptId: string, update: {
+    readonly validity: ExperimentAttempt["validity"];
+    readonly invalidationReason?: string | null;
+    readonly observations?: readonly ObservationValue[];
+    readonly timing?: ObservationAttempt | null;
+  }): void {
+    for (let index = 0; index < this.#experiments.length; index += 1) {
+      const run = this.#experiments[index]!;
+      const attemptIndex = run.attempts.findIndex((attempt) => attempt.attemptId === attemptId);
+      if (attemptIndex < 0) continue;
+      const attempt = run.attempts[attemptIndex]!;
+      const attempts = [...run.attempts];
+      attempts[attemptIndex] = {
+        ...attempt,
+        validity: update.validity,
+        invalidationReason: update.invalidationReason ?? attempt.invalidationReason,
+        observations: update.observations ? [...update.observations] : attempt.observations,
+        timing: update.timing !== undefined ? update.timing : attempt.timing,
+        transferIds: this.#transfers.filter((transfer) => transfer.attemptId === attemptId).map((transfer) => transfer.transferId),
+      };
+      this.#experiments[index] = { ...run, attempts };
+      return;
+    }
+  }
+
+  /** Close an experiment run once its result is recorded. */
+  settleExperiment(experimentRunId: string, status: ExperimentRun["status"], conclusion: string): void {
+    const index = this.#experiments.findIndex((run) => run.experimentRunId === experimentRunId);
+    const run = this.#experiments[index];
+    if (!run) return;
+    this.#experiments[index] = { ...run, status, conclusion, completedAt: new Date().toISOString() };
+    this.#reopened.delete(run.definitionId);
+  }
+
+  /**
+   * Deliberately reopen a concluded experiment. The recommendation engine
+   * never does this on its own — repeating finished work is always a choice
+   * the user makes, with a reason that survives into the report.
+   */
+  reopenExperiment(testId: string, reason: string): void {
+    this.#reopened.set(testId, reason);
+    this.trace.record("guided-test.reopened", { testId, reason });
+  }
+
+  reopenedTestIds(): readonly string[] { return [...this.#reopened.keys()]; }
 
   /**
    * Record the structured physical observations for a guided test: the

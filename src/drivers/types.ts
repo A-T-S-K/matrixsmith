@@ -81,6 +81,12 @@ export interface MatrixDriver {
    * either layer knowing anything driver-specific.
    */
   diagnosticRegions?(operation: MatrixOperation, profile: DeviceProfile): readonly import("../investigation/regions").DiagnosticRegion[];
+  /**
+   * A bounded, numbered set of milestones for characterizing this profile, so
+   * guided work can say how much is left instead of offering an open-ended
+   * chain of next tests.
+   */
+  corePlan?(profile: DeviceProfile): import("../investigation/core-plan").CorePlan | null;
   /** Baseline atomic-claim evidence this driver ships for a profile. */
   claimEvidence?(profile: DeviceProfile): readonly import("../investigation/claims").ClaimEvidence[];
   plan(operation: MatrixOperation, context: DriverContext): TransmissionPlan;

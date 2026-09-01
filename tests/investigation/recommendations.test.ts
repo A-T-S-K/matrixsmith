@@ -49,10 +49,29 @@ describe("recommendation engine", () => {
     expect(ranked.map((recommendation) => recommendation.testId)).not.toContain("coolledux-graffiti-black");
   });
 
-  it("keeps recommending a test whose targets stay unresolved after a partial result", () => {
+  it("does not re-recommend a partial result: the same experiment would give the same non-answer", () => {
+    // This is the loop the real session hit. A partial timing result leaves
+    // its target claim unresolved, which used to make the identical
+    // experiment look like the best next move — forever.
     const evidence: ClaimEvidence[] = [...baseline];
     const ranked = rankRecommendations({ goal: developGoal, evidence, availabilities: availabilities(evidence, ["coolledux-graffiti-timing"]), completedTests: [completedTest("coolledux-graffiti-timing", "partial")] });
+    expect(ranked.map((recommendation) => recommendation.testId)).not.toContain("coolledux-graffiti-timing");
+  });
+
+  it("still recommends a test that was abandoned before anything was observed", () => {
+    const evidence: ClaimEvidence[] = [...baseline];
+    const ranked = rankRecommendations({ goal: developGoal, evidence, availabilities: availabilities(evidence, ["coolledux-graffiti-timing"]), completedTests: [completedTest("coolledux-graffiti-timing", "abandoned")] });
     expect(ranked.map((recommendation) => recommendation.testId)).toContain("coolledux-graffiti-timing");
+  });
+
+  it("recommends a concluded experiment again only when it was explicitly reopened", () => {
+    const evidence: ClaimEvidence[] = [...baseline];
+    const completedTests = [completedTest("coolledux-graffiti-timing", "partial")];
+    const availability = availabilities(evidence, ["coolledux-graffiti-timing"]);
+    expect(rankRecommendations({ goal: developGoal, evidence, availabilities: availability, completedTests }).map((r) => r.testId))
+      .not.toContain("coolledux-graffiti-timing");
+    expect(rankRecommendations({ goal: developGoal, evidence, availabilities: availability, completedTests, reopenedTestIds: ["coolledux-graffiti-timing"] }).map((r) => r.testId))
+      .toContain("coolledux-graffiti-timing");
   });
 
   it("promotes the advanced stayTime discriminator when it unblocks static usability", () => {

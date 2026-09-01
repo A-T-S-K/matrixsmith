@@ -10,6 +10,7 @@ export type TraceEventType =
   | "observation.recorded" | "evidence.imported" | "validation.recorded" | "content.compiled" | "disconnect" | "error"
   | "investigation.started" | "investigation.resumed" | "investigation.device-resumed" | "investigation.device-detached"
   | "guided-test.transferred" | "guided-test.recorded" | "guided-test.abandoned" | "raster-strategy.validated"
+  | "guided-test.duplicate-blocked" | "guided-test.reopened" | "guided-test.cycle-detected"
   | "advertisement.observed";
 
 export interface TraceEvent {

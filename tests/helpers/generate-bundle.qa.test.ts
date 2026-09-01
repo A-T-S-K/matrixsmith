@@ -16,7 +16,7 @@ it.runIf(Boolean(process.env.QA_BUNDLE_PATH))("generates a QA bundle", async () 
   transport.notificationOnWrite = parseHexBytes(infoFixture.rxHex);
   await controller.probe();
   transport.notificationOnWrite = null;
-  await controller.runGuidedTestTransfer("coolledux-graffiti-timing", { confirmedConsequence: true });
+  await controller.runGuidedTestTransfer("coolledux-graffiti-timing", { confirmedConsequence: true, reason: "initial-experiment", attemptId: "attempt:test" });
   const transactionIds = controller.transactions.slice(-1).map((transaction) => transaction.id);
   controller.recordGuidedTestObservations("coolledux-graffiti-timing", [
     { kind: "boolean", fieldId: "initial-correct", value: "yes" },

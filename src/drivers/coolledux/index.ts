@@ -12,6 +12,7 @@ import { compileAnimation, compileAnimationStaticFrame, compileGif, compileGraff
 import { diagnosticContent, type BuiltDiagnosticContent } from "./diagnostics";
 import type { DiagnosticRegion } from "../../investigation/regions";
 import { coolLedUxGuidedTests } from "./guided-tests";
+import { coolLedUxCorePlan } from "./core-plan";
 import { coolLedUxBaselineClaimEvidence } from "./claims";
 import type { RasterStrategy } from "../../core/raster-strategy";
 import type { Framebuffer } from "../../render/framebuffer";
@@ -33,6 +34,7 @@ export const coolLedUxDriver: MatrixDriver = {
   decodeNotification: decodeCoolLedUxNotification,
   responseMatches: notificationMatchesExpectation,
   guidedTests: coolLedUxGuidedTests,
+  corePlan: coolLedUxCorePlan,
   diagnosticRegions: coolLedUxDiagnosticRegions,
   claimEvidence: coolLedUxBaselineClaimEvidence,
 };

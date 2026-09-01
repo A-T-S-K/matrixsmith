@@ -32,14 +32,14 @@ describe("guided-test safety invariants", () => {
 
   it("keeps the experimental unlock session-only around guided transfers", async () => {
     const { controller } = await identified();
-    await controller.runGuidedTestTransfer("coolledux-graffiti-black", { confirmedConsequence: true });
+    await controller.runGuidedTestTransfer("coolledux-graffiti-black", { confirmedConsequence: true, reason: "initial-experiment", attemptId: "attempt:test" });
     expect(controller.session.experimentalTxEnabled).toBe(false);
     expect(controller.session.confirmedPersistentPlanId).toBeNull();
   }, 30000);
 
   it("blocks guided transfers whose prerequisites are unmet", async () => {
     const { controller } = await identified();
-    await expect(controller.runGuidedTestTransfer("coolledux-color-white", { confirmedConsequence: true })).rejects.toThrow(/pixel\.channel-map/);
+    await expect(controller.runGuidedTestTransfer("coolledux-color-white", { confirmedConsequence: true, reason: "initial-experiment", attemptId: "attempt:test" })).rejects.toThrow(/pixel\.channel-map/);
   });
 
   it("defines every guided test against real declared claims and observations", () => {
