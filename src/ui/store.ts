@@ -878,8 +878,8 @@ export class MatrixStore {
     const profileId = this.controller.session.profile?.id ?? null;
     const stored = latestInvestigationFor(null);
     if (!stored) return null;
-    // Hide the resume card once the current investigation already has progress.
-    if ((this.controller.investigation?.completedTests.length ?? 0) > 0 && this.controller.investigation?.id === stored.investigation.id) return null;
+    // Never offer to resume the investigation that is already active.
+    if (this.controller.investigation?.id === stored.investigation.id) return null;
     return {
       savedAt: stored.savedAt,
       deviceName: stored.investigation.deviceName,

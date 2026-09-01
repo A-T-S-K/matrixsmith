@@ -32,8 +32,8 @@ function ContentSection({ snapshot, store }: { snapshot: AppSnapshot; store: Mat
   const settings = content.settings;
   const gates = snapshot.contentGates;
   const pathSend = (path: keyof typeof gates): { canSend: boolean; title: string } => ({
-    canSend: gates[path].allowed && snapshot.busy === null,
-    title: gates[path].allowed ? "" : gates[path].reason,
+    canSend: gates[path].allowed && snapshot.liveConnected && snapshot.busy === null,
+    title: !snapshot.liveConnected ? "Live content requires a connected physical display." : gates[path].allowed ? "" : gates[path].reason,
   });
   const text = pathSend("text");
   const image = pathSend("image");
@@ -74,7 +74,7 @@ function ContentSection({ snapshot, store }: { snapshot: AppSnapshot; store: Mat
         <button class="primary" disabled={!animation.canSend || (content.animationChoice === "scroll-text" && !settings.text.trim())} title={animation.title} onClick={() => store.requestSendAnimation()}>Send animation…</button>
       </article>
       <article class="panel">
-        <div class="panel-title"><div><span class="panel-kicker">GIF</span><h2>GIF</h2></div><StatusBadge tone="warn">Experimental</StatusBadge></div>
+        <div class="panel-title"><div><span class="panel-kicker">GIF</span><h2>GIF</h2></div><StatusBadge tone={gates.gif.allowed ? "good" : "warn"}>{gates.gif.allowed ? "Verified path" : "Needs verification"}</StatusBadge></div>
         <label class="text-action file-action">Choose GIF →<input type="file" accept="image/gif,.gif" onChange={(event) => void chooseGif(event)}/></label>
         {content.gif ? <>
           <p class="fineprint">{content.gif.name}: {content.gif.byteLength.toLocaleString()} bytes{content.gif.width !== null ? `, canvas ${content.gif.width}×${content.gif.height}` : ""}. Read locally; never uploaded.</p>

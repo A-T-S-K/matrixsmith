@@ -336,3 +336,5 @@ main { width: min(1200px, 100%); margin: 0 auto; padding: 0 1rem 2rem; }
 .sidebar nav button.secondary-nav { opacity: .75; }
 .nav-note { display: block; font-size: .6rem; color: #5b7186; letter-spacing: .06em; }
 .guided-dialog .validation-questions input, .guided-dialog .validation-questions textarea { width: 100%; margin-top: .35rem; }
+.about-grid { grid-template-columns: 1fr; gap: .55rem; }
+.about-grid dt { margin-bottom: .1rem; }

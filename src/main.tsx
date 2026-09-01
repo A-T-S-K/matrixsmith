@@ -14,6 +14,8 @@ const store = new MatrixStore(new MatrixController(transport, trace), transport)
 trace.record("app.started", { webBluetoothSupported: "bluetooth" in navigator });
 render(<App store={store}/>, root);
 void store.initialize();
+// Dev-only console handle for manual QA; never present in production builds.
+if (import.meta.env.DEV) (globalThis as Record<string, unknown>).matrixsmithStore = store;
 // The offline shell belongs to production builds only. In dev the service
 // worker would cache Vite's transient module URLs and serve stale HTML after
 // refactors, so dev sessions unregister any worker left by a previous build.

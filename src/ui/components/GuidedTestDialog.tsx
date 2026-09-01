@@ -42,7 +42,7 @@ function AboutStage({ flow, snapshot, store }: { flow: GuidedFlowState; snapshot
   return <>
     <p class="guided-question"><strong>{flow.about.question}</strong></p>
     <p>{flow.about.whyRelevant}</p>
-    <dl class="state-grid">
+    <dl class="state-grid about-grid">
       <div><dt>What MatrixSmith will do</dt><dd>{flow.about.whatMatrixSmithDoes}</dd></div>
       <div><dt>What changes on the display</dt><dd>{flow.about.whatChangesOnDevice}</dd></div>
       <div><dt>Observation time</dt><dd>{flow.about.estimatedObservationTime}</dd></div>
