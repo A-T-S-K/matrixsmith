@@ -14,7 +14,7 @@ import type { TransmissionPlan } from "../core/transmission";
 import type { ContentValidationWorkflow, ValidationAnswer } from "../diagnostics/validation";
 import { Framebuffer } from "../render/framebuffer";
 import { FrameSequence } from "../render/frame-sequence";
-import { renderText, scrollOffsets } from "../render/font";
+import { renderText } from "../render/font";
 import { planRasterScroll, resolvesToScroll, type ScrollPlan } from "../render/scroll";
 import { diagnosticAnimation } from "../render/patterns";
 import { decodeImageFile, decodeImageSource, ILEDHAT_RGB444, processImage, readGifMetadata, type DecodedImageSource, type FitMode, type ImageComposition, type ImageMode, type ProcessedImage } from "../render/image";
@@ -338,7 +338,6 @@ export interface ContentState {
   readonly textPreview: Framebuffer | null;
   readonly textScrollPlan: ScrollPlan | null;
   readonly image: { readonly preview: Framebuffer; readonly sourceWidth: number; readonly sourceHeight: number; readonly fitMode: FitMode; readonly name: string; readonly processed: ProcessedImage | null } | null;
-  readonly animationChoice: "diagnostic" | "scroll-text";
   readonly animationPreview: readonly Framebuffer[];
   readonly gif: { readonly byteLength: number; readonly width: number | null; readonly height: number | null; readonly warning: string | null; readonly name: string } | null;
 }
@@ -443,7 +442,6 @@ export class MatrixStore {
   #imageState: ContentState["image"] | null = null;
   #gifBytes: Uint8Array | null = null;
   #gifState: ContentState["gif"] | null = null;
-  #animationChoice: "diagnostic" | "scroll-text" = "diagnostic";
   #pendingSend: { view: PendingSend; plan: TransmissionPlan; extras?: Record<string, string> } | null = null;
   #validationFlow: {
     workflowId: string; label: string; consequence: string; stage: "confirm" | "questions" | "done";
@@ -568,8 +566,6 @@ export class MatrixStore {
   }
 
   resetContentSettings(): void { this.#settings = DEFAULT_CONTENT_SETTINGS; saveContentSettings(this.#settings); this.#emit(); }
-
-  setAnimationChoice(choice: "diagnostic" | "scroll-text"): void { this.#animationChoice = choice; this.#emit(); }
 
   async loadImage(file: Blob, name: string): Promise<void> {
     const version = ++this.#imageVersion;
@@ -754,10 +750,13 @@ export class MatrixStore {
     const flow = this.#validationFlow;
     if (!flow || flow.stage !== "confirm") return;
     await this.#run("Transferring diagnostic content…", async () => {
-      const { transactionIds } = await this.controller.runContentValidation(flow.workflowId, { confirmedConsequence: true });
-      flow.transactionIds = [...transactionIds];
-      flow.stage = "questions";
-      this.#info = "Diagnostic upload sent; host writes completed. Look at the physical panel to verify what the firmware accepted.";
+      await this.#wakeLock.acquire();
+      try {
+        const { transactionIds } = await this.controller.runContentValidation(flow.workflowId, { confirmedConsequence: true });
+        flow.transactionIds = [...transactionIds];
+        flow.stage = "questions";
+        this.#info = "Diagnostic upload sent; host writes completed. Look at the physical panel to verify what the firmware accepted.";
+      } finally { await this.#wakeLock.release(); }
     });
     this.#emit();
   }
@@ -908,6 +907,8 @@ export class MatrixStore {
     flow.stage = "running";
     flow.transferProgress = `Uploading diagnostic program (${flow.planSummary?.packetCount ?? "?"} packets at ${flow.planSummary?.pacingMs ?? "?"} ms pacing)…`;
     await this.#run("Transferring diagnostic content…", async () => {
+      await this.#wakeLock.acquire();
+      try {
       // The controller's attempt is the authoritative identity; the timing
       // record below borrows its number rather than counting separately. Two
       // independently numbered attempt lists drift the moment one of them
@@ -959,6 +960,7 @@ export class MatrixStore {
         this.#stopTimerTicks();
         throw error;
       }
+      } finally { await this.#wakeLock.release(); }
     });
     if (flow.stage === "running") { flow.stage = "about"; flow.transferProgress = null; }
     this.#emit();
@@ -1395,14 +1397,7 @@ export class MatrixStore {
 
   #buildAnimationSequence(): FrameSequence {
     const profile = this.#requireProfile();
-    if (this.#animationChoice === "diagnostic") return diagnosticAnimation(profile.width, profile.height);
-    const text = this.#settings.text.trim();
-    if (!text) throw new Error("Enter text to build a scrolling-text animation.");
-    const offsets = scrollOffsets(text, profile.width, 2);
-    const frames = offsets.map((offset) => renderText(text, profile.width, profile.height, {
-      color: hexToRgb(this.#settings.textColor), background: hexToRgb(this.#settings.textBackground), alignment: "left", offsetX: offset,
-    }));
-    return new FrameSequence(frames, frames.map(() => ({ milliseconds: 120 })));
+    return diagnosticAnimation(profile.width, profile.height);
   }
 
   #scrollPlan(width: number, height: number): ScrollPlan | null {
@@ -1683,7 +1678,6 @@ export class MatrixStore {
       textPreview: profile ? this.#renderTextFrame(profile.width, profile.height) : null,
       textScrollPlan: profile && resolvesToScroll(this.#settings.textDisplayMode, this.#settings.text.trim(), profile.width) ? this.#scrollPlan(profile.width, profile.height) : null,
       image: this.#imageState,
-      animationChoice: this.#animationChoice,
       animationPreview: profile ? [...diagnosticAnimation(profile.width, profile.height).frames] : [],
       gif: this.#gifState,
     };
