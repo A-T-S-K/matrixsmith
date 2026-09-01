@@ -1,6 +1,7 @@
 import type { JSX } from "preact";
 import { useState } from "preact/hooks";
 import type { AppSnapshot, GuidedFlowState, MatrixStore } from "../store";
+import { completedTestResolution } from "../../investigation/investigation";
 import { FramePreview } from "./FramePreview";
 import { StatusBadge } from "./StatusBadge";
 import { SpatialObservation } from "./observation/SpatialObservation";
@@ -155,7 +156,7 @@ function RetryConfirmation({ flow, store }: { flow: GuidedFlowState; store: Matr
       <li><span>✓ Same content</span></li>
       <li><span>✓ Same settings{Object.keys(flow.attempts[0]?.parameters ?? {}).length > 0 ? ` (${Object.entries(flow.attempts[0]!.parameters).map(([key, value]) => `${key}=${value}`).join(", ")})` : ""}</span></li>
     </ul>
-    <p class="fineprint">This will be attempt {flow.attempts.length + 1}. Earlier attempts stay in the record and are never used to draw conclusions unless they were valid.</p>
+    <p class="fineprint">This will be attempt {(flow.attempts.at(-1)?.attemptNumber ?? 0) + 1}. Earlier attempts stay in the record — including any whose transfer failed — and are never used to draw conclusions unless they were valid.</p>
     <div class="step-nav">
       <button class="primary" onClick={() => void store.retryTimingAttempt()}>Retry</button>
       <button class="secondary" onClick={() => store.cancelTimingRetry()}>Not now</button>
@@ -167,9 +168,13 @@ function ResultStage({ flow, snapshot, store }: { flow: GuidedFlowState; snapsho
   const result = flow.result;
   if (!result) return <></>;
   const tone = result.status === "passed" ? "good" : result.status === "failed" ? "bad" : "warn";
+  // An experiment whose measurement fell short has not answered anything, and
+  // must not be presented as a verdict or as the end of the road. It keeps its
+  // milestone, and the offer is to measure the same thing again.
+  const incomplete = completedTestResolution(result) === "retryable-incomplete";
   return <>
     <div class="result-head">
-      <StatusBadge tone={tone}>{result.status.toUpperCase()}</StatusBadge>
+      <StatusBadge tone={incomplete ? "warn" : tone}>{incomplete ? "NOT ENOUGH OBSERVATION" : result.status.toUpperCase()}</StatusBadge>
     </div>
     <p class="result-summary">{result.summary}</p>
     {(result.established.length > 0 || result.rejected.length > 0 || result.unknowns.length > 0) && <>
@@ -180,15 +185,20 @@ function ResultStage({ flow, snapshot, store }: { flow: GuidedFlowState; snapsho
         {result.unknowns.map((item) => <li><span>? {item}</span></li>)}
       </ul>
     </>}
-    {flow.nextTest && <p class="next-up"><span class="panel-kicker">NEXT</span> {flow.nextTest.title}</p>}
+    {incomplete && <p class="fineprint">
+      This is still {flow.corePosition ? `test ${flow.corePosition.position} of ${flow.corePosition.total}` : "the same test"} — measuring again does not start a new one, and the attempts so far stay in the record.
+    </p>}
+    {!incomplete && flow.nextTest && <p class="next-up"><span class="panel-kicker">NEXT</span> {flow.nextTest.title}</p>}
     <div class="step-nav">
-      {flow.nextTest
-        ? <button class="primary" onClick={() => store.continueToNextTest()}>Continue</button>
-        : <button class="primary" onClick={() => store.closeGuidedTest()}>Done</button>}
+      {incomplete
+        ? <button class="primary" onClick={() => store.measureAgain(flow.testId)}>Measure again</button>
+        : flow.nextTest
+          ? <button class="primary" onClick={() => store.continueToNextTest()}>Continue</button>
+          : <button class="primary" onClick={() => store.closeGuidedTest()}>Done</button>}
       <button class="secondary" onClick={() => void store.copyTestReport(flow.testId)}>Copy report</button>
     </div>
     <div class="result-tertiary">
-      <button class="quiet small" onClick={() => { store.closeGuidedTest(); store.stopInvestigation(); }}>Stop testing for now</button>
+      <button class="quiet small" onClick={() => { store.closeGuidedTest(); store.stopInvestigation(); }}>{incomplete ? "Stop for now" : "Stop testing for now"}</button>
       {snapshot.rasterStrategyLabel && <p class="fineprint">Active static-image strategy: {snapshot.rasterStrategyLabel}.</p>}
     </div>
   </>;

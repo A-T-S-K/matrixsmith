@@ -53,10 +53,18 @@ function CoreProgress({ snapshot }: { snapshot: AppSnapshot }): JSX.Element {
   return <section class="core-progress" aria-label="Core characterization progress">
     <div class="core-progress-head">
       <strong>{progress.title}</strong>
-      <small>{progress.completed} of {progress.total} complete</small>
+      {/*
+        The denominator is every slot in the plan and never moves. Skipped
+        milestones are reported separately rather than deducted, so a branch
+        closing reads as "one fewer to do", not as the plan shrinking.
+      */}
+      <small>
+        {progress.resolved} of {progress.total} done
+        {progress.skipped > 0 && <> · {progress.completed} complete, {progress.skipped} skipped</>}
+      </small>
     </div>
     <div class="core-bar" aria-hidden="true">
-      {progress.steps.filter((step) => step.state !== "skipped").map((step) => <span class={step.state}/>)}
+      {progress.steps.map((step) => <span class={step.state}/>)}
     </div>
     <details class="technical-disclosure">
       <summary>Milestones</summary>
@@ -64,8 +72,8 @@ function CoreProgress({ snapshot }: { snapshot: AppSnapshot }): JSX.Element {
         {progress.steps.map((step) => <li class={step.state}>
           <span class="glyph" aria-hidden="true">{step.state === "complete" ? "✓" : step.state === "current" ? "→" : step.state === "skipped" ? "–" : "○"}</span>
           <span>
-            {step.position ? `${step.position}. ` : ""}{step.title}
-            {step.state === "skipped" && <> — <em>not needed: {step.skipReason}</em></>}
+            {step.position}. {step.title}
+            {step.state === "skipped" && <> — <em>skipped, not needed: {step.skipReason}</em></>}
           </span>
         </li>)}
       </ul>
@@ -131,6 +139,28 @@ function NextAction({ snapshot, store }: { snapshot: AppSnapshot; store: MatrixS
           onClick={() => store.startGuidedTest(next.testId)}
         >Run test</button>
         <small>{next.estimatedObservationTime}{next.risk === "persistent" ? " · replaces stored content" : ""}</small>
+      </div>
+    </section>;
+  }
+  // An experiment that ran out of observation time is not a dead end. The
+  // milestone is still open and the same measurement, watched for long
+  // enough, would settle it — so the offer is to measure again, not a
+  // "nothing further is recommended" that strands the user.
+  const retry = snapshot.coreProgress?.retryableTestId ?? null;
+  if (retry) {
+    const step = snapshot.coreProgress?.steps.find((entry) => entry.id === snapshot.coreProgress?.currentStepId) ?? null;
+    return <section class="next-action" aria-labelledby="next-action-title">
+      <p class="panel-kicker">{step ? `TEST ${step.position} OF ${snapshot.coreProgress!.total}` : "NEXT"}</p>
+      <h2 id="next-action-title">Not enough observation time</h2>
+      <p>The last measurement stopped before it had watched for long enough to answer this step. Nothing about the display was concluded from it.</p>
+      <div class="next-action-cta">
+        <button
+          class="primary"
+          disabled={snapshot.busy !== null || !snapshot.liveConnected}
+          title={snapshot.liveConnected ? "" : "Connect the physical display to run tests."}
+          onClick={() => store.measureAgain(retry)}
+        >Measure again</button>
+        <button class="secondary" onClick={() => store.stopInvestigation()}>Stop for now</button>
       </div>
     </section>;
   }

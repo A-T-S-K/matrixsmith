@@ -145,7 +145,7 @@ export interface OrchestrationDebugView {
     readonly label: string;
     readonly fingerprintKey: string | null;
   };
-  readonly recommendationTrail: readonly { readonly testId: string; readonly evidenceCount: number }[];
+  readonly recommendationTrail: readonly { readonly testId: string; readonly evidenceCount: number; readonly origin: string | null }[];
   readonly cycling: boolean;
   readonly unclassifiedDuplicates: number;
 }
@@ -1506,7 +1506,7 @@ export class MatrixStore {
         const panel = this.controller.panelProgram();
         return { certainty: panel.certainty, kind: panel.kind, label: panel.label, fingerprintKey: panel.fingerprint?.key ?? null };
       })(),
-      recommendationTrail: this.controller.recommendationTrail.map((entry) => ({ testId: entry.testId, evidenceCount: entry.evidenceCount })),
+      recommendationTrail: this.controller.recommendationTrail.map((entry) => ({ testId: entry.testId, evidenceCount: entry.evidenceCount, origin: entry.origin ?? null })),
       cycling: this.controller.recommendationCycle.cycling,
       unclassifiedDuplicates: this.controller.transferSummary().unclassifiedDuplicates,
     };
