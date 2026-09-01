@@ -5,6 +5,7 @@ import {
   type ClaimUpdate, type GuidedTestDefinition, type GuidedTestInterpretation, type GuidedTestTimer,
 } from "../../investigation/tests";
 import { operationalTrust } from "../../investigation/claims";
+import { ILEDHAT_PROFILE_ID } from "../../profiles/iledhat-31ae-32x16";
 import { formatDuration } from "../../investigation/observations";
 import { MINIMUM_STATIC_HOLD_MS, VISIBLE_STATIC_HOLD_METRIC } from "../../investigation/static-viability";
 import { PIXEL_CHANNEL_PROBE_WORDS } from "./diagnostics";
@@ -717,12 +718,31 @@ const colorWhiteTest: GuidedTestDefinition = {
   },
 };
 
-export const COOLLEDUX_GUIDED_TESTS: readonly GuidedTestDefinition[] = Object.freeze([
+/**
+ * iLedHat-SPECIFIC characterization tests. Every test in this suite bakes in
+ * assumptions about the exact physical iLedHat: 32×16 geometry, four
+ * 8-column tiles, the previously observed Graffiti movement, and the current
+ * exact hypotheses under investigation. They must not be exposed to other
+ * CoolLEDUX profiles — a future unrelated device gets its own applicable
+ * suite (or a genuinely generic one), never these unchanged.
+ */
+export const ILEDHAT_GUIDED_TESTS: readonly GuidedTestDefinition[] = Object.freeze([
   graffitiBlackTest, graffitiTimingTest, graffitiStayTimeTest,
   animationStaticTest, animationStaticPairTest,
   pixelChannelTest, colorWhiteTest,
 ]);
 
+/** Generic CoolLEDUX tests applicable to any profile of the family. None exist yet. */
+export const COOLLEDUX_GENERIC_GUIDED_TESTS: readonly GuidedTestDefinition[] = Object.freeze([]);
+
+/** Declarative applicability: which profiles each suite applies to. */
+function appliesToIledHat(profile: DeviceProfile): boolean {
+  return profile.id === ILEDHAT_PROFILE_ID;
+}
+
 export function coolLedUxGuidedTests(profile: DeviceProfile): readonly GuidedTestDefinition[] {
-  return profile.driverId === "coolledux" ? COOLLEDUX_GUIDED_TESTS : [];
+  if (profile.driverId !== "coolledux") return [];
+  return appliesToIledHat(profile)
+    ? [...ILEDHAT_GUIDED_TESTS, ...COOLLEDUX_GENERIC_GUIDED_TESTS]
+    : [...COOLLEDUX_GENERIC_GUIDED_TESTS];
 }

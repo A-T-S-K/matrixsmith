@@ -6,7 +6,7 @@ import { knownIledHatFingerprint } from "../helpers/fixtures";
 import { ScriptedCoolLedUxDevice } from "../helpers/scripted-device";
 import { MatrixStore } from "../../src/ui/store";
 import infoFixture from "../fixtures/iledhat/coolledux-device-info-cc.json";
-import { COOLLEDUX_GUIDED_TESTS } from "../../src/drivers/coolledux/guided-tests";
+import { ILEDHAT_GUIDED_TESTS } from "../../src/drivers/coolledux/guided-tests";
 import { iledHat31aeProfile } from "../../src/profiles/iledhat-31ae-32x16";
 
 async function identified(): Promise<{ transport: ScriptedCoolLedUxDevice; controller: MatrixController }> {
@@ -22,7 +22,7 @@ async function identified(): Promise<{ transport: ScriptedCoolLedUxDevice; contr
 describe("guided-test safety invariants", () => {
   it("never enables automatic retry on persistent guided-test plans", async () => {
     const { controller } = await identified();
-    for (const test of COOLLEDUX_GUIDED_TESTS) {
+    for (const test of ILEDHAT_GUIDED_TESTS) {
       const plan = controller.planGuidedTest(test.id);
       expect(plan.retryPolicy.maxAttempts).toBe(1);
       expect(plan.retryPolicy.retryOn).toHaveLength(0);
@@ -43,7 +43,7 @@ describe("guided-test safety invariants", () => {
   });
 
   it("defines every guided test against real declared claims and observations", () => {
-    for (const test of COOLLEDUX_GUIDED_TESTS) {
+    for (const test of ILEDHAT_GUIDED_TESTS) {
       expect(test.targetClaims.length).toBeGreaterThan(0);
       expect(test.observation.length).toBeGreaterThan(0);
       expect(test.consequence).toContain("replaces");
@@ -52,7 +52,7 @@ describe("guided-test safety invariants", () => {
   });
 
   it("exposes no password, OTA, or firmware operations", () => {
-    const source = JSON.stringify(COOLLEDUX_GUIDED_TESTS.map((test) => test.operation));
+    const source = JSON.stringify(ILEDHAT_GUIDED_TESTS.map((test) => test.operation));
     expect(source).not.toMatch(/password|ota|firmware/i);
   });
 });
