@@ -4,117 +4,173 @@ import type { AppSnapshot, MatrixStore } from "../store";
 import { StatusBadge } from "../components/StatusBadge";
 
 /**
- * The guided investigation workspace with strong progressive disclosure.
- * The default surface answers, in order: what we are trying to determine
- * (current goal), what is already known (compact summary), what to do next
- * (ONE dominant recommendation), what happened last time (recent result),
- * and how to copy the report. The full test catalogue, the technical
- * support/claim map, previous tests, legacy validations, and the protocol
- * workbench are secondary expandable areas — present, never dominant.
+ * The guided investigation home.
+ *
+ * The screen answers one question first: WHAT SHOULD I DO NEXT? Everything
+ * that used to compete with that answer — the product's description of
+ * itself, three separate report buttons, a full-height history card, the
+ * complete claim map, the whole test catalogue — is either gone or demoted
+ * behind a disclosure. Reports follow context rather than sitting above the
+ * primary action: there is nothing to report on before the first test runs.
  */
 export function InvestigationView({ snapshot, store }: { readonly snapshot: AppSnapshot; readonly store: MatrixStore }): JSX.Element {
-  return <section class="view">
-    <div class="view-heading"><div><p class="eyebrow">GUIDED INVESTIGATION</p><h1>Investigate</h1>
-      <p>{snapshot.investigation ? snapshot.investigation.goalLabel : "MatrixSmith picks the highest-information safe test, runs it, and asks you only what the panel physically shows."}</p></div>
-      <div class="inline-form">
-        <button class="secondary" onClick={() => void store.copyInvestigationReport()}>Copy investigation report</button>
-        <button class="quiet" onClick={() => store.openReport()}>More report formats…</button>
-      </div>
-    </div>
+  const started = Boolean(snapshot.investigation?.completedTests.length);
+  return <section class="view investigate">
+    <h1 class="view-title">Investigate</h1>
+    {snapshot.investigation && started && <p class="goal-line">{snapshot.investigation.goalLabel}</p>}
 
-    {snapshot.storedInvestigation && !snapshot.investigation?.completedTests.length && <article class="panel resume-panel">
-      <div class="panel-title"><div><span class="panel-kicker">PREVIOUS INVESTIGATION</span><h2>{snapshot.storedInvestigation.deviceName ?? "Stored display"} · {snapshot.storedInvestigation.testCount} test(s)</h2></div><StatusBadge tone="neutral">{snapshot.storedInvestigation.matchesProfile ? "Matches this display" : "Different/unknown display"}</StatusBadge></div>
-      <p class="fineprint">Saved {new Date(snapshot.storedInvestigation.savedAt).toLocaleString()}. Historical evidence is labeled as a previous local session; it informs recommendations but never bypasses current-session safety.</p>
-      <div class="inline-form">
-        <button class="secondary" onClick={() => store.resumeStoredInvestigation()}>Resume investigation</button>
-        <button class="quiet" onClick={() => store.forgetLocalHistory()}>Forget local history</button>
-      </div>
-    </article>}
-
+    <NextAction snapshot={snapshot} store={store}/>
     <WhatWeKnow snapshot={snapshot}/>
-
-    {snapshot.nextTest ? <article class="recommended">
-      <span class="recommended-icon">→</span>
-      <div>
-        <p class="panel-kicker">RECOMMENDED NEXT TEST</p>
-        <h2>{snapshot.nextTest.title}</h2>
-        <p>{snapshot.nextTest.description}</p>
-        <p><strong>Why:</strong> {snapshot.nextTest.why}</p>
-        <p class="fineprint">~{snapshot.nextTest.estimatedObservationTime} · {snapshot.nextTest.risk === "persistent" ? "replaces stored display content" : snapshot.nextTest.risk}</p>
-      </div>
-      <button class="primary" disabled={snapshot.busy !== null || !snapshot.liveConnected} title={snapshot.liveConnected ? "" : "Connect the physical display to run tests."} onClick={() => store.startGuidedTest(snapshot.nextTest!.testId)}>Run next test</button>
-    </article> : <article class="recommended"><span class="recommended-icon">→</span><div><p class="panel-kicker">RECOMMENDED NEXT ACTION</p><h2>{snapshot.recommended.title}</h2><p>{snapshot.recommended.description}</p></div>
-      {snapshot.recommended.action === "identify" && <button class="primary" onClick={() => void store.identify()} disabled={snapshot.busy !== null}>Run safe identification</button>}
-      {snapshot.recommended.action === "checks" && <button class="primary" onClick={() => void store.refreshInfo()} disabled={snapshot.busy !== null}>Refresh device info</button>}
-    </article>}
-
     <RecentResult snapshot={snapshot} store={store}/>
+    <PreviousInvestigation snapshot={snapshot} store={store}/>
     <TroubleshootEntry snapshot={snapshot} store={store}/>
 
-    <details class="secondary-section"><summary>All guided tests</summary><TestCatalogue snapshot={snapshot} store={store}/></details>
-    <details class="secondary-section"><summary>Technical support map</summary><SupportMap snapshot={snapshot}/></details>
+    <details class="secondary-section"><summary>All guided tests{snapshot.guidedTests.length ? ` (${snapshot.guidedTests.length})` : ""}</summary><TestCatalogue snapshot={snapshot} store={store}/></details>
     <details class="secondary-section"><summary>Previous tests{snapshot.investigation?.completedTests.length ? ` (${snapshot.investigation.completedTests.length})` : ""}</summary><CompletedTests snapshot={snapshot} store={store}/></details>
+    <details class="secondary-section"><summary>Technical support map</summary><SupportMap snapshot={snapshot}/></details>
+    <details class="secondary-section"><summary>Reports</summary><ReportActions store={store}/></details>
     <details class="secondary-section"><summary>Developer tools</summary><DeveloperTools snapshot={snapshot} store={store}/></details>
   </section>;
 }
 
-/** Compact "what we know" summary derived from the claim map. */
+/** The one dominant action, with the reason it is next. */
+function NextAction({ snapshot, store }: { snapshot: AppSnapshot; store: MatrixStore }): JSX.Element {
+  const next = snapshot.nextTest;
+  if (next) {
+    return <section class="next-action" aria-labelledby="next-action-title">
+      <p class="panel-kicker">NEXT</p>
+      <h2 id="next-action-title">{next.title}</h2>
+      <p>{next.description}</p>
+      <details class="why-disclosure"><summary>Why this test</summary><p>{next.why}</p></details>
+      <div class="next-action-cta">
+        <button
+          class="primary"
+          disabled={snapshot.busy !== null || !snapshot.liveConnected}
+          title={snapshot.liveConnected ? "" : "Connect the physical display to run tests."}
+          onClick={() => store.startGuidedTest(next.testId)}
+        >Run test</button>
+        <small>{next.estimatedObservationTime}{next.risk === "persistent" ? " · replaces stored content" : ""}</small>
+      </div>
+    </section>;
+  }
+  return <section class="next-action" aria-labelledby="next-action-title">
+    <p class="panel-kicker">NEXT</p>
+    <h2 id="next-action-title">{snapshot.recommended.title}</h2>
+    <p>{snapshot.recommended.description}</p>
+    <div class="next-action-cta">
+      {snapshot.recommended.action === "identify" && <button class="primary" onClick={() => void store.identify()} disabled={snapshot.busy !== null}>Run safe identification</button>}
+      {snapshot.recommended.action === "checks" && <button class="primary" onClick={() => void store.refreshInfo()} disabled={snapshot.busy !== null}>Refresh device info</button>}
+    </div>
+  </section>;
+}
+
+/** A compact state summary — the claim-by-claim map stays a disclosure. */
 function WhatWeKnow({ snapshot }: { snapshot: AppSnapshot }): JSX.Element {
   if (snapshot.claimGroups.length === 0) return <></>;
   const rows = snapshot.claimGroups.flatMap((group) => group.claims);
-  const verified = rows.filter((claim) => claim.status === "verified");
-  const rejected = rows.filter((claim) => claim.status === "rejected");
-  const open = rows.filter((claim) => claim.status === "unresolved" || claim.status === "unknown" || claim.status === "source-supported");
-  const strategy = rows.find((claim) => claim.id === "static.strategy");
-  return <article class="panel what-we-know">
-    <div class="panel-title"><div><span class="panel-kicker">WHAT WE KNOW</span></div></div>
-    <p>
-      <strong>{verified.length}</strong> capabilities verified · <strong>{rejected.length}</strong> ruled out · <strong>{open.length}</strong> open questions.
-      {snapshot.rasterStrategyLabel
-        ? <> Static images are usable via <strong>{snapshot.rasterStrategyLabel}</strong>.</>
-        : strategy ? <> No usable static-image strategy yet — that is what the next tests determine.</> : null}
-    </p>
-    <p class="fineprint">The full claim-by-claim map is under “Technical support map” below.</p>
-  </article>;
+  const verified = rows.filter((claim) => claim.status === "verified").length;
+  const rejected = rows.filter((claim) => claim.status === "rejected").length;
+  const unresolved = rows.filter((claim) => claim.status === "unresolved").length;
+  const open = rows.filter((claim) => claim.status === "unknown" || claim.status === "source-supported").length;
+  return <section class="know-strip" aria-label="What we know so far">
+    <ul>
+      <li class="known"><span aria-hidden="true">✓</span>{verified} verified</li>
+      {rejected > 0 && <li class="ruled-out"><span aria-hidden="true">✕</span>{rejected} ruled out</li>}
+      {unresolved > 0 && <li class="conflict"><span aria-hidden="true">!</span>{unresolved} unresolved</li>}
+      <li class="open"><span aria-hidden="true">?</span>{open} open</li>
+    </ul>
+    <p class="fineprint">{snapshot.rasterStrategyLabel
+      ? <>Static images work via <strong>{snapshot.rasterStrategyLabel}</strong>.</>
+      : <>No working way to show a still image yet — that is what these tests determine.</>}</p>
+  </section>;
 }
 
 function RecentResult({ snapshot, store }: { snapshot: AppSnapshot; store: MatrixStore }): JSX.Element {
   const latest = snapshot.investigation?.completedTests.at(-1);
   if (!latest) return <></>;
-  return <article class="panel recent-result">
-    <div class="panel-title"><div><span class="panel-kicker">LAST TEST</span><h2>{latest.title}</h2></div>
-      <StatusBadge tone={latest.status === "passed" ? "good" : latest.status === "failed" ? "bad" : "warn"}>{latest.status}</StatusBadge></div>
-    <p>{latest.summary}</p>
-    <div class="inline-form">
-      <button class="secondary" onClick={() => void store.copyTestReport(latest.testId)}>Copy test report</button>
-      {snapshot.investigation?.status === "active" && <button class="quiet" onClick={() => store.stopInvestigation()}>Stop testing for now</button>}
+  return <section class="recent-result">
+    <div class="recent-head">
+      <div>
+        <p class="panel-kicker">LAST TEST</p>
+        <h3>{latest.title}</h3>
+      </div>
+      <StatusBadge tone={latest.status === "passed" ? "good" : latest.status === "failed" ? "bad" : "warn"}>{latest.status}</StatusBadge>
     </div>
-  </article>;
+    <p>{latest.summary}</p>
+    <div class="utility-row">
+      <button class="text-action" onClick={() => void store.copyTestReport(latest.testId)}>Copy report</button>
+      {snapshot.investigation?.status === "active" && <button class="text-action quiet-action" onClick={() => store.stopInvestigation()}>Stop testing</button>}
+    </div>
+  </section>;
+}
+
+/**
+ * Previous work as a single line by default.
+ *
+ * The device-binding question is real — MatrixSmith genuinely cannot prove
+ * two sessions saw the same physical unit — but it is a footnote, not the
+ * headline, and the evidence-system vocabulary that used to state it belongs
+ * in the details rather than on the primary screen.
+ */
+function PreviousInvestigation({ snapshot, store }: { snapshot: AppSnapshot; store: MatrixStore }): JSX.Element {
+  const stored = snapshot.storedInvestigation;
+  if (!stored || snapshot.investigation?.completedTests.length) return <></>;
+  const savedAt = new Date(stored.savedAt);
+  return <section class="previous-investigation">
+    <div class="previous-line">
+      <div>
+        <strong>Previous investigation</strong>
+        <small>{stored.testCount} test{stored.testCount === 1 ? "" : "s"} · saved {savedAt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</small>
+      </div>
+      <button class="secondary small" onClick={() => store.resumeStoredInvestigation()}>Resume</button>
+    </div>
+    <details class="technical-disclosure">
+      <summary>Details</summary>
+      <p class="fineprint">{stored.deviceName ?? "Stored display"} · saved {savedAt.toLocaleString()}.</p>
+      <p class="fineprint">{stored.matchesProfile
+        ? "This looks like the same kind of display. MatrixSmith cannot prove it is the same physical unit, so earlier results are rechecked when they matter."
+        : "Device match not confirmed — this may be a different display. Earlier results are kept for reference and rechecked before they are relied on."}</p>
+      <button class="text-action quiet-action" onClick={() => store.forgetLocalHistory()}>Forget this history</button>
+    </details>
+  </section>;
+}
+
+function TroubleshootEntry({ snapshot, store }: { snapshot: AppSnapshot; store: MatrixStore }): JSX.Element {
+  const [open, setOpen] = useState(false);
+  if (!open) {
+    return <button class="text-action troubleshoot-link" onClick={() => setOpen(true)}>Troubleshoot another problem</button>;
+  }
+  return <section class="troubleshoot-open">
+    <p class="fineprint">What are you seeing? MatrixSmith turns the symptom into an investigation with the right first test.</p>
+    <div class="symptom-grid">{snapshot.symptoms.map((symptom) => <button class="symptom-card" onClick={() => { setOpen(false); store.startTroubleshoot(symptom.id); }}>{symptom.label}</button>)}</div>
+    <button class="text-action quiet-action" onClick={() => setOpen(false)}>Cancel</button>
+  </section>;
+}
+
+function ReportActions({ store }: { store: MatrixStore }): JSX.Element {
+  return <section>
+    <p class="fineprint">Reports describe everything established so far, with the exact evidence behind each claim.</p>
+    <div class="utility-row">
+      <button class="secondary" onClick={() => void store.copyInvestigationReport()}>Copy investigation report</button>
+      <button class="text-action" onClick={() => store.openReport()}>Other formats…</button>
+    </div>
+  </section>;
 }
 
 function SupportMap({ snapshot }: { snapshot: AppSnapshot }): JSX.Element {
   if (snapshot.claimGroups.length === 0) return <></>;
   return <section>
-    <div class="section-heading"><p>What is verified, what failed, and what remains unknown — derived from atomic claims, never from broad guesses.</p></div>
-    <div class="diagnose-grid claim-grid">{snapshot.claimGroups.map((group) => <article class="panel">
-      <div class="panel-title"><div><span class="panel-kicker">{group.label.toUpperCase()}</span></div></div>
+    <p class="fineprint">What is verified, what failed, and what remains unknown — derived from atomic claims, never from broad guesses.</p>
+    {snapshot.claimGroups.map((group) => <div class="claim-group">
+      <p class="panel-kicker">{group.label.toUpperCase()}</p>
       <div class="support-table">{group.claims.map((claim) => <div class={`support-row claim-${claim.status}`} title={claim.evidence}>
         <span class="claim-glyph" aria-hidden="true">{claim.glyph}</span>
         <strong>{claim.label}</strong>
         <StatusBadge tone={claim.status === "verified" ? "good" : claim.status === "rejected" ? "bad" : claim.status === "unresolved" ? "warn" : "neutral"}>{claim.status === "source-supported" ? "source only" : claim.status}</StatusBadge>
         <span>{claim.scopeLabel ?? ""}</span>
       </div>)}</div>
-    </article>)}</div>
+    </div>)}
     {snapshot.rasterStrategyLabel && <p class="fineprint">Validated static-image strategy this session: {snapshot.rasterStrategyLabel}.</p>}
-  </section>;
-}
-
-function TroubleshootEntry({ snapshot, store }: { snapshot: AppSnapshot; store: MatrixStore }): JSX.Element {
-  const [open, setOpen] = useState(false);
-  return <section>
-    {!open ? <button class="secondary" onClick={() => setOpen(true)}>Something's wrong with my display…</button>
-      : <><p class="fineprint">Start from what you're seeing. MatrixSmith turns the symptom into an investigation with the right first test.</p>
-        <div class="tool-grid symptom-grid">{snapshot.symptoms.map((symptom) => <button class="symptom-card" onClick={() => { setOpen(false); store.startTroubleshoot(symptom.id); }}>{symptom.label}</button>)}</div></>}
   </section>;
 }
 
@@ -122,45 +178,56 @@ function TestCatalogue({ snapshot, store }: { snapshot: AppSnapshot; store: Matr
   if (snapshot.guidedTests.length === 0) return <p class="fineprint">No guided tests are available for this profile.</p>;
   const order = { core: 0, recommended: 1, advanced: 2, optional: 3 } as Record<string, number>;
   const tests = [...snapshot.guidedTests].sort((a, b) => (order[a.category] ?? 9) - (order[b.category] ?? 9));
-  return <section>
-    <div class="section-heading"><p>Each test is a short About → Run → Observe → Result flow. You never need the protocol workbench to produce complete evidence.</p></div>
-    <div class="tool-grid">{tests.map((test) => <article class="tool-card">
-      <div><span class={`tool-kind ${test.category}`}>{test.category}</span>{test.lastStatus && <StatusBadge tone={test.lastStatus === "passed" ? "good" : test.lastStatus === "failed" ? "bad" : "warn"}>{test.lastStatus}</StatusBadge>}</div>
-      <h3>{test.title}</h3>
-      <p>{test.question}</p>
-      <p class="fineprint">~{test.estimatedObservationTime}</p>
-      <button class="secondary" disabled={!test.available || snapshot.busy !== null} title={test.reason ?? ""} onClick={() => store.startGuidedTest(test.id)}>{test.lastStatus ? "Run again" : "Start test"}</button>
-      {!test.available && test.reason && <p class="fineprint">{test.reason}</p>}
-    </article>)}</div>
-  </section>;
+  return <ul class="test-list">{tests.map((test) => <li class={test.available ? "" : "unavailable"}>
+    <div class="test-line">
+      <div>
+        <strong>{test.title}</strong>
+        <small>{test.category} · {test.estimatedObservationTime}</small>
+      </div>
+      {test.lastStatus && <StatusBadge tone={test.lastStatus === "passed" ? "good" : test.lastStatus === "failed" ? "bad" : "warn"}>{test.lastStatus}</StatusBadge>}
+      <button class="secondary small" disabled={!test.available || snapshot.busy !== null} title={test.reason ?? ""} onClick={() => store.startGuidedTest(test.id)}>{test.lastStatus ? "Again" : "Start"}</button>
+    </div>
+    {!test.available && test.reason && <p class="fineprint">{test.reason}</p>}
+  </li>)}</ul>;
 }
 
 function CompletedTests({ snapshot, store }: { snapshot: AppSnapshot; store: MatrixStore }): JSX.Element {
   const investigation = snapshot.investigation;
   if (!investigation || investigation.completedTests.length === 0) return <p class="fineprint">No tests completed yet.</p>;
   return <section>
-    <div class="section-heading"><p>{investigation.goalLabel} · {investigation.status === "stopped" ? "stopped (saved locally)" : "active"}</p>
-      {investigation.status === "active" && <button class="quiet" onClick={() => store.stopInvestigation()}>Stop testing for now</button>}
-    </div>
+    <p class="fineprint">{investigation.goalLabel} · {investigation.status === "stopped" ? "stopped (saved locally)" : "active"}</p>
     <div class="run-list">{[...investigation.completedTests].reverse().map((test) => <details class={`run ${test.status}`}>
       <summary><span>{test.title}</span><StatusBadge tone={test.status === "passed" ? "good" : test.status === "failed" ? "bad" : "warn"}>{test.status}</StatusBadge><small>{new Date(test.completedAt).toLocaleTimeString([], { hour12: false })}</small></summary>
       <p>{test.summary}</p>
       {test.established.length > 0 && <ol>{test.established.map((item) => <li class="passed"><span>✓ {item}</span></li>)}</ol>}
       {test.rejected.length > 0 && <ol>{test.rejected.map((item) => <li class="failed"><span>✕ {item}</span></li>)}</ol>}
-      <div class="inline-form"><button class="secondary" onClick={() => void store.copyTestReport(test.testId)}>Copy test report</button></div>
+      {test.attempts && test.attempts.length > 1 && <p class="fineprint">{test.attempts.length} timed attempts; {test.attempts.filter((attempt) => attempt.validity === "valid").length} valid.</p>}
+      <button class="text-action" onClick={() => void store.copyTestReport(test.testId)}>Copy report</button>
     </details>)}</div>
+    {investigation.status === "active" && <button class="text-action quiet-action" onClick={() => store.stopInvestigation()}>Stop testing for now</button>}
   </section>;
 }
 
-/** Protocol workbench access, read-only diagnostics, and the legacy validation workflows. */
+/** Protocol workbench access, read-only diagnostics, and legacy validations. */
 function DeveloperTools({ snapshot, store }: { snapshot: AppSnapshot; store: MatrixStore }): JSX.Element {
   return <section>
-    <div class="section-heading"><p>Deep packet/GATT tooling and legacy checks. Nothing here is required for the guided workflow.</p></div>
-    <div class="inline-form"><button class="secondary" onClick={() => store.setView("develop")}>Open protocol workbench</button></div>
-    <div class="tool-grid">
-      {snapshot.diagnosticTools.map((tool) => <article class="tool-card"><div><span class={`tool-kind ${tool.kind}`}>{tool.kind}</span><StatusBadge tone={tool.validation === "verified" ? "good" : "warn"}>{tool.validation}</StatusBadge></div><h3>{tool.label}</h3><p>{tool.purpose}</p><button class="secondary" disabled={!tool.available || snapshot.busy !== null} title={tool.unavailableReason} onClick={() => void store.runDiagnostic(tool.id)}>Run</button></article>)}
-      {snapshot.validationWorkflows.map((workflow) => <article class="tool-card"><div><span class="tool-kind validate">legacy</span><StatusBadge tone="warn">{workflow.validation} · {workflow.persistence}</StatusBadge></div><h3>{workflow.label}</h3><p class="fineprint">Legacy validation — superseded by the guided tests above; kept for completeness. Its evidence follows the same trust boundaries.</p><p class="warning-copy">{workflow.consequence}</p><button class="secondary" disabled={!workflow.available || snapshot.busy !== null} title={workflow.unavailableReason ?? ""} onClick={() => store.startValidation(workflow.id)}>Start</button></article>)}
-    </div>
-    {snapshot.diagnosticRuns.length > 0 && <div class="run-list">{[...snapshot.diagnosticRuns].reverse().map((run) => <details class={`run ${run.status}`} open={run.status === "restore-failed"}><summary><span>{run.purpose}</span><StatusBadge tone={run.status === "passed" ? "good" : "bad"}>{run.status}</StatusBadge></summary>{run.status === "restore-failed" && <p class="restore-failure">RESTORE FAILED — check the physical display before continuing.</p>}<ol>{run.steps.map((step) => <li class={step.status}><strong>{step.label}</strong><span>{step.summary}</span></li>)}</ol>{run.error && <p class="notice error">{run.error}</p>}</details>)}</div>}
+    <p class="fineprint">Deep packet/GATT tooling and legacy checks. Nothing here is required for the guided workflow.</p>
+    <button class="secondary" onClick={() => store.setView("develop")}>Open protocol workbench</button>
+    <ul class="test-list">
+      {snapshot.diagnosticTools.map((tool) => <li><div class="test-line">
+        <div><strong>{tool.label}</strong><small>{tool.kind} · {tool.validation}</small></div>
+        <button class="secondary small" disabled={!tool.available || snapshot.busy !== null} title={tool.unavailableReason} onClick={() => void store.runDiagnostic(tool.id)}>Run</button>
+      </div><p class="fineprint">{tool.purpose}</p></li>)}
+      {snapshot.validationWorkflows.map((workflow) => <li><div class="test-line">
+        <div><strong>{workflow.label}</strong><small>legacy · {workflow.persistence}</small></div>
+        <button class="secondary small" disabled={!workflow.available || snapshot.busy !== null} title={workflow.unavailableReason ?? ""} onClick={() => store.startValidation(workflow.id)}>Start</button>
+      </div><p class="fineprint">Superseded by the guided tests; kept for completeness. {workflow.consequence}</p></li>)}
+    </ul>
+    {snapshot.diagnosticRuns.length > 0 && <div class="run-list">{[...snapshot.diagnosticRuns].reverse().map((run) => <details class={`run ${run.status}`} open={run.status === "restore-failed"}>
+      <summary><span>{run.purpose}</span><StatusBadge tone={run.status === "passed" ? "good" : "bad"}>{run.status}</StatusBadge></summary>
+      {run.status === "restore-failed" && <p class="restore-failure">RESTORE FAILED — check the physical display before continuing.</p>}
+      <ol>{run.steps.map((step) => <li class={step.status}><strong>{step.label}</strong><span>{step.summary}</span></li>)}</ol>
+      {run.error && <p class="notice error">{run.error}</p>}
+    </details>)}</div>}
   </section>;
 }
