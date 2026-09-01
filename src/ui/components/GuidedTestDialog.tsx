@@ -21,7 +21,12 @@ export function GuidedTestDialog({ snapshot, store }: { readonly snapshot: AppSn
         <h1 id="guided-title">{flow.title}</h1>
         <ol class="stage-steps" aria-label="Test progress">{(["about", "running", "observe", "result"] as const).map((stage, index) => <li class={flow.stage === stage ? "active" : stageIndex(flow.stage) > index ? "done" : ""}>{stageLabel(stage)}</li>)}</ol>
       </div>
-      <button class="close" aria-label="Close test" onClick={() => store.closeGuidedTest()}>×</button>
+      {flow.stage !== "running" && <button
+        class="close"
+        aria-label={flow.stage === "observe" ? "Stop observation and save as incomplete" : "Close test"}
+        title={flow.stage === "observe" ? "The content was already transmitted; closing records this test as incomplete evidence." : ""}
+        onClick={() => store.closeGuidedTest()}
+      >×</button>}
     </header>
     <div class="validation-body">
       {flow.stage === "about" && <AboutStage flow={flow} snapshot={snapshot} store={store}/>}
@@ -71,7 +76,8 @@ function AboutStage({ flow, snapshot, store }: { flow: GuidedFlowState; snapshot
 function RunningStage({ flow }: { flow: GuidedFlowState }): JSX.Element {
   return <>
     <p class="guided-progress"><span class="spinner" aria-hidden="true"/>{flow.transferProgress ?? "Preparing diagnostic…"}</p>
-    <p class="fineprint">Waiting for the display. Larger programs can take several seconds to start rendering after the final packet.</p>
+    <p class="fineprint">Content is being transferred to the display. This window stays open until the transfer completes — closing it would not cancel the Bluetooth upload.</p>
+    <p class="fineprint">Larger programs can take several seconds to start rendering after the final packet.</p>
   </>;
 }
 
@@ -102,8 +108,9 @@ function ObserveStage({ flow, store }: { flow: GuidedFlowState; store: MatrixSto
     <ol class="validation-questions">{flow.observationSpecs.map((spec) => <ObservationField spec={spec} value={flow.values[spec.id]} store={store}/>)}</ol>
     <div class="inline-form">
       <button class="primary" disabled={!flow.observationsReady} onClick={() => store.submitGuidedObservations()}>Record observations</button>
-      <button class="secondary" onClick={() => store.closeGuidedTest()}>Discard</button>
+      <button class="secondary" onClick={() => store.abandonGuidedTest()}>Stop observation and save as incomplete</button>
     </div>
+    <p class="fineprint">The diagnostic content was already sent to the display; stopping records this test as incomplete evidence rather than discarding it.</p>
   </>;
 }
 

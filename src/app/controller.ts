@@ -586,6 +586,36 @@ export class MatrixController {
     }
   }
 
+  /**
+   * A guided test whose diagnostic program WAS transmitted but whose
+   * physical observation is being abandoned. The device was changed, so this
+   * is never a silent cancel: an "abandoned" result is recorded with the
+   * exact operation, transaction ids, and any partial observations — but no
+   * claim conclusions beyond automatic capture. A partial test report stays
+   * available; failed or abandoned tests are still evidence.
+   */
+  abandonGuidedTest(testId: string, values: readonly ObservationValue[], transactionIds: readonly string[], startedAt = new Date().toISOString()): CompletedGuidedTest {
+    const test = this.guidedTest(testId);
+    if (transactionIds.length === 0) throw new Error("Nothing was transmitted; close the test instead of abandoning it.");
+    const completedAt = new Date().toISOString();
+    const resolvedOperation = this.guidedTestOperation(testId);
+    const parameters = resolvedOperation.type === "ShowDiagnostic" && resolvedOperation.parameters ? { ...resolvedOperation.parameters } : undefined;
+    const completed: CompletedGuidedTest = {
+      testId, title: test.title, startedAt, completedAt,
+      status: "abandoned",
+      // Keep only structurally valid partial observations; nothing is required.
+      observations: values.filter((value) => value && typeof value === "object"),
+      established: [], rejected: [],
+      unknowns: ["Physical observation was abandoned before completion; no conclusions were drawn beyond the automatic capture."],
+      summary: "The diagnostic program was transmitted and the stored display content was replaced, but the physical observation was abandoned.",
+      transactionIds: [...transactionIds],
+      ...(parameters ? { parameters } : {}),
+    };
+    this.#investigation = recordCompletedTest(this.ensureInvestigation(), completed, [], completedAt);
+    this.trace.record("guided-test.abandoned", { testId, transactionCount: transactionIds.length });
+    return completed;
+  }
+
   // ---- Investigation reports ---------------------------------------------
 
   #deviceReportContext(): import("../investigation/reports").DeviceReportContext {

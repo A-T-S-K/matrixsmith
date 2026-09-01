@@ -159,3 +159,47 @@ describe("guided flow state machine", () => {
     expect(store.getSnapshot().nextTest?.testId).toBe("coolledux-graffiti-timing");
   });
 });
+
+describe("transfer protection and abandonment", () => {
+  it("cannot dismiss the dialog while a transfer is running", async () => {
+    const { store } = await identifiedStore();
+    store.startGuidedTest("coolledux-graffiti-black");
+    const flow = store.getSnapshot().guidedFlow!;
+    expect(flow.stage).toBe("about");
+    // Simulate the running stage by starting the transfer without awaiting.
+    const transfer = store.confirmGuidedTransfer();
+    if (store.getSnapshot().guidedFlow?.stage === "running") {
+      store.closeGuidedTest();
+      expect(store.getSnapshot().guidedFlow).not.toBeNull();
+    }
+    await transfer;
+    store.closeGuidedTest();
+  }, 30000);
+
+  it("records an abandoned post-transfer test as incomplete evidence with a report", async () => {
+    const { store, controller } = await identifiedStore();
+    store.startGuidedTest("coolledux-graffiti-timing");
+    await store.confirmGuidedTransfer();
+    expect(store.getSnapshot().guidedFlow?.stage).toBe("observe");
+    store.recordGuidedTimeline("event"); // T1 partial observation
+    store.abandonGuidedTest();
+    expect(store.getSnapshot().guidedFlow).toBeNull();
+    const completed = controller.investigation?.completedTests.at(-1);
+    expect(completed?.status).toBe("abandoned");
+    expect(completed?.transactionIds.length).toBeGreaterThan(0);
+    // No claim conclusions beyond automatic capture.
+    expect(controller.investigation?.claimEvidence.filter((entry) => entry.testId === "coolledux-graffiti-timing")).toHaveLength(0);
+    // A partial test report is available.
+    const report = controller.testReportMarkdown("coolledux-graffiti-timing");
+    expect(report).toContain("ABANDONED");
+    expect(report).toContain("observation was abandoned");
+  }, 30000);
+
+  it("close during observe records incomplete evidence instead of silently discarding", async () => {
+    const { store, controller } = await identifiedStore();
+    store.startGuidedTest("coolledux-graffiti-black");
+    await store.confirmGuidedTransfer();
+    store.closeGuidedTest();
+    expect(controller.investigation?.completedTests.at(-1)?.status).toBe("abandoned");
+  }, 30000);
+});

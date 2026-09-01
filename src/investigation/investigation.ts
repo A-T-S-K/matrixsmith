@@ -31,7 +31,7 @@ export interface InvestigationGoal {
   readonly description: string;
 }
 
-export type GuidedTestStatus = "passed" | "failed" | "partial" | "inconclusive";
+export type GuidedTestStatus = "passed" | "failed" | "partial" | "inconclusive" | "abandoned";
 
 export interface CompletedGuidedTest {
   readonly testId: string;

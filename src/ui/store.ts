@@ -732,6 +732,29 @@ export class MatrixStore {
   }
 
   closeGuidedTest(): void {
+    const flow = this.#guidedFlow;
+    // A running transfer cannot be dismissed as if canceled: the persistent
+    // BLE upload continues regardless of the dialog.
+    if (flow?.stage === "running") return;
+    // After the transfer, closing is never a silent discard — the device WAS
+    // changed, so the abandonment is recorded as incomplete evidence.
+    if (flow?.stage === "observe" && flow.transactionIds.length > 0) { this.abandonGuidedTest(); return; }
+    this.#stopTimerTicks();
+    this.#guidedFlow = null;
+    this.#emit();
+  }
+
+  /** Stop observation and save the transmitted test as incomplete evidence. */
+  abandonGuidedTest(): void {
+    const flow = this.#guidedFlow;
+    if (!flow || flow.stage !== "observe") return;
+    try {
+      this.controller.abandonGuidedTest(flow.testId, Object.values(flow.values), flow.transactionIds, flow.startedAt);
+      this.#persistInvestigation();
+      this.#info = "Observation stopped. The test was recorded as incomplete — the transmitted content and automatic capture remain as evidence, and its report is available.";
+    } catch (error) {
+      this.#error = error instanceof Error ? error.message : String(error);
+    }
     this.#stopTimerTicks();
     this.#guidedFlow = null;
     this.#emit();
