@@ -95,7 +95,10 @@ describe("the shipped iLedHat plan", () => {
     const progress = evaluateCorePlan(ILEDHAT_CORE_PLAN, evidence, []);
     const fallback = progress.steps.find((entry) => entry.step.id === "fallback-viability")!;
     expect(fallback.state).toBe("skipped");
-    expect(fallback.step.ordinal).toBe(5);
+    // Establishing a viable substrate comes before characterizing its pixels,
+    // so the fallback is slot 4 and channel mapping slot 5.
+    expect(fallback.step.ordinal).toBe(4);
+    expect(progress.steps.find((entry) => entry.step.id === "pixel-mapping")!.step.ordinal).toBe(5);
     expect(progress.total).toBe(6);
     expect(displayPosition(progress, "final-verification")).toBe(6);
   });

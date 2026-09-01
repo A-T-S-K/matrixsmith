@@ -188,13 +188,24 @@ function ResultStage({ flow, snapshot, store }: { flow: GuidedFlowState; snapsho
     {incomplete && <p class="fineprint">
       This is still {flow.corePosition ? `test ${flow.corePosition.position} of ${flow.corePosition.total}` : "the same test"} — measuring again does not start a new one, and the attempts so far stay in the record.
     </p>}
-    {!incomplete && flow.nextTest && <p class="next-up"><span class="panel-kicker">NEXT</span> {flow.nextTest.title}</p>}
+    {!incomplete && flow.coreComplete && <p class="next-up">
+      <span class="panel-kicker">DONE</span> Core characterization complete.
+    </p>}
+    {!incomplete && !flow.coreComplete && flow.nextTest && <p class="next-up"><span class="panel-kicker">NEXT</span> {flow.nextTest.title}</p>}
     <div class="step-nav">
+      {/*
+        Optional characterization is never the automatic next step. Once the
+        core plan is resolved the product says so and offers to finish;
+        continuing is a deliberate choice, not the default button.
+      */}
       {incomplete
         ? <button class="primary" onClick={() => store.measureAgain(flow.testId)}>Measure again</button>
-        : flow.nextTest
-          ? <button class="primary" onClick={() => store.continueToNextTest()}>Continue</button>
-          : <button class="primary" onClick={() => store.closeGuidedTest()}>Done</button>}
+        : flow.coreComplete
+          ? <button class="primary" onClick={() => { store.closeGuidedTest(); store.stopInvestigation(); }}>Finish</button>
+          : flow.nextTest
+            ? <button class="primary" onClick={() => store.continueToNextTest()}>Continue</button>
+            : <button class="primary" onClick={() => store.closeGuidedTest()}>Done</button>}
+      {!incomplete && flow.coreComplete && flow.nextTest && <button class="secondary" onClick={() => store.continueToNextTest({ includeOptional: true })}>Continue optional characterization</button>}
       <button class="secondary" onClick={() => void store.copyTestReport(flow.testId)}>Copy report</button>
     </div>
     <div class="result-tertiary">

@@ -66,7 +66,12 @@ describe("core plan progress", () => {
     const store = await connectedStore();
     const before = store.getSnapshot().coreProgress!;
     expect(before.total).toBe(6);
-    expect(before.steps.every((step) => step.state !== "skipped")).toBe(true);
+    // The fallback slot stands down while the native path is undecided, and
+    // still occupies its own number.
+    const skipped = before.steps.filter((step) => step.state === "skipped");
+    expect(skipped.map((step) => step.id)).toEqual(["fallback-viability"]);
+    expect(skipped[0]!.position).toBe(4);
+    expect(before.steps.map((step) => step.position)).toEqual([1, 2, 3, 4, 5, 6]);
   }, 30000);
 });
 

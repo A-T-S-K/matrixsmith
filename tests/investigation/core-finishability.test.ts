@@ -259,3 +259,43 @@ describe("core plan finishability", () => {
     }
   }, 60000);
 });
+
+describe("core ordering establishes a substrate before characterizing pixels", () => {
+  it("goes straight to the animation fallback when both native settings move", async () => {
+    const instance = await controller();
+    for (const [testId, outcome] of [["coolledux-graffiti-timing", moved], ["coolledux-graffiti-staytime", moved]] as const) {
+      instance.recordGuidedTestObservations(testId, outcome(), []);
+    }
+    const progress = instance.corePlanProgress()!;
+    // Native black stands down (never tested, no longer decisive) and the
+    // fallback — not the colour/channel test — is the work in front of the
+    // user. Characterizing pixels for a substrate that may not exist is
+    // exactly what the real session was made to do.
+    expect(progress.steps.find((entry) => entry.step.id === "native-black")!.state).toBe("skipped");
+    expect(progress.current?.step.id).toBe("fallback-viability");
+    expect(progress.current?.step.ordinal).toBe(4);
+    expect(instance.recommendations()[0]?.testId).toBe("coolledux-animation-static");
+  }, 60000);
+
+  it("stands the fallback down while the native path is still undecided", async () => {
+    const instance = await controller();
+    instance.recordGuidedTestObservations("coolledux-graffiti-timing", heldStill(), []);
+    const progress = instance.corePlanProgress()!;
+    const fallback = progress.steps.find((entry) => entry.step.id === "fallback-viability")!;
+    expect(fallback.state).toBe("skipped");
+    expect(fallback.skipReason).toMatch(/not been ruled out/);
+    // The plan is not finished — the native path still has open requirements.
+    expect(progress.complete).toBe(false);
+    expect(progress.current?.step.id).toBe("native-black");
+  }, 60000);
+
+  it("characterizes channels only after a substrate holds a still image", async () => {
+    const instance = await controller();
+    instance.recordGuidedTestObservations("coolledux-graffiti-timing", moved(), []);
+    instance.recordGuidedTestObservations("coolledux-graffiti-staytime", moved(), []);
+    instance.recordGuidedTestObservations("coolledux-animation-static", animationStatic(true), []);
+    const progress = instance.corePlanProgress()!;
+    expect(progress.current?.step.id).toBe("pixel-mapping");
+    expect(progress.current?.step.ordinal).toBe(5);
+  }, 60000);
+});

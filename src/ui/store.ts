@@ -318,6 +318,11 @@ export interface GuidedFlowState {
   readonly awaitingRetryConfirmation: boolean;
   /** "Test 3 of 6" — the milestone this experiment belongs to. Retries never move it. */
   readonly corePosition: { readonly position: number; readonly total: number; readonly stepTitle: string } | null;
+  /**
+   * Every core slot is resolved. Anything further is optional, so the result
+   * screen offers finishing as the primary action and continuing as a choice.
+   */
+  readonly coreComplete: boolean;
 }
 
 export interface ContentState {
@@ -1150,12 +1155,22 @@ export class MatrixStore {
    * same pattern to the display for the same non-answer. The guard stops
    * there rather than letting the user discover the loop by living through it.
    */
-  continueToNextTest(): void {
+  continueToNextTest(options: { readonly includeOptional?: boolean } = {}): void {
     const next = this.controller.recommendations()[0] ?? null;
     const settled = this.controller.investigation?.completedTests
       .some((test) => next !== null && test.testId === next.testId && completedTestResolution(test) === "settled") ?? false;
     const retryable = this.#retryableOnCurrentMilestone();
+    const progress = this.controller.corePlanProgress();
     this.closeGuidedTest();
+    // Core work is finished. Everything past it — colour quality, the second
+    // fallback variant, GIF, persistence — is real work with real value, but
+    // feeding it automatically is what made characterization feel infinite.
+    // Continuing is a deliberate choice, so it needs an explicit opt-in.
+    if (progress?.complete && !options.includeOptional) {
+      this.#info = "Core characterization is complete. Further tests are optional.";
+      this.#emit();
+      return;
+    }
     // An unanswered measurement on the CURRENT milestone comes first. Moving
     // on to a controlled variant while the baseline it varies was never
     // actually observed would advance the plan past a question nobody
@@ -1172,7 +1187,7 @@ export class MatrixStore {
       this.#emit();
       return;
     }
-    this.#info = this.controller.corePlanProgress()?.complete
+    this.#info = progress?.complete
       ? "Core characterization is complete."
       : "No further test is recommended right now.";
     this.#emit();
@@ -1462,6 +1477,7 @@ export class MatrixStore {
       transferProgress: flow.transferProgress, transactionIds: [...flow.transactionIds],
       result: flow.result,
       nextTest: flow.stage === "result" ? recommendationView(this.controller.recommendations()[0] ?? null) : null,
+      coreComplete: this.controller.corePlanProgress()?.complete ?? false,
       presentation: flow.presentation, steps, stepIndex, observeStage,
       questionPresentation: steps.some((step) => step.regionId !== null) ? "spatial" : "simple",
       attempts: flow.attempts.map((attempt) => ({

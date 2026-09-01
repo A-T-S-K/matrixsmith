@@ -59,8 +59,8 @@ function CoreProgress({ snapshot }: { snapshot: AppSnapshot }): JSX.Element {
         closing reads as "one fewer to do", not as the plan shrinking.
       */}
       <small>
-        {progress.resolved} of {progress.total} done
-        {progress.skipped > 0 && <> · {progress.completed} complete, {progress.skipped} skipped</>}
+        {progress.resolved} of {progress.total} resolved
+        {progress.skipped > 0 && <> · {progress.completed} completed, {progress.skipped} skipped</>}
       </small>
     </div>
     <div class="core-bar" aria-hidden="true">

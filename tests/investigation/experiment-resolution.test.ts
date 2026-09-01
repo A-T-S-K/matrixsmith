@@ -229,3 +229,59 @@ describe("controlled variants stay distinct experiments", () => {
     expect(store.controller.experiments).toHaveLength(2);
   }, 30000);
 });
+
+describe("optional characterization is never the automatic next step", () => {
+  /** Drive the plan to a complete core through the shortest branch. */
+  async function completeCore(store: MatrixStore): Promise<void> {
+    const c = store.controller;
+    const timer = (fieldId: string, milliseconds: number) => ({ kind: "duration" as const, fieldId, milliseconds, measuredBy: "matrixsmith-timer" as const });
+    const MIN = 15_000;
+    c.recordGuidedTestObservations("coolledux-graffiti-timing", [
+      { kind: "boolean", fieldId: "initial-correct", value: "yes" },
+      timer("image-visible", 1200),
+      { kind: "boolean", fieldId: "moved", value: "yes" },
+      timer("movement-start", 4400),
+    ], []);
+    c.recordGuidedTestObservations("coolledux-graffiti-staytime", [
+      { kind: "boolean", fieldId: "initial-correct", value: "yes" },
+      timer("image-visible", 1200),
+      { kind: "boolean", fieldId: "moved", value: "yes" },
+      timer("movement-start", 2000),
+    ], []);
+    c.recordGuidedTestObservations("coolledux-animation-static", [
+      { kind: "boolean", fieldId: "initial-correct", value: "yes" },
+      timer("image-visible", 1100),
+      { kind: "boolean", fieldId: "moved", value: "no" },
+      timer("observation-end", 1100 + MIN + 400),
+      { kind: "boolean", fieldId: "background-off", value: "yes" },
+      { kind: "boolean", fieldId: "tiles-aligned", value: "yes" },
+      { kind: "boolean", fieldId: "flicker", value: "no" },
+    ], []);
+    const patch = (word: number, optionId: string) => ({ kind: "choice" as const, fieldId: `patch-0x${word.toString(16).padStart(4, "0")}`, optionId });
+    c.recordGuidedTestObservations("coolledux-pixel-channels", [
+      patch(0x0000, "off"), patch(0x0f00, "red"), patch(0x00f0, "green"), patch(0x000f, "blue"), patch(0x0fff, "tinted-white"),
+      patch(0x1000, "off"), patch(0x2000, "off"), patch(0x4000, "off"), patch(0x8000, "off"), patch(0xf000, "off"), patch(0xffff, "tinted-white"),
+    ], []);
+  }
+
+  it("stops instead of opening colour work once every core slot is resolved", async () => {
+    const store = await connectedStore();
+    await completeCore(store);
+    expect(store.getSnapshot().coreProgress!.complete).toBe(true);
+    // There ARE further tests the engine could rank — colour quality, the
+    // second fallback variant. Continuing must not pick one on its own.
+    expect(store.controller.recommendations().length).toBeGreaterThan(0);
+    store.continueToNextTest();
+    expect(store.getSnapshot().guidedFlow).toBeNull();
+    expect(store.getSnapshot().error).toBeNull();
+    expect(store.getSnapshot().info).toMatch(/Core characterization is complete/u);
+  }, 60000);
+
+  it("opens optional work only when the user explicitly asks for it", async () => {
+    const store = await connectedStore();
+    await completeCore(store);
+    store.continueToNextTest({ includeOptional: true });
+    expect(store.getSnapshot().error).toBeNull();
+    expect(store.getSnapshot().guidedFlow).not.toBeNull();
+  }, 60000);
+});
