@@ -322,7 +322,12 @@ export class MatrixStore {
     this.#emit();
   }
   exportBundle(): string { return this.controller.exportBundle(); }
-  markdown(): string { return generateMarkdownReport(this.#reportData(), this.#reportOptions); }
+  markdown(): string {
+    // The active investigation supplies the report question when the user
+    // hasn't typed one, so pasted reports always carry the actual goal.
+    const goal = this.#reportOptions.goal.trim() || this.controller.investigation?.goal.description || "";
+    return generateMarkdownReport(this.#reportData(), { ...this.#reportOptions, goal });
+  }
 
   async copy(text: string): Promise<void> {
     let copied = false;
