@@ -10,7 +10,7 @@ import { TraceRecorder } from "../diagnostics/trace";
 import { builtInDrivers, DriverRegistry } from "../drivers/registry";
 import type { DecodedNotification, MatrixDriver } from "../drivers/types";
 import type { MatrixTransport } from "../transport/types";
-import { TransmissionExecutor, type ExecutionResult } from "./executor";
+import { TransmissionExecutor, type ExecutionProgress, type ExecutionResult } from "./executor";
 import { SafetyPolicy, type PolicyDecision } from "./safety";
 import { MatrixSession } from "./session";
 import { NotificationRouter, type NotificationRecord } from "./notifications";
@@ -276,7 +276,7 @@ export class MatrixController {
     return this.#execute(plan, plan.purpose, null);
   }
 
-  async #execute(plan: TransmissionPlan, source: TransactionSource, diagnosticRunIdValue: string | null): Promise<ExecutionResult> {
+  async #execute(plan: TransmissionPlan, source: TransactionSource, diagnosticRunIdValue: string | null, onProgress?: (progress: ExecutionProgress) => void): Promise<ExecutionResult> {
     const startedAt = new Date().toISOString();
     const notificationStart = this.session.notifications.length;
     const decision = this.authorize(plan);
@@ -292,7 +292,7 @@ export class MatrixController {
     const staged = this.#stagedPanelProgram;
     this.#stagedPanelProgram = null;
     try {
-      const result = await this.#executor.execute(decision.authorized, driver);
+      const result = await this.#executor.execute(decision.authorized, driver, onProgress);
       this.#recordTransaction(plan, result, startedAt, notificationStart, source, diagnosticRunIdValue, null);
       if (replacesStoredProgram) {
         // "Written at" is the final host-accepted write, never the moment the
@@ -1273,7 +1273,7 @@ export class MatrixController {
    * the confirmation is single-use and scoped to this exact plan. Records a
    * structured content-compilation evidence entry alongside the transaction.
    */
-  async sendPersistentContent(plan: TransmissionPlan, options: { readonly confirmedConsequence: boolean; readonly extras?: Partial<ContentCompilationRecord> }): Promise<ExecutionResult> {
+  async sendPersistentContent(plan: TransmissionPlan, options: { readonly confirmedConsequence: boolean; readonly extras?: Partial<ContentCompilationRecord>; readonly onProgress?: (progress: ExecutionProgress) => void }): Promise<ExecutionResult> {
     if (plan.risk !== "persistent" && plan.persistence !== "persistent") throw new Error("sendPersistentContent is only for persistent content plans.");
     if (!options.confirmedConsequence) throw new Error("Persistent content requires explicit confirmation of its exact consequence.");
     const experimentalWasEnabled = this.session.experimentalTxEnabled;
@@ -1281,7 +1281,7 @@ export class MatrixController {
     this.session.confirmPersistentPlan(plan.id);
     const transactionIndex = this.#transactions.length;
     try {
-      const result = await this.#execute(plan, "operation", null);
+      const result = await this.#execute(plan, "operation", null, options.onProgress);
       this.#recordCompilation(plan, options.extras, this.#transactions[transactionIndex]?.id ?? null);
       return result;
     } finally {

@@ -5,6 +5,7 @@ import type { ContentPathId } from "../../investigation/gating";
 import { StatusBadge } from "../components/StatusBadge";
 import { FramePreview } from "../components/FramePreview";
 import { ImagePreview } from "../components/ImagePreview";
+import { AnimatedFramePreview } from "../components/AnimatedFramePreview";
 
 const CONTENT_TYPES: readonly { readonly id: ContentPathId; readonly label: string }[] = [
   { id: "text", label: "Text" },
@@ -54,7 +55,13 @@ function ContentEditor({ selected, snapshot, store }: { selected: ContentPathId;
 
     {selected === "text" && <>
       <label class="field"><span>Text</span><input value={settings.text} placeholder="HELLO" onInput={(event) => store.updateContentSettings({ text: (event.currentTarget as HTMLInputElement).value })}/></label>
-      {content.textPreview ? <FramePreview frame={content.textPreview} label="Text preview"/> : <p class="empty">Type something to preview it.</p>}
+      <label class="field"><span>Display</span><select value={settings.textDisplayMode} onChange={(event) => store.updateContentSettings({ textDisplayMode: (event.currentTarget as HTMLSelectElement).value as typeof settings.textDisplayMode })}><option value="auto">Auto</option><option value="still">Still</option><option value="scroll">Scroll</option></select></label>
+      {content.textScrollPlan ? <AnimatedFramePreview sequence={content.textScrollPlan.sequence} label="Actual scrolling-text preview"/> : content.textPreview ? <FramePreview frame={content.textPreview} label="Text preview"/> : <p class="empty">Type something to preview it.</p>}
+      {content.textScrollPlan && <>
+        <p class={content.textScrollPlan.safe ? "fineprint" : "notice warning"}>{content.textScrollPlan.textWidth} columns · {content.textScrollPlan.frameCount} frames · {content.textScrollPlan.decodedBytesPerTile.toLocaleString()} decoded bytes/tile · step {content.textScrollPlan.step} · raster fallback</p>
+        {content.textScrollPlan.warnings.map((warning) => <p class="notice warning">{warning}</p>)}
+        <details class="secondary-section"><summary>Text backend</summary><p class="fineprint">Raster scrolling is bounded and available now. Firmware-native CoolLEDUX Text remains experimental: the pinned protocol evidence does not define its segment layout clearly enough to transmit safely without hardware validation.</p></details>
+      </>}
       <div class="field-row">
         <label class="field"><span>Color</span><input type="color" value={settings.textColor} onInput={(event) => store.updateContentSettings({ textColor: (event.currentTarget as HTMLInputElement).value })}/></label>
         <label class="field"><span>Background</span><input type="color" value={settings.textBackground} onInput={(event) => store.updateContentSettings({ textBackground: (event.currentTarget as HTMLInputElement).value })}/></label>
@@ -85,14 +92,9 @@ function ContentEditor({ selected, snapshot, store }: { selected: ContentPathId;
     </>}
 
     {selected === "animation" && <>
-      <label class="field"><span>Animation</span><select value={content.animationChoice} onChange={(event) => store.setAnimationChoice((event.currentTarget as HTMLSelectElement).value as "diagnostic" | "scroll-text")}><option value="diagnostic">Two-frame test pattern</option><option value="scroll-text">Scrolling text</option></select></label>
-      {content.animationChoice === "diagnostic"
-        ? <div class="frame-strip">{content.animationPreview.map((frame, index) => <div><small>Frame {index + 1}</small><FramePreview frame={frame} scale={5}/></div>)}</div>
-        : content.textPreview
-          ? <FramePreview frame={content.textPreview} label="Scrolling text preview"/>
-          : <p class="empty">Enter text under the Text tab first.</p>}
-      {content.animationChoice === "scroll-text" && <label class="field"><span>Text</span><input value={settings.text} placeholder="HELLO" onInput={(event) => store.updateContentSettings({ text: (event.currentTarget as HTMLInputElement).value })}/></label>}
-      <button class="primary send" disabled={!canSend || (content.animationChoice === "scroll-text" && !settings.text.trim())} title={sendTitle} onClick={() => store.requestSendAnimation()}>Send to display…</button>
+      <p class="fineprint">Animation is for authored multi-frame content and diagnostics. Normal scrolling messages live under Text.</p>
+      <div class="frame-strip">{content.animationPreview.map((frame, index) => <div><small>Frame {index + 1}</small><FramePreview frame={frame} scale={5}/></div>)}</div>
+      <button class="primary send" disabled={!canSend} title={sendTitle} onClick={() => store.requestSendAnimation()}>Send test animation…</button>
     </>}
 
     {selected === "gif" && <>

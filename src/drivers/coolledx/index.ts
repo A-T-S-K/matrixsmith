@@ -52,6 +52,7 @@ export function planCoolLedOperation(operation: MatrixOperation, context: Driver
     case "GetDeviceInfo": throw new Error("CoolLEDX does not define the CoolLEDUX device-info query.");
     case "ShowGif": throw new Error("CoolLEDX has no verified GIF content path.");
     case "ShowDiagnostic": throw new Error("CoolLEDX defines no fixed diagnostic content in this branch.");
+    case "ShowScrollingText": throw new Error("CoolLEDX has no verified semantic scrolling-text path in this branch.");
     case "SetBrightness":
       bytes = [encodeBrightness(operation.raw)];
       break;

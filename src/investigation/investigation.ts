@@ -20,6 +20,7 @@ export type SymptomId =
   | "wont-connect"
   | "disconnects"
   | "content-wont-send"
+  | "display-returned-to-default-content"
   | "image-looks-wrong"
   | "colors-look-wrong"
   | "content-moves-unexpectedly"
@@ -212,6 +213,7 @@ export const SYMPTOM_LABELS: Readonly<Record<SymptomId, string>> = Object.freeze
   "wont-connect": "My display won't connect",
   disconnects: "My display keeps disconnecting",
   "content-wont-send": "Text or image won't send",
+  "display-returned-to-default-content": "Display returned to built-in/default content after sending",
   "image-looks-wrong": "The image looks wrong",
   "colors-look-wrong": "The colors look wrong",
   "content-moves-unexpectedly": "Content moves unexpectedly",
@@ -227,6 +229,7 @@ export const SYMPTOM_FOCUS_CLAIMS: Readonly<Record<SymptomId, readonly ClaimId[]
   "wont-connect": ["transport.bluetooth"],
   disconnects: ["transport.bluetooth"],
   "content-wont-send": ["stored-program.upload", "static.strategy"],
+  "display-returned-to-default-content": ["stored-program.upload", "static.strategy", "recovery.manual-reset"],
   "image-looks-wrong": ["raster.tiling", "raster.orientation", "graffiti.initial-render"],
   "colors-look-wrong": ["pixel.channel-map", "graffiti.color-mapping", "pixel.color-calibration"],
   "content-moves-unexpectedly": ["graffiti.playback-stability", "static.strategy"],

@@ -2,6 +2,8 @@ import { useSyncExternalStore } from "preact/compat";
 import type { Capability } from "../core/capabilities";
 import { normalizeUuid, type GattEndpoint } from "../core/device";
 import { MatrixController } from "../app/controller";
+import { TransferWakeLock, type WakeLockNavigator } from "../app/wake-lock";
+import type { ExecutionProgress } from "../app/executor";
 import type { ConnectionState, MatrixTransport } from "../transport/types";
 import { DEFAULT_REPORT_OPTIONS, generateMarkdownReport, type ReportData, type ReportOptions } from "../diagnostics/report";
 import type { ProtocolTransaction } from "../diagnostics/transactions";
@@ -13,6 +15,7 @@ import type { ContentValidationWorkflow, ValidationAnswer } from "../diagnostics
 import { Framebuffer } from "../render/framebuffer";
 import { FrameSequence } from "../render/frame-sequence";
 import { renderText, scrollOffsets } from "../render/font";
+import { planRasterScroll, resolvesToScroll, type ScrollPlan } from "../render/scroll";
 import { diagnosticAnimation } from "../render/patterns";
 import { decodeImageFile, decodeImageSource, ILEDHAT_RGB444, processImage, readGifMetadata, type DecodedImageSource, type FitMode, type ImageComposition, type ImageMode, type ProcessedImage } from "../render/image";
 import { DEFAULT_CONTENT_SETTINGS, loadContentSettings, saveContentSettings, type ContentSettings } from "../storage/settings";
@@ -61,6 +64,8 @@ export interface AppSnapshot {
   readonly source: string;
   readonly liveConnected: boolean;
   readonly busy: string | null;
+  readonly sendProgress: ExecutionProgress | null;
+  readonly wakeLockSupported: boolean;
   readonly error: string | null;
   readonly info: string | null;
   readonly bluetoothSupported: boolean;
@@ -331,6 +336,7 @@ export interface ContentState {
   readonly allowedReason: string;
   readonly settings: ContentSettings;
   readonly textPreview: Framebuffer | null;
+  readonly textScrollPlan: ScrollPlan | null;
   readonly image: { readonly preview: Framebuffer; readonly sourceWidth: number; readonly sourceHeight: number; readonly fitMode: FitMode; readonly name: string; readonly processed: ProcessedImage | null } | null;
   readonly animationChoice: "diagnostic" | "scroll-text";
   readonly animationPreview: readonly Framebuffer[];
@@ -419,6 +425,7 @@ export class MatrixStore {
   #page: AppSnapshot["page"] = "home";
   #view: WorkspaceView = "control";
   #busy: string | null = null;
+  #sendProgress: ExecutionProgress | null = null;
   #error: string | null = null;
   #info: string | null = null;
   #previouslyAuthorized: { id: string; name: string }[] = [];
@@ -444,8 +451,10 @@ export class MatrixStore {
     transactionIds: string[]; result: { status: string; findings: readonly string[] } | null;
   } | null = null;
   #snapshot!: AppSnapshot;
+  readonly #wakeLock: TransferWakeLock;
 
   constructor(readonly controller: MatrixController, readonly transport: MatrixTransport) {
+    this.#wakeLock = new TransferWakeLock(navigator as unknown as WakeLockNavigator, typeof document === "undefined" ? undefined : document);
     controller.trace.subscribe(() => this.#emit());
     const subscribable = transport as MatrixTransport & { subscribeState?: (listener: () => void) => () => void };
     subscribable.subscribeState?.(() => this.#emit());
@@ -616,9 +625,17 @@ export class MatrixStore {
 
   requestSendText(): void { this.#requestContentSend("Send rendered text", "text", () => {
     const profile = this.#requireProfile();
+    if (resolvesToScroll(this.#settings.textDisplayMode, this.#settings.text.trim(), profile.width)) {
+      const scroll = this.#scrollPlan(profile.width, profile.height);
+      if (!scroll?.safe) throw new Error(scroll?.warnings.at(-1) ?? "Scrolling text exceeds the safe raster budget.");
+      const plan = this.controller.plan({ type: "ShowScrollingText", text: this.#settings.text, sequence: scroll.sequence, backend: "raster" });
+      const extras: Record<string, string> = { textContent: this.#settings.text, textRendering: "bounded raster scroll (embedded 5x7 font)", textWidth: String(scroll.textWidth), frameCount: String(scroll.frameCount), decodedBytesPerTile: String(scroll.decodedBytesPerTile), scrollStep: String(scroll.step), backend: "raster fallback" };
+      return { plan, preview: scroll.sequence.frames[0] ?? null, extras };
+    }
     const frame = this.#renderTextFrame(profile.width, profile.height);
     if (!frame) throw new Error("Enter text before sending.");
-    return { plan: this.controller.plan({ type: "ShowText", text: this.#settings.text, frame }), preview: frame, extras: { textContent: this.#settings.text, textRendering: "local bitmap renderer (embedded 5x7 font)" } };
+    const extras: Record<string, string> = { textContent: this.#settings.text, textRendering: "local bitmap renderer (embedded 5x7 font)" };
+    return { plan: this.controller.plan({ type: "ShowText", text: this.#settings.text, frame }), preview: frame, extras };
   }); }
 
   requestSendImage(): void { this.#requestContentSend("Send image", "image", () => {
@@ -648,9 +665,16 @@ export class MatrixStore {
     const pending = this.#pendingSend;
     if (!pending) return;
     await this.#run("Transmitting stored program…", async () => {
-      await this.controller.sendPersistentContent(pending.plan, { confirmedConsequence: true, extras: pending.extras });
-      this.#pendingSend = null;
-      this.#info = "Content transferred. The stored display program was replaced.";
+      this.#sendProgress = { completedPackets: 0, totalPackets: pending.plan.packets.length, elapsedMs: 0, estimatedRemainingMs: null }; this.#emit();
+      const locked = await this.#wakeLock.acquire();
+      if (!locked && !this.#wakeLock.supported) this.#info = "Keep this screen on until sending finishes.";
+      try {
+        const result = await this.controller.sendPersistentContent(pending.plan, { confirmedConsequence: true, extras: pending.extras, onProgress: (progress) => { this.#sendProgress = progress; this.#emit(); } });
+        this.#pendingSend = null;
+        this.#info = result.protocolAcknowledged
+          ? "Upload sent to display; a matching protocol response was received. Physical retention is not yet verified."
+          : "Upload sent to display. The host accepted all writes; firmware acceptance and physical retention were not confirmed.";
+      } finally { this.#sendProgress = null; await this.#wakeLock.release(); }
     });
     this.#emit();
   }
@@ -715,7 +739,7 @@ export class MatrixStore {
       const { transactionIds } = await this.controller.runContentValidation(flow.workflowId, { confirmedConsequence: true });
       flow.transactionIds = [...transactionIds];
       flow.stage = "questions";
-      this.#info = "Diagnostic content transferred. Look at the physical panel, then answer the questions.";
+      this.#info = "Diagnostic upload sent; host writes completed. Look at the physical panel to verify what the firmware accepted.";
     });
     this.#emit();
   }
@@ -896,7 +920,7 @@ export class MatrixStore {
           startedAt: new Date().toISOString(), endedAt: null,
         });
         if (flow.timerSpec && finalWriteAcceptedAt) { this.#startTimerTicks(); this.#signalTimingStart(); }
-        this.#info = "Diagnostic content transferred. Watch the physical panel now.";
+        this.#info = "Diagnostic upload sent; host writes completed. Watch the physical panel now to verify acceptance.";
       } catch (error) {
         // The transfer failed, so this attempt number is spent. It stays in
         // the record as a failed attempt — the controller has already settled
@@ -1363,6 +1387,11 @@ export class MatrixStore {
     return new FrameSequence(frames, frames.map(() => ({ milliseconds: 120 })));
   }
 
+  #scrollPlan(width: number, height: number): ScrollPlan | null {
+    const text = this.#settings.text.trim(); if (!text) return null;
+    return planRasterScroll(text, width, height, { color: hexToRgb(this.#settings.textColor), background: hexToRgb(this.#settings.textBackground) });
+  }
+
   #liveResolved(): boolean {
     const session = this.controller.session;
     return session.source === "live" && this.transport.state === "connected" && Boolean(session.selection?.selected) && Boolean(session.profile);
@@ -1388,6 +1417,8 @@ export class MatrixStore {
     const transactions = filterTransactions(this.controller.transactions, this.#transactionFilter, this.#transactionSearch);
     const liveConnected = session.source === "live" && this.transport.state === "connected";
     this.#snapshot = Object.freeze({ page: this.#page, view: this.#view, connection: this.transport.state, source: session.source, liveConnected, busy: this.#busy, error: this.#error, info: this.#info, bluetoothSupported: "bluetooth" in navigator, previouslyAuthorized: this.#previouslyAuthorized, device: fingerprint ? { name: fingerprint.name ?? "Unnamed display", connectionLabel: session.source === "imported" ? "Offline report" : this.transport.state === "connected" ? "Connected" : this.transport.state, protocol: driver?.family ?? (session.selection?.ambiguous ? "Ambiguous protocol" : "Unknown protocol"), support: driver ? "Supported" : session.selection?.ambiguous ? "Identification required" : "Support unknown", liveGeometry: fingerprint.manuallyConfirmedGeometry ? `${fingerprint.manuallyConfirmedGeometry.width}×${fingerprint.manuallyConfirmedGeometry.height} · manually confirmed` : "Unknown", profileGeometry: profile ? `${profile.width}×${profile.height} · ${profile.id}` : "Unknown", advertisementGeometry: "Not derived in this session", profileId: profile?.id ?? null } : null, deviceState: { brightness: typeof info?.fields.brightnessRaw === "number" ? info.fields.brightnessRaw : null, power: info ? info.fields.powerOn === true ? "On" : `Raw ${String(info.fields.powerRaw)}` : "Unknown", payloadHex: info?.payloadHex ?? null }, capabilities, support: computeSupportMatrix({ connected: Boolean(fingerprint), live: liveConnected, resolvedDriverId: driver?.id ?? null, capabilities, validations: this.controller.validations }), recommended: recommendedAction(Boolean(fingerprint), Boolean(driver), session.selection?.ambiguous ?? false, liveConnected, this.controller.validations, this.controller.profileReady()), diagnosticTools: this.controller.diagnosticTools(), diagnosticRuns: this.controller.diagnosticRuns, candidates: (session.selection?.matches ?? []).map((match) => ({ id: match.driverId, family: this.controller.registry.drivers.find((d) => d.id === match.driverId)?.family ?? match.driverId, state: match.driverId === driver?.id ? "VERIFIED ON THIS SESSION" : match.score <= 0 ? "Rejected for this profile" : "Candidate", summary: match.driverId === "coolledux" ? match.driverId === driver?.id ? session.protocolResolution?.summary ?? "Resolved by evidence." : "Shared FFF0/F1 transport" : match.contradictions[0] ?? "Shared FFF0/F1 transport; no verified read-only discriminator available", score: match.score, reasons: match.reasons, contradictions: match.contradictions, canIdentify: match.driverId === "coolledux" && !driver && this.transport.state === "connected" })), gatt: (fingerprint?.services ?? []).map((service) => ({ uuid: service.uuid, primary: service.isPrimary, characteristics: service.characteristics.map((c) => ({ serviceUuid: service.uuid, uuid: c.uuid, properties: Object.entries(c.properties).filter(([, enabled]) => enabled).map(([key]) => key), canRead: c.properties.read, canSubscribe: c.properties.notify || c.properties.indicate, subscribed: this.#subscriptions.has(endpointKey({ serviceUuid: service.uuid, characteristicUuid: c.uuid })) })) })), transactions, rawEvents: this.controller.trace.events, observations: this.controller.observations, reportOpen: this.#reportOpen, reportOptions: this.#reportOptions,
+      sendProgress: this.#sendProgress,
+      wakeLockSupported: this.#wakeLock.supported,
       // Only generated while the dialog is open: it is the most expensive
       // thing a snapshot can do, and it was previously rebuilt on every
       // 100ms timer tick during an observation.
@@ -1632,6 +1663,7 @@ export class MatrixStore {
     return {
       allowed: gate.allowed, allowedReason: gate.reason, settings: this.#settings,
       textPreview: profile ? this.#renderTextFrame(profile.width, profile.height) : null,
+      textScrollPlan: profile && resolvesToScroll(this.#settings.textDisplayMode, this.#settings.text.trim(), profile.width) ? this.#scrollPlan(profile.width, profile.height) : null,
       image: this.#imageState,
       animationChoice: this.#animationChoice,
       animationPreview: profile ? [...diagnosticAnimation(profile.width, profile.height).frames] : [],

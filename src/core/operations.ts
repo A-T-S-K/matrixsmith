@@ -12,6 +12,7 @@ export type MatrixOperation =
   | { readonly type: "ShowFrame"; readonly frame: Framebuffer }
   | { readonly type: "ShowAnimation"; readonly sequence: FrameSequence }
   | { readonly type: "ShowText"; readonly text: string; readonly frame?: Framebuffer }
+  | { readonly type: "ShowScrollingText"; readonly text: string; readonly sequence: FrameSequence; readonly backend: "raster" }
   | { readonly type: "ShowGif"; readonly gifBytes: Uint8Array; readonly width: number; readonly height: number }
   /**
    * Fixed driver-defined diagnostic content. The diagnosticId selects one of

@@ -13,6 +13,7 @@ export interface ContentSettings {
   readonly textColor: string;
   readonly textBackground: string;
   readonly textAlignment: "left" | "center" | "right";
+  readonly textDisplayMode: "auto" | "still" | "scroll";
   readonly imageFitMode: "contain" | "cover" | "stretch" | "center";
   readonly imageMode: "auto" | "artwork" | "photo" | "pixel-art" | "legacy";
   readonly imageComposition: "contain" | "cover" | "foreground-trim" | "custom";
@@ -27,6 +28,7 @@ export const DEFAULT_CONTENT_SETTINGS: ContentSettings = Object.freeze({
   textColor: "#FF8800",
   textBackground: "#000000",
   textAlignment: "center",
+  textDisplayMode: "auto",
   imageFitMode: "contain",
   imageMode: "auto",
   imageComposition: "contain",

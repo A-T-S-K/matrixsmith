@@ -35,11 +35,13 @@ export interface ExecutionResult {
   readonly finalWriteAcceptedAt: string | null;
 }
 
+export interface ExecutionProgress { readonly completedPackets: number; readonly totalPackets: number; readonly elapsedMs: number; readonly estimatedRemainingMs: number | null }
+
 export class TransmissionExecutor {
   #running = false;
   constructor(private readonly transport: MatrixTransport, private readonly trace: TraceRecorder, private readonly notifications?: NotificationRouter) {}
 
-  async execute(authorized: AuthorizedTransmission, driver?: MatrixDriver): Promise<ExecutionResult> {
+  async execute(authorized: AuthorizedTransmission, driver?: MatrixDriver, onProgress?: (progress: ExecutionProgress) => void): Promise<ExecutionResult> {
     if (this.#running) throw new Error("A transmission is already in progress.");
     if (this.transport.state !== "connected") throw new Error("Cannot transmit while disconnected.");
     this.#running = true;
@@ -47,6 +49,7 @@ export class TransmissionExecutor {
     const packetTimings: PacketTiming[] = [];
     let previousWriteStartMs: number | null = null;
     const expectation = authorized.plan.responseExpectation;
+    const executionStartedMs = Date.now();
     const armed = expectation.type === "notification" && this.notifications && driver
       ? this.notifications.arm(expectation, (notification, expected) => driver.responseMatches?.(notification, expected) ?? false)
       : null;
@@ -69,6 +72,8 @@ export class TransmissionExecutor {
             });
             previousWriteStartMs = writeStartMs;
             this.trace.record("tx.packet.hostAccepted", { planId: authorized.plan.id, packetIndex: packet.index, byteLength: receipt.byteLength, attempt });
+            const completedPackets = packetTimings.length; const elapsedMs = Date.now() - executionStartedMs;
+            onProgress?.({ completedPackets, totalPackets: authorized.plan.packets.length, elapsedMs, estimatedRemainingMs: completedPackets > 0 ? Math.max(0, Math.round(elapsedMs / completedPackets * (authorized.plan.packets.length - completedPackets))) : null });
             // Executor-owned pacing: honor the packet's declared inter-write
             // delay (skipped after the final packet).
             if (packet.delayAfterMs && packet.index < authorized.plan.packets.length - 1) await sleep(packet.delayAfterMs);

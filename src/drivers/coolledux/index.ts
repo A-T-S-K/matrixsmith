@@ -92,7 +92,7 @@ export function coolLedUxCapabilities(profile: DeviceProfile): readonly Capabili
 
 export function createCoolLedUxPlan(operation: MatrixOperation, context: DriverContext, purpose: "operation" | "probe" = "operation"): TransmissionPlan {
   if (context.profile.driverId !== "coolledux") throw new Error("CoolLEDUX cannot plan for a profile owned by another driver.");
-  if (operation.type === "ShowFrame" || operation.type === "ShowAnimation" || operation.type === "ShowText" || operation.type === "ShowGif" || operation.type === "ShowDiagnostic") {
+  if (operation.type === "ShowFrame" || operation.type === "ShowAnimation" || operation.type === "ShowText" || operation.type === "ShowScrollingText" || operation.type === "ShowGif" || operation.type === "ShowDiagnostic") {
     return createContentPlan(operation, context);
   }
   let bytes: Uint8Array;
@@ -176,7 +176,7 @@ function compileStaticRaster(frame: Framebuffer, context: DriverContext): { comp
   }
 }
 
-function createContentPlan(operation: Extract<MatrixOperation, { type: "ShowFrame" | "ShowAnimation" | "ShowText" | "ShowGif" | "ShowDiagnostic" }>, context: DriverContext): TransmissionPlan {
+function createContentPlan(operation: Extract<MatrixOperation, { type: "ShowFrame" | "ShowAnimation" | "ShowText" | "ShowScrollingText" | "ShowGif" | "ShowDiagnostic" }>, context: DriverContext): TransmissionPlan {
   const { profile } = context;
   let compiled: CompiledProgram;
   let contentType: string;
@@ -208,6 +208,12 @@ function createContentPlan(operation: Extract<MatrixOperation, { type: "ShowFram
       assertGeometry(operation.sequence.width, operation.sequence.height, profile);
       compiled = compileAnimation(operation.sequence);
       contentType = "animation";
+      frameCount = operation.sequence.frames.length;
+      break;
+    case "ShowScrollingText":
+      assertGeometry(operation.sequence.width, operation.sequence.height, profile);
+      compiled = compileAnimation(operation.sequence);
+      contentType = "text";
       frameCount = operation.sequence.frames.length;
       break;
     case "ShowGif":
@@ -253,8 +259,9 @@ function createContentPlan(operation: Extract<MatrixOperation, { type: "ShowFram
       tileWidth: compiled.tileWidth,
       pacingMs: compiled.pacingMs,
       frameCount,
-      width: operation.type === "ShowGif" ? operation.width : operation.type === "ShowAnimation" ? operation.sequence.width : operation.type === "ShowDiagnostic" ? profile.width : operation.frame!.width,
-      height: operation.type === "ShowGif" ? operation.height : operation.type === "ShowAnimation" ? operation.sequence.height : operation.type === "ShowDiagnostic" ? profile.height : operation.frame!.height,
+      width: operation.type === "ShowGif" ? operation.width : operation.type === "ShowAnimation" || operation.type === "ShowScrollingText" ? operation.sequence.width : operation.type === "ShowDiagnostic" ? profile.width : operation.frame!.width,
+      height: operation.type === "ShowGif" ? operation.height : operation.type === "ShowAnimation" || operation.type === "ShowScrollingText" ? operation.sequence.height : operation.type === "ShowDiagnostic" ? profile.height : operation.frame!.height,
+      ...(operation.type === "ShowScrollingText" ? { textBackend: operation.backend } : {}),
       ...(rasterStrategyUsed ? { rasterStrategy: rasterStrategyUsed } : {}),
       ...(diagnosticId ? { diagnosticId } : {}),
       ...(diagnostic?.playback ? { graffitiMode: diagnostic.playback.mode, graffitiSpeed: diagnostic.playback.speed, graffitiStayTime: diagnostic.playback.stayTime } : {}),

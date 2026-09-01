@@ -38,6 +38,13 @@ describe("TransmissionExecutor", () => {
     expect(trace.events.map(({ type }) => type)).toEqual(["tx.packet.started", "tx.packet.hostAccepted", "tx.packet.started", "tx.packet.hostAccepted", "tx.completed"]);
   });
 
+  it("reports packet progress from actual host-accepted writes", async () => {
+    const transport = await connectedFake(); const progress: { completedPackets: number; totalPackets: number }[] = [];
+    await new TransmissionExecutor(transport, new TraceRecorder()).execute(authorized([packet(0, 1), packet(1, 2), packet(2, 3)]), undefined, (value) => progress.push(value));
+    expect(progress.map(({ completedPackets }) => completedPackets)).toEqual([1, 2, 3]);
+    expect(progress.every(({ totalPackets }) => totalPackets === 3)).toBe(true);
+  });
+
   it("aborts after a write failure", async () => {
     const transport = await connectedFake();
     transport.failWriteAt = 1;

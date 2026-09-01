@@ -33,7 +33,7 @@ export function ValidationDialog({ snapshot, store }: { readonly snapshot: AppSn
         </div>
       </>}
       {flow.stage === "questions" && <>
-        <p>The diagnostic content was transferred ({flow.transactionIds.length} transaction recorded). Look at the physical panel and answer each question. Your answers become structured session evidence.</p>
+        <p>The host accepted the diagnostic upload writes ({flow.transactionIds.length} transaction recorded). This does not prove firmware acceptance: look at the physical panel and answer each question.</p>
         <div class="validation-previews">{flow.preview.map((frame, index) => <div><strong>{flow.preview.length > 1 ? `Expected frame ${index + 1}` : "Expected image"}</strong><FramePreview frame={frame}/></div>)}</div>
         <ol class="validation-questions">{flow.questions.map((question) => { const answer = flow.answers[question.id]; return <li>
           <p>{question.prompt}</p>
@@ -75,10 +75,12 @@ export function PendingSendDialog({ snapshot, store }: { readonly snapshot: AppS
         <div><dt>Packets</dt><dd>{pending.packetCount} (1 announce + {pending.chunkCount} chunks)</dd></div>
         <div><dt>Program</dt><dd>{pending.programBytes} bytes uncompressed</dd></div>
       </dl>
+      {snapshot.sendProgress && <div class="notice" role="status"><strong>Sending {pending.label.toLowerCase()}</strong><br/>{snapshot.sendProgress.completedPackets} of {snapshot.sendProgress.totalPackets} packets · {(snapshot.sendProgress.elapsedMs / 1000).toFixed(1)} s elapsed{snapshot.sendProgress.estimatedRemainingMs === null ? "" : ` · ~${Math.ceil(snapshot.sendProgress.estimatedRemainingMs / 1000)} s remaining`}</div>}
+      {!snapshot.wakeLockSupported && <p class="fineprint">Keep this screen on until sending finishes.</p>}
       <label class="confirm-check"><input type="checkbox" checked={confirmChecked} onChange={(event) => setConfirmChecked((event.currentTarget as HTMLInputElement).checked)}/><span>I understand this permanently replaces the stored display content.</span></label>
       <div class="inline-form">
         <button class="primary" disabled={!confirmChecked || snapshot.busy !== null} onClick={() => void store.confirmPendingSend()}>Send to display</button>
-        <button class="secondary" onClick={() => store.cancelPendingSend()}>Cancel</button>
+        <button class="secondary" disabled={snapshot.busy !== null} onClick={() => store.cancelPendingSend()}>Cancel</button>
       </div>
     </div>
   </section></div>;
