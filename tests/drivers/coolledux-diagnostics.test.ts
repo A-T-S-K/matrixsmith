@@ -34,8 +34,8 @@ describe("graffiti black/off probe", () => {
   const built = diagnosticContent("graffiti-black-probe").build(PROFILE);
 
   it("preserves literal raw 0x0000 and 0x0004 with no substitution", () => {
-    const zeroRegion = built.regions.find((region) => region.rawWord === 0x0000 && region.width === 8);
-    const workaroundRegion = built.regions.find((region) => region.rawWord === 0x0004);
+    const zeroRegion = built.regions.find((region) => region.technical.rawWord === 0x0000 && region.width === 8);
+    const workaroundRegion = built.regions.find((region) => region.technical.rawWord === 0x0004);
     expect(zeroRegion).toBeDefined();
     expect(workaroundRegion).toBeDefined();
     // The exact bytes must survive compilation: decompress and confirm both words appear at volume.
@@ -53,7 +53,7 @@ describe("graffiti black/off probe", () => {
 
   it("uses alternating 8-column regions across the canvas", () => {
     const bands = built.regions.filter((region) => region.width === 8);
-    expect(bands.map((region) => region.rawWord)).toEqual([0x0000, 0x0004, 0x0000, 0x0004]);
+    expect(bands.map((region) => region.technical.rawWord)).toEqual([0x0000, 0x0004, 0x0000, 0x0004]);
     expect(bands.map((region) => region.x)).toEqual([0, 8, 16, 24]);
   });
 
@@ -130,15 +130,15 @@ describe("pixel-channel probe", () => {
     expect(built.regions).toHaveLength(PIXEL_CHANNEL_PROBE_WORDS.length);
     for (const region of built.regions) {
       expect(region.width * region.height).toBeLessThanOrEqual(18);
-      expect(PIXEL_CHANNEL_PROBE_WORDS).toContain(region.rawWord);
+      expect(PIXEL_CHANNEL_PROBE_WORDS).toContain(region.technical.rawWord);
     }
   });
 
   it("labels only RGB444-predictable words with an expectation", () => {
-    const expectations = built.regions.filter((region) => region.expectedUnderRgb444);
-    expect(expectations.map((region) => region.rawWord).sort((a, b) => a - b)).toEqual([0x0000, 0x000f, 0x00f0, 0x0f00, 0x0fff, 0xffff]);
-    const highNibbleOnly = built.regions.filter((region) => [0x1000, 0x2000, 0x4000, 0x8000, 0xf000].includes(region.rawWord));
-    for (const region of highNibbleOnly) expect(region.expectedUnderRgb444).toBeUndefined();
+    const expectations = built.regions.filter((region) => region.technical.expectedUnderHypothesis);
+    expect(expectations.map((region) => region.technical.rawWord!).sort((a, b) => a - b)).toEqual([0x0000, 0x000f, 0x00f0, 0x0f00, 0x0fff, 0xffff]);
+    const highNibbleOnly = built.regions.filter((region) => [0x1000, 0x2000, 0x4000, 0x8000, 0xf000].includes(region.technical.rawWord ?? -1));
+    for (const region of highNibbleOnly) expect(region.technical.expectedUnderHypothesis).toBeUndefined();
   });
 
   it("keeps the lit area conservative", () => {

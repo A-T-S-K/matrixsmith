@@ -34,7 +34,7 @@ export function RegionMap({
   };
   return <div class="region-map">
     <div class="region-map-stage">
-      <FramePreview frame={frame} scale={10} label={label ?? "Diagnostic pattern with labelled zones"}/>
+      <FramePreview frame={frame} fill showSize={false} label={label ?? "Diagnostic pattern with labelled zones"}/>
       <div class="region-map-overlay" aria-hidden="true">
         {regions.map((region) => {
           const state = stateOf(region);
