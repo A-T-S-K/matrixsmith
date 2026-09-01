@@ -33,6 +33,7 @@ import {
   type AttemptValidity, type ObservationAttempt, type PhysicalTimingMark,
 } from "../investigation/timing";
 import type { AttemptFailureKind, TransferReason } from "../investigation/orchestration";
+import { bindingAllowsSessionContinuity, deviceIdentityBinding } from "../investigation/device-identity";
 import { stepForTest } from "../investigation/core-plan";
 import { forgetInvestigationHistory, latestInvestigationFor, saveInvestigation, toHistoricalInvestigation } from "../storage/investigations";
 
@@ -222,6 +223,14 @@ export interface StoredInvestigationView {
   readonly goalLabel: string;
   readonly testCount: number;
   readonly matchesProfile: boolean;
+  /**
+   * Whether the record was made on THIS browser-authorized physical display.
+   * When it was not, resuming keeps the evidence as history but starts a
+   * fresh execution record — one unit's experiments must not continue
+   * accumulating against another's.
+   */
+  readonly sameAuthorizedDevice: boolean;
+  readonly experimentCount: number;
 }
 
 export interface DiagnosticRegionView {
@@ -1460,7 +1469,12 @@ export class MatrixStore {
         invalidationReason: attempt.invalidationReason, parameters: attempt.parameters,
         marks: attempt.marks,
       })),
-      attemptNumber: Math.max(1, flow.attempts.length),
+      // The authoritative attempt number, not a count of what this dialog has
+      // seen. A measure-again opens a fresh flow but CONTINUES the experiment,
+      // so restarting the display count here would show "Attempt 1" over an
+      // attempt the record calls 3 — exactly the renumbering the attempt model
+      // exists to prevent.
+      attemptNumber: flow.attempts.at(-1)?.attemptNumber ?? this.#openAttemptNumber(flow) ?? 1,
       // Undo is only honest while the next physical event has not happened.
       canUndoMark: Boolean(flow.timerSpec) && !flow.timerStopped && flow.timerPhaseIndex > 0,
       timingSummary: aggregate ? describeAggregate(aggregate) : null,
@@ -1482,6 +1496,12 @@ export class MatrixStore {
     const entry = progress.steps.find((candidate) => candidate.id === step.id);
     if (!entry) return null;
     return { position: entry.position, total: progress.total, stepTitle: entry.title };
+  }
+
+  /** Attempt number the controller has open for this flow's experiment. */
+  #openAttemptNumber(flow: GuidedFlowInternal): number | null {
+    const run = this.controller.experiments.find((entry) => entry.experimentRunId === flow.experimentRunId);
+    return run?.attempts.at(-1)?.attemptNumber ?? null;
   }
 
   #orchestrationView(): OrchestrationDebugView {
@@ -1550,6 +1570,11 @@ export class MatrixStore {
       goalLabel: stored.investigation.goal.description || stored.investigation.goal.kind,
       testCount: stored.investigation.completedTests.length,
       matchesProfile: profileId !== null && stored.investigation.profileId === profileId,
+      sameAuthorizedDevice: bindingAllowsSessionContinuity(
+        stored.investigation.deviceBinding,
+        deviceIdentityBinding(this.controller.session.fingerprint, profileId),
+      ),
+      experimentCount: stored.investigation.orchestration?.experiments.length ?? 0,
     };
   }
   #contentState(profile: { width: number; height: number } | null): ContentState {

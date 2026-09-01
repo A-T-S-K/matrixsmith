@@ -202,6 +202,35 @@ describe("session reset boundaries", () => {
     expect(importer.controller.session.source).toBe("imported");
   }, 60000);
 
+  it("B2. resuming device A's stored record on device B carries no execution history", async () => {
+    const storage = memoryStorage();
+    const { store } = await connectedStore();
+    await runMissedThenValid(store, "coolledux-graffiti-timing");
+    saveInvestigation(store.controller.investigation!, storage);
+    const stored = loadInvestigationHistory(storage)[0]!.investigation;
+    expect(stored.orchestration.experiments.length).toBeGreaterThan(0);
+
+    // A DIFFERENT physical unit of the same model, and the user resumes the
+    // stored record on it. The evidence is legitimate history; the execution
+    // record belongs to the display that produced it.
+    const { store: deviceB } = await connectedStore(secondPhysicalDevice());
+    deviceB.controller.adoptInvestigation(toHistoricalInvestigation(stored));
+    const adopted = deviceB.controller.investigation!;
+    expect(adopted.orchestration.experiments).toEqual([]);
+    expect(adopted.orchestration.transfers).toEqual([]);
+    expect(adopted.orchestration.recommendationTrail).toEqual([]);
+    expect(adopted.orchestration.panelProgram.certainty).toBe("unknown");
+    expect(adopted.deviceBinding?.browserDeviceId).toBe("fixture-device-2");
+    // The evidence itself is kept, as demoted history.
+    expect(adopted.completedTests.length).toBeGreaterThan(0);
+    expect(adopted.claimEvidence.every((entry) => entry.scope === "previous-local-session")).toBe(true);
+    // A new experiment on device B is numbered from scratch and carries B's
+    // own execution identity.
+    const run = deviceB.controller.beginExperiment("coolledux-graffiti-timing");
+    expect(run.attempts).toEqual([]);
+    expect(run.fingerprint.physicalDeviceKey).toBe("fixture-device-2");
+  }, 60000);
+
   it("E. a browser restart keeps semantic history and drops panel certainty", async () => {
     const storage = memoryStorage();
     const { store } = await connectedStore();

@@ -248,9 +248,14 @@ function PreviousInvestigation({ snapshot, store }: { snapshot: AppSnapshot; sto
     <details class="technical-disclosure">
       <summary>Details</summary>
       <p class="fineprint">{stored.deviceName ?? "Stored display"} · saved {savedAt.toLocaleString()}.</p>
-      <p class="fineprint">{stored.matchesProfile
-        ? "This looks like the same kind of display. MatrixSmith cannot prove it is the same physical unit, so earlier results are rechecked when they matter."
-        : "Device match not confirmed — this may be a different display. Earlier results are kept for reference and rechecked before they are relied on."}</p>
+      <p class="fineprint">{stored.sameAuthorizedDevice
+        ? "This is the same display you authorized before, so its guided work continues where it left off."
+        : stored.matchesProfile
+          ? "This looks like the same kind of display. MatrixSmith cannot prove it is the same physical unit, so earlier results are rechecked when they matter."
+          : "Device match not confirmed — this may be a different display. Earlier results are kept for reference and rechecked before they are relied on."}</p>
+      {!stored.sameAuthorizedDevice && stored.experimentCount > 0 && <p class="fineprint">
+        Its {stored.experimentCount} recorded experiment{stored.experimentCount === 1 ? "" : "s"} stay{stored.experimentCount === 1 ? "s" : ""} with that session. Testing here starts a fresh record, because one display's results must not be attributed to another.
+      </p>}
       <button class="text-action quiet-action" onClick={() => store.forgetLocalHistory()}>Forget this history</button>
     </details>
   </section>;

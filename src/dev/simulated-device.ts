@@ -27,11 +27,25 @@ export class SimulatedIledHatTransport implements MatrixTransport {
   brightness = 0xcc;
   /** Milliseconds of simulated per-packet latency, so transfers feel real. */
   writeDelayMs = 4;
+  /**
+   * Which simulated physical unit this is. Two units share the profile, the
+   * name and the GATT shape and differ only in the browser authorization id —
+   * exactly the case where orchestration must not leak between displays.
+   */
+  readonly unit: string;
+  /**
+   * Fail the next write, once. The transfer-failure path is otherwise
+   * unreachable by hand, and it is the one that used to strand an attempt
+   * in progress forever.
+   */
+  failNextWrite = false;
   readonly #listeners = new Set<(bytes: Uint8Array) => void>();
+
+  constructor(unit = "simulated-iledhat") { this.unit = unit; }
 
   async selectAndConnect(_options: DeviceSelectionOptions): Promise<DeviceFingerprint> {
     this.state = "connected";
-    this.fingerprint = simulatedFingerprint();
+    this.fingerprint = simulatedFingerprint(this.unit);
     return this.fingerprint;
   }
 
@@ -40,7 +54,7 @@ export class SimulatedIledHatTransport implements MatrixTransport {
   }
 
   async listAuthorizedDevices(): Promise<readonly { id: string; name: string }[]> {
-    return [{ id: "simulated-iledhat", name: "iLedHat (simulated)" }];
+    return [{ id: this.unit, name: `iLedHat (simulated ${this.unit})` }];
   }
 
   async disconnect(): Promise<void> { this.state = "idle"; this.fingerprint = null; }
@@ -54,6 +68,7 @@ export class SimulatedIledHatTransport implements MatrixTransport {
 
   async write(_endpoint: GattEndpoint, bytes: Uint8Array, mode: WriteMode): Promise<TransportReceipt> {
     if (this.state !== "connected") throw new Error("Transport is disconnected.");
+    if (this.failNextWrite) { this.failNextWrite = false; throw new Error("Simulated write failure."); }
     const reply = this.#respond(bytes);
     if (reply) for (const listener of this.#listeners) listener(reply);
     if (this.writeDelayMs > 0) await new Promise<void>((resolve) => setTimeout(resolve, this.writeDelayMs));
@@ -68,11 +83,11 @@ export class SimulatedIledHatTransport implements MatrixTransport {
   }
 }
 
-function simulatedFingerprint(): DeviceFingerprint {
+function simulatedFingerprint(unit: string): DeviceFingerprint {
   return {
     schemaVersion: 1,
     transportKind: "web-bluetooth",
-    browserDeviceId: "simulated-iledhat",
+    browserDeviceId: unit,
     name: "iLedHat",
     advertisedServices: ["0000fff0-0000-1000-8000-00805f9b34fb"],
     rawAdvertisementHex: ILEDHAT_ADVERTISEMENT_HEX,
@@ -87,6 +102,6 @@ function simulatedFingerprint(): DeviceFingerprint {
     }],
     manuallyConfirmedGeometry: { width: 32, height: 16 },
     evidenceRefs: ["iledhat-advertisement", "iledhat-gatt", "manual-geometry"],
-    notes: ["Simulated device for local UX review — not evidence."],
+    notes: [`Simulated device ${unit} for local UX review — not evidence.`],
   };
 }

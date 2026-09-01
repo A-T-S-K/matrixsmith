@@ -563,13 +563,29 @@ export class MatrixController {
    * to this session, its past evidence stays labeled historical.
    */
   adoptInvestigation(investigation: Investigation): void {
+    const current = deviceIdentityBinding(this.session.fingerprint, this.session.profile?.id ?? null);
+    const demoted = demoteInvestigationEvidence(investigation, "previous-local-session");
+    // Orchestration is an execution history of ONE physical display: run ids,
+    // attempt numbering, transfers, what is believed to be on the panel. If
+    // the record was made on a different unit — same model, same profile, a
+    // different display — resuming it here would let that unit's history
+    // continue accumulating against this one. The evidence stays as demoted
+    // history; the execution state does not come across.
+    const sameDevice = bindingAllowsSessionContinuity(investigation.deviceBinding, current);
     const rebound: Investigation = {
-      ...demoteInvestigationEvidence(investigation, "previous-local-session"),
-      deviceBinding: deviceIdentityBinding(this.session.fingerprint, this.session.profile?.id ?? null) ?? investigation.deviceBinding,
+      ...demoted,
+      deviceBinding: current ?? investigation.deviceBinding,
+      orchestration: sameDevice ? demoted.orchestration : emptyOrchestration(),
     };
     this.#investigation = resumeInvestigation(rebound);
     this.#investigationEpoch = this.#connectionEpoch;
-    this.trace.record("investigation.resumed", { id: investigation.id, completedTests: investigation.completedTests.length });
+    this.#stagedPanelProgram = null;
+    this.#unownedPanelProgram = null;
+    this.trace.record("investigation.resumed", {
+      id: investigation.id, completedTests: investigation.completedTests.length,
+      sameAuthorizedDevice: sameDevice,
+      orchestrationCarried: sameDevice ? (investigation.orchestration?.experiments.length ?? 0) : 0,
+    });
   }
 
   guidedTestDefinitions(): readonly GuidedTestDefinition[] {
