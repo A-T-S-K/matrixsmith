@@ -122,3 +122,97 @@ Resulting atomic claims: stored-program upload **works**; tiled raster reconstru
 - Post-upload latency: tens-of-KB programs can take roughly 16–20 seconds between the last chunk and playback start on upstream hardware — observation timers must not misread this as failure.
 - Firmware assumes a fixed 16-row stride when decoding a segment's pixel stream regardless of the declared showHeight; declaring a shorter height misreads the data (upstream-confirmed).
 - The advertisement layout, `colorModeRaw`, value 3, RGBW, and any white channel are **not addressed at all** by the upstream reference.
+
+---
+
+## 2026-09-01 physical characterization session (exact iLedHat 31AE 32×16)
+
+Everything in this section was **observed on the exact physical unit** during a
+guided MatrixSmith session on 2026-09-01. It supersedes the open questions
+above for THIS profile and changes nothing about upstream CoolLEDUX behavior,
+which is recorded separately and left intact.
+
+### Graffiti static playback — REJECTED for this panel
+
+| Configuration | Initial render | Visible static hold | Then |
+| --- | --- | --- | --- |
+| mode=0, speed=0, stayTime=3 | correct | ~3.6 s | begins moving |
+| mode=0, speed=0, stayTime=0 | correct | ~1.0 s | begins moving |
+
+Both justified configurations move, and there is no third justified
+configuration to try — upstream never documents the `stayTime` field and uses
+only the value 3, so 3 (the used value) and 0 (the null value) exhaust the
+defensible probe space. Graffiti is therefore **not a viable static-image
+route on this panel**, recorded as a conclusive rejection rather than an open
+question.
+
+This says nothing about what `stayTime` *means*. Only these two values were
+tested; its units and semantics remain unknown, and 0xFF is still deliberately
+not probed.
+
+### Graffiti black — TRUE BLACK on this panel
+
+- Literal raw `0x0000` renders as genuinely off/black.
+- Raw `0x0004` renders as a **visibly dim blue**.
+- The upstream `0x0000`-is-white sentinel does **not** apply here, so the
+  inherited `0x0004` workaround must not be substituted for black on this
+  profile. It remains correct for CoolLEDUX profiles that have not been
+  physically characterized.
+
+### Animation static — BOTH VARIANTS VIABLE
+
+| Variant | Visible static hold from T1 | Background | Tiles | Flicker/reset |
+| --- | --- | --- | --- | --- |
+| One frame | ~16.8 s | genuinely off | aligned | none |
+| Two identical frames | ~16.2 s | genuinely off | aligned | none |
+
+Both pass the 15 s stability threshold. **Preferred static strategy:
+animation-single-frame**; animation-identical-frames is a verified fallback,
+not the primary route.
+
+### Pixel format — RGB444 PHYSICALLY CONFIRMED
+
+- byte0 low nibble → red
+- byte1 high nibble → green
+- byte1 low nibble → blue
+
+This matches the encoder MatrixSmith already emits, so encoder correctness is
+physically verified: logical colors reach the intended physical channels with
+no correction needed.
+
+### Fourth channel — REJECTED
+
+High-nibble-only probes `0x1000`, `0x2000`, `0x4000`, `0x8000` and `0xF000`
+were **all observed off**. The byte0 high nibble drives no fourth physical
+emitter on this panel, so there is no dedicated white channel either. The
+earlier RGBW hypothesis is closed negatively for this profile. `colorModeRaw =
+3` remains unexplained and is still never asserted to mean RGBW.
+
+### Color quality — CALIBRATION STILL OPEN
+
+- Logical R/G/B reach the correct physical colors.
+- No single channel was judged obviously brighter or dimmer than the others.
+- RGB-max white still appears **tinted** rather than neutral.
+
+Calibration remains unresolved and optional. It is deliberately NOT treated as
+evidence for a different channel encoding: the channel map above was confirmed
+directly, and inventing an alternative encoding to explain a tint would
+contradict a measurement with a guess.
+
+### Geometry
+
+4 × 8-column tiling reconstructs the canvas, orientation is correct, and no
+seams were observed in this run.
+
+### What this changed in the product
+
+The built-in `iledhat-31ae-32x16` profile now ships these as trusted facts, so
+a fresh session recognizes the display, derives `animation-single-frame` as its
+static strategy, and routes normal images and text through it without any
+protocol probe or guided characterization. See docs/ux-workflows.md.
+
+Two claims are deliberately still **unknown**: `image.rendering` and
+`text.rendering`. Their gates open because the substrate they depend on is
+verified, but "allowed through verified prerequisites" is not the same
+statement as "physically smoke-tested", and the profile does not claim the
+latter until someone has looked at a normal image on the panel.

@@ -710,3 +710,209 @@ The dev simulator supports `?sim` and `?sim=b` — two units sharing profile,
 name and GATT shape, differing only in browser authorization id — plus a
 one-shot write failure, so both device isolation and the transfer-failure path
 can be driven by hand.
+
+---
+
+# Productionizing a characterized profile (2026-09-01, phase 6)
+
+Phases 4 and 5 built the machinery for characterizing an unknown display. This
+one is about what happens *after* a display has been characterized: the
+iLedHat had been measured end to end, and a fresh session still opened with
+"Protocol needs confirmation → Identify", still compiled every image through a
+route that was known not to hold a still image, and still asked the user to
+re-derive facts already in the profile.
+
+## The story the product now supports
+
+Connect a known iLedHat. MatrixSmith recognizes CoolLEDUX and the 32×16
+profile, opens the Device Workspace on Create, and lets the user send an image,
+text or an animation. No probe, no Investigation, no guided characterization.
+
+Ready means **characterized**, not **permitted**: every persistent send still
+stops for an explicit confirmation of its exact consequence, because it still
+replaces what is on someone's display. GIF and power stay gated — neither has
+ever been demonstrated on this panel.
+
+## What the profile now ships
+
+Facts, not guesses. The full physical record is in
+`research/protocol-findings.md`; the product-relevant shape is:
+
+- Graffiti static playback **rejected** — both justified configurations move
+  (~3.6 s at stayTime=3, ~1.0 s at stayTime=0), and there is no third one.
+- Graffiti literal `0x0000` is **true black** here; `0x0004` is a visibly dim
+  blue, so the inherited upstream workaround does not apply to this profile.
+- Both Animation static variants **verified** with measured holds (16.8 s and
+  16.2 s), which is what lets the viability evaluator accept them past its 15 s
+  threshold. Preferred strategy: `animation-single-frame`.
+- RGB444 channel map and encoder correctness **verified**; fourth channel and
+  white channel **rejected**.
+- Colour calibration **unresolved** — white looks tinted, and that is a
+  calibration question, not a reason to invent a different encoding.
+
+`static.strategy` stays DERIVED. There is no fabricated "verified" record to
+open a gate: the evaluator reads the atomic facts above and concludes
+`animation-single-frame`, with Graffiti not-viable.
+
+`image.rendering` and `text.rendering` stay **unknown**, deliberately. Their
+gates open because the substrate they depend on is trusted, but *allowed
+through verified prerequisites* is not the same statement as *physically
+smoke-tested*, and the profile does not claim the latter until someone has
+looked at a normal image on the panel. The optional "Check a normal image end
+to end" test exists to close exactly that gap.
+
+## Recognizing a known display without probing it
+
+CoolLEDX and CoolLEDUX share FFF0/FFF1, so shape alone never decides the
+family — for an unknown display the active `0x1F` probe is still the
+discriminator, and nothing about that changed.
+
+A known-profile **signature** (`src/profiles/known-profiles.ts`) records what
+the profile itself establishes: the exact name, GATT shape and characteristic
+properties that identify it, the manufacturer id and geometry that corroborate
+it, the driver its evidence assigns, and the drivers its evidence ruled out
+*with the physical reason*. Both matchers consult it generically — neither
+driver contains a name check — so on a recognized iLedHat CoolLEDUX resolves
+exact and CoolLEDX is rejected carrying "0x08 returned 0x08 0xFE with no
+visible change" into the UI.
+
+Recognition is narrow:
+
+| Evidence | Effect |
+| --- | --- |
+| Exact name + exact FFF0/FFF1 shape and properties | recognized |
+| Manufacturer `0x31AE` present | corroborates |
+| Manufacturer absent (common in Web Bluetooth) | neither way; still recognized |
+| Manufacturer contradicts `0x31AE` | **withdraws** recognition |
+| Confirmed geometry ≠ 32×16 | **withdraws** recognition |
+| FFF1 properties differ | **withdraws** recognition |
+| Different name | not this profile at all |
+
+Absent evidence is not contradiction — refusing recognition because the browser
+exposed no advertisement bytes would make the mechanism useless in the browser
+it targets. An explicit disagreement withdraws it entirely, and the display
+falls back to the conservative shared-transport treatment with the
+disagreement recorded where it is visible.
+
+## Static routing consults the profile
+
+`compileStaticRaster` did `strategy ?? "graffiti"`. Precedence is now:
+
+1. a strategy this session physically validated,
+2. the profile's own preferred strategy, once its evidence resolved one,
+3. Graffiti, the upstream default, for profiles with no preference.
+
+Graffiti black follows the same shape: session evidence, then the profile's
+observed semantics, then the conservative `0x0004` workaround. Requiring a
+current-session observation to use a fact the profile already ships meant the
+workaround was applied to a panel that had been measured — writing a visibly
+dim blue where the user asked for black.
+
+## Core plan ordering
+
+The real session ran the full colour/channel test after **both** native
+playback configurations had already failed: careful work characterizing the
+pixels of a substrate that might not exist. The order is now
+
+1. Still image baseline
+2. Native playback discriminator
+3. Native black behaviour
+4. **Fallback still-image viability**
+5. **Pixel / channel correctness**
+6. Support decision
+
+The fallback slot stands down in both undecided directions — "the native path
+works, no fallback needed" and "the native path has not been ruled out, no
+fallback needed yet" — and becomes work only once Graffiti is conclusively
+non-viable. Six slots, stable ordinals, denominator never moves.
+
+## Optional work is never automatic
+
+Once every core slot is resolved the product says **Core characterization
+complete**, offers **Finish** as the primary action, and puts *Continue
+optional characterization* beside it as a deliberate choice. Colour quality,
+the second fallback variant, GIF and persistence stay fully reachable; they
+just stop arriving by themselves. The investigation report agrees rather than
+handing over a next test in the same breath as declaring completion.
+
+Progress wording: **"3 of 6 resolved · 2 completed, 1 skipped"**, where
+resolved means completed plus skipped.
+
+## Execution provenance
+
+A `CompletedGuidedTest` is report evidence forever. It is **not** proof that
+anything ran on the display in front of you.
+
+Scheduling used to read `completedTests.some(testId)`, so a baseline measured
+on device A both satisfied `requiresCompletedTests` and suppressed the
+recommendation on device B. Results now carry `experimentRunId`, stamped by the
+controller rather than the caller so the link is total, and scheduling asks
+`executedTests()` — results whose run is still in this investigation's
+orchestration. A resumed record on a different display has none, because
+adoption resets orchestration there. Reports still see every recorded result.
+
+Ownership stays as documented in phase 5: `ExperimentRun` owns execution,
+`CompletedGuidedTest` owns the claim record, one run can produce several
+results, and the controller settles the run from the same interpretation that
+produced the result so the two can never disagree.
+
+## Other lifecycle corrections
+
+- **Cycle detection stops the workflow.** A detected automatic cycle now
+  aborts before an experiment is opened and long before anything is
+  transmitted. A warning read after the panel has been rewritten is not a
+  guard. Explicit retries and reopens remain exempt.
+- **Execution identity describes the experiment.** The fingerprint's raster
+  strategy came from the session's selection, so the two-identical-frame run
+  was recorded as "animation-single-frame". Diagnostics now declare the
+  strategy they are a test of; the raw pixel and colour probes declare none,
+  because they ride the Animation container to ask about pixels.
+- **Panel timestamps.** `startedAt` and `writtenAt` are separate, and
+  `writtenAt` is the final host-accepted write. Labelling transfer-start as
+  "written at" reported a time the display had not been touched.
+- **Disconnect invalidates certainty immediately**, so a report written while
+  disconnected says "last known program sent" and "currently on the display:
+  UNKNOWN".
+- **Derived claims print their derivation.** The report was showing
+  "static.strategy = verified — no evidence recorded" and explaining the
+  derivation two sections later.
+- **The report names why each test ran.** A guided workflow trail records an
+  origin per run, and `manual-selection` joined the vocabulary — a test the
+  user picked from the catalogue was being recorded as an automatic
+  recommendation, which tells a reader the workflow made them run it.
+- **One validator for Investigations.** Bundle parsing asserted an arbitrary
+  object into shape while storage sanitized field by field.
+  `investigation/serialization.ts` is now the single validator: malformed
+  entries are dropped individually, unknown claim ids are refused, and the
+  panel-program belief is always rebuilt as unknown.
+
+## Capability presentation
+
+Each capability now reads at the confidence its evidence supports. The static
+substrate and animation path are verified and observed; text is verified by
+prerequisite and corroborated, because it rides that substrate but has not been
+looked at; GIF and power stay experimental. An uncharacterized CoolLEDUX
+profile keeps the experimental presentation unchanged.
+
+## Testing
+
+- `tests/app/known-device-acceptance.test.ts` — the product test this phase
+  exists for, plus its companion holding unknown-device safety unchanged.
+- `tests/drivers/iledhat-static-routing.test.ts` — routed content type, frame
+  count, tiling, exact CRC, session override, unresolved-profile fallback, no
+  `0x0004` substitution, high nibble left clear.
+- `tests/drivers/matcher.test.ts` — recognition and its five withdrawal cases.
+- `tests/investigation/execution-provenance.test.ts` — run linkage and
+  historical-completion isolation.
+- `tests/investigation/lifecycle-correctness.test.ts` — cycle stop, execution
+  identity, timestamps, disconnect, bundle validation, derived-claim rendering.
+- `tests/drivers/normal-image-smoke.test.ts` — the production-path smoke test.
+
+Several suites that exercise the guided journey now run against
+`tests/helpers/uncharacterized-device.ts` rather than the shipped profile.
+Against a productionized profile the core plan is complete on connect, so a
+journey test would pass while walking nowhere.
+
+The dev simulator supports `?sim` (known unit A), `?sim=b` (a different
+physical unit, same profile) and `?sim=unknown` (the same transport on a
+display nothing is known about), plus a one-shot write failure.
