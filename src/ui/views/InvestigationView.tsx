@@ -19,6 +19,7 @@ export function InvestigationView({ snapshot, store }: { readonly snapshot: AppS
     <h1 class="view-title">Investigate</h1>
     {snapshot.investigation && started && <p class="goal-line">{snapshot.investigation.goalLabel}</p>}
 
+    <StoppedInvestigation snapshot={snapshot} store={store}/>
     <NextAction snapshot={snapshot} store={store}/>
     <WhatWeKnow snapshot={snapshot}/>
     <RecentResult snapshot={snapshot} store={store}/>
@@ -30,6 +31,24 @@ export function InvestigationView({ snapshot, store }: { readonly snapshot: AppS
     <details class="secondary-section"><summary>Technical support map</summary><SupportMap snapshot={snapshot}/></details>
     <details class="secondary-section"><summary>Reports</summary><ReportActions store={store}/></details>
     <details class="secondary-section"><summary>Developer tools</summary><DeveloperTools snapshot={snapshot} store={store}/></details>
+  </section>;
+}
+
+/**
+ * A stopped investigation has an outcome worth taking away, so the report
+ * stops being a secondary disclosure and becomes the action on offer. It stays
+ * a strip rather than a card: the work is finished, and the next test is still
+ * the thing the user is most likely to want.
+ */
+function StoppedInvestigation({ snapshot, store }: { snapshot: AppSnapshot; store: MatrixStore }): JSX.Element {
+  const investigation = snapshot.investigation;
+  if (!investigation || investigation.status !== "stopped" || investigation.completedTests.length === 0) return <></>;
+  return <section class="stopped-banner">
+    <div>
+      <strong>Investigation saved</strong>
+      <small>{investigation.completedTests.length} test{investigation.completedTests.length === 1 ? "" : "s"} · kept on this device</small>
+    </div>
+    <button class="secondary" onClick={() => void store.copyInvestigationReport()}>Copy investigation report</button>
   </section>;
 }
 
