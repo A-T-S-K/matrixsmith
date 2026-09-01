@@ -99,8 +99,12 @@ describe("cross-device evidence isolation", () => {
     transport.fingerprint = secondIledHatFingerprint();
     await controller.connect();
     const staticState = controller.claims().find((claim) => claim.id === "animation.static-single-frame");
+    // Device A's SESSION evidence does not follow. Device B is still an
+    // iLedHat, so it inherits the same shipped profile facts — which is
+    // correct, and is not the same thing as inheriting A's measurements.
     expect(staticState?.evidence.some((entry) => entry.scope === "current-session")).toBe(false);
-    expect(controller.contentGate("image").allowed).toBe(false);
+    expect(staticState?.decidedBy?.scope).toBe("built-in-profile");
+    expect(controller.investigation).toBeNull();
   });
 
   it("resumes the same active investigation when the same authorized device reconnects", async () => {

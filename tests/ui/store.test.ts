@@ -59,15 +59,18 @@ describe("recommended next action", () => {
 });
 
 describe("workspace snapshot", () => {
-  it("moves through ambiguous connection to a resolved CoolLEDUX session", async () => {
+  it("opens a known display ready to use, with the probe still available", async () => {
     const { store } = await connectedStore();
     let snapshot = store.getSnapshot();
     expect(snapshot.page).toBe("workspace");
-    expect(snapshot.recommended.action).toBe("identify");
-    expect(snapshot.candidates.some((c) => c.canIdentify)).toBe(true);
+    // No identification step: the profile already answers the question the
+    // probe exists to answer.
+    expect(snapshot.recommended.action).not.toBe("identify");
+    expect(snapshot.device?.support).toBe("Supported");
+    expect(snapshot.device?.protocol).toBe("CoolLEDUX");
     await store.identify();
     snapshot = store.getSnapshot();
-    expect(snapshot.recommended.action).toBe("validate-static");
+    expect(snapshot.error).toBeNull();
     expect(snapshot.candidates.find((c) => c.id === "coolledux")?.state).toBe("VERIFIED ON THIS SESSION");
     expect(snapshot.support.find((row) => row.label === "Protocol identity")?.state).toBe("Verified");
     expect(snapshot.deviceState.brightness).toBe(0xcc);

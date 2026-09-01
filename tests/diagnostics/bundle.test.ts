@@ -27,8 +27,13 @@ describe("diagnostic bundles", () => {
     const controller = new MatrixController(new FakeTransport(fingerprint));
     const json = serializeDiagnosticBundle(createDiagnosticBundle({ fingerprint, driverMatches: [], selectedDriver: null, selectedProfile: null, capabilities: [], trace: [], observations: [] }));
     controller.importBundle(json);
-    expect(controller.session.selection?.selected).toBeNull();
-    expect(controller.session.selection?.ambiguous).toBe(true);
-    expect(() => controller.plan({ type: "SetBrightness", raw: 0x40 })).toThrow(/non-ambiguous/);
+    // An imported fingerprint of a known display still resolves its profile —
+    // that is offline analysis, not authority. Transmission is what must stay
+    // blocked, and the safety policy blocks it on source alone.
+    expect(controller.session.source).toBe("imported");
+    const plan = controller.plan({ type: "SetBrightness", raw: 0x40 });
+    const decision = controller.evaluate(plan);
+    expect(decision.allowed).toBe(false);
+    expect(decision.reasons.join(" ")).toMatch(/live|imported/i);
   });
 });

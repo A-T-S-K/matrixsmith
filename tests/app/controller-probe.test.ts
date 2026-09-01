@@ -9,11 +9,14 @@ import infoFixture from "../fixtures/iledhat/coolledux-device-info-cc.json";
 const INFO = infoFixture.rxHex;
 
 describe("active protocol probing", () => {
-  it("uses an explicit safe 0x1F response to resolve CoolLEDUX and retain raw RX", async () => {
+  it("keeps 0x1F available as an optional refresh on the already-known profile", async () => {
     const transport = new FakeTransport(knownIledHatFingerprint());
     const controller = new MatrixController(transport, new TraceRecorder());
     await controller.connect();
-    expect(controller.session.selection?.ambiguous).toBe(true);
+    // The characterized profile resolves from its own evidence, so the probe
+    // is no longer a gate — it still runs, and still refreshes device state.
+    expect(controller.session.selection?.ambiguous).toBe(false);
+    expect(controller.session.selection?.selected?.id).toBe("coolledux");
     transport.notificationOnWrite = parseHexBytes(INFO);
     const result = await controller.probe();
     expect(result.protocolAcknowledged).toBe(true);

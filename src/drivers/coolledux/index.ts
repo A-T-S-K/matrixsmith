@@ -3,6 +3,7 @@ import type { DeviceFingerprint, DeviceProfile } from "../../core/device";
 import type { MatrixOperation } from "../../core/operations";
 import { createPlanId, packetHex, type TransmissionPlan } from "../../core/transmission";
 import { ILEDHAT_PROFILE_ID, iledHat31aeProfile } from "../../profiles/iledhat-31ae-32x16";
+import { ILEDHAT_SIGNATURE, matchesKnownProfile } from "../../profiles/known-profiles";
 import { COOLLED_ENDPOINT, COOLLED_SERVICE_UUID } from "../coolled/common/gatt";
 import { notificationMatchesExpectation, type DriverContext, type MatrixDriver } from "../types";
 import { matchCoolLedUx } from "./matcher";
@@ -39,12 +40,16 @@ export const coolLedUxDriver: MatrixDriver = {
   claimEvidence: coolLedUxBaselineClaimEvidence,
 };
 
+/**
+ * The characterized profile, when the fingerprint actually identifies it.
+ *
+ * Delegated to the shared known-profile evaluation so that the rule which
+ * selects the profile and the rule which resolves the protocol family cannot
+ * drift apart — and so any explicit contradiction (wrong geometry, wrong
+ * manufacturer, wrong characteristic properties) withdraws both at once.
+ */
 function resolveIledHatProfile(fingerprint: DeviceFingerprint): DeviceProfile | null {
-  const geometry = fingerprint.manuallyConfirmedGeometry;
-  const compatible = !geometry || (geometry.width === 32 && geometry.height === 16);
-  // Browser sessions may expose name + granted GATT but no advertisement bytes.
-  // That is enough to choose the physical profile for a safe probe, not enough to choose the protocol family.
-  return fingerprint.name?.toLowerCase() === "iledhat" && compatible && matchCoolLedUx(fingerprint).score >= 50 ? iledHat31aeProfile : null;
+  return matchesKnownProfile(ILEDHAT_SIGNATURE, fingerprint) ? iledHat31aeProfile : null;
 }
 
 export function coolLedUxCapabilities(profile: DeviceProfile): readonly Capability[] {

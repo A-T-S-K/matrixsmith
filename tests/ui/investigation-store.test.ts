@@ -19,12 +19,14 @@ async function identifiedStore(): Promise<{ transport: ScriptedCoolLedUxDevice; 
 }
 
 describe("workspace routing", () => {
-  it("routes an unidentified (ambiguous) display into the investigation view", async () => {
+  it("opens a known display straight into the control view", async () => {
     const transport = new ScriptedCoolLedUxDevice(knownIledHatFingerprint());
     const store = new MatrixStore(new MatrixController(transport, new TraceRecorder()), transport);
     await store.connect();
     expect(store.getSnapshot().page).toBe("workspace");
-    expect(store.getSnapshot().view).toBe("diagnose");
+    // Recognized from its own profile: no identification detour.
+    expect(store.getSnapshot().view).toBe("control");
+    expect(store.getSnapshot().recommended.action).not.toBe("identify");
   });
 
   it("keeps the protocol workbench as an explicit secondary view", async () => {

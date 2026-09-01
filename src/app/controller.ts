@@ -514,6 +514,19 @@ export class MatrixController {
     return evaluateStaticViability(this.allClaimEvidence());
   }
 
+  /**
+   * Whether this display is ready for ordinary use from trusted evidence
+   * alone — a resolved driver and profile plus a usable static substrate.
+   *
+   * "Ready" is about characterization, not about permission: every persistent
+   * send still asks for its own confirmation, because it still replaces what
+   * is on someone's display.
+   */
+  profileReady(): boolean {
+    if (!this.session.selection?.selected || !this.session.profile) return false;
+    return this.staticViability().selected !== null;
+  }
+
   startInvestigation(goal: InvestigationGoal): Investigation {
     // An active investigation is retargeted, never discarded: troubleshooting
     // keeps every completed test and claim as evidence toward the new goal.
