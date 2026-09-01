@@ -9,7 +9,13 @@ import { MatrixStore } from "./ui/store";
 const root = document.querySelector<HTMLElement>("#app");
 if (!root) throw new Error("Missing #app root");
 const trace = new TraceRecorder();
-const transport = new WebBluetoothTransport(trace);
+// Dev-only: `?sim` swaps in a simulated iLedHat so guided workflows can be
+// driven and visually reviewed without hardware. Production builds never
+// reach this branch and never bundle the module.
+const simulated = import.meta.env.DEV && new URLSearchParams(location.search).has("sim");
+const transport = simulated
+  ? new (await import("./dev/simulated-device")).SimulatedIledHatTransport()
+  : new WebBluetoothTransport(trace);
 const store = new MatrixStore(new MatrixController(transport, trace), transport);
 trace.record("app.started", { webBluetoothSupported: "bluetooth" in navigator });
 render(<App store={store}/>, root);

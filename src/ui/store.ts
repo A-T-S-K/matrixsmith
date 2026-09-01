@@ -25,7 +25,13 @@ import type { ObservationFieldSpec, ObservationValue } from "../investigation/ob
 import { observationsComplete } from "../investigation/observations";
 import type { Recommendation } from "../investigation/recommendations";
 import { RASTER_STRATEGY_LABELS } from "../core/raster-strategy";
-import { diagnosticContent, type DiagnosticRegion } from "../drivers/coolledux/diagnostics";
+import { diagnosticContent } from "../drivers/coolledux/diagnostics";
+import { rawWordHex, regionPeers, type DiagnosticRegion } from "../investigation/regions";
+import { timerDrivenFieldIds } from "../investigation/tests";
+import {
+  ATTEMPT_INVALIDATION_LABELS, aggregateAttemptDurations, describeAggregate,
+  type AttemptValidity, type ObservationAttempt, type PhysicalTimingMark,
+} from "../investigation/timing";
 import { forgetInvestigationHistory, latestInvestigationFor, saveInvestigation, toHistoricalInvestigation } from "../storage/investigations";
 
 export type WorkspaceView = "control" | "diagnose" | "develop";
@@ -134,13 +140,40 @@ export interface StoredInvestigationView {
 }
 
 export interface DiagnosticRegionView {
-  readonly label: string;
-  readonly rawWordHex: string;
+  readonly id: string;
+  readonly shortLabel: string;
+  readonly displayLabel: string;
+  readonly description: string;
+  readonly groupId: string | null;
   readonly x: number;
   readonly y: number;
   readonly width: number;
   readonly height: number;
+  /** Raw protocol value — technical disclosure only, never the region's name. */
+  readonly rawWordHex: string | null;
   readonly expected: string | null;
+  readonly technicalNotes: readonly string[];
+}
+
+/**
+ * One staged observation question. Spatial tests ask these one at a time so
+ * the question and the place it refers to stay in the same viewport.
+ */
+export interface ObservationStepView {
+  readonly spec: ObservationFieldSpec;
+  readonly regionId: string | null;
+  readonly answered: boolean;
+}
+
+/** How a test's OBSERVE stage should be presented. */
+export type ObservationPresentation = "spatial" | "timed" | "simple";
+
+export interface AttemptView {
+  readonly attemptNumber: number;
+  readonly validity: AttemptValidity;
+  readonly invalidationReason: string | null;
+  readonly parameters: Readonly<Record<string, number>>;
+  readonly marks: readonly PhysicalTimingMark[];
 }
 
 export type GuidedFlowStage = "about" | "running" | "observe" | "result";
@@ -165,11 +198,28 @@ export interface GuidedFlowState {
   /** Elapsed since the current phase's reference point (T0 for the first phase, the previous event for later ones). */
   readonly phaseElapsedMs: number | null;
   readonly currentPhase: TimelinePhase | null;
+  /** Which timeline phase is open; distinguishes a missed T1 from a missed T2. */
+  readonly timerPhaseIndex: number;
   readonly timerStopped: boolean;
   readonly transferProgress: string | null;
   readonly transactionIds: readonly string[];
   readonly result: CompletedGuidedTest | null;
   readonly nextTest: RecommendationView | null;
+  // ---- staged observation ----
+  readonly presentation: ObservationPresentation;
+  /** Questions the human answers, in order. Timer-filled fields are excluded. */
+  readonly steps: readonly ObservationStepView[];
+  readonly stepIndex: number;
+  /** Within OBSERVE: watching the timed event, or answering the follow-up questions. */
+  readonly observeStage: "timing" | "questions";
+  // ---- human-timed attempts ----
+  readonly attempts: readonly AttemptView[];
+  readonly attemptNumber: number;
+  /** True when the last mark can still be taken back without inventing precision. */
+  readonly canUndoMark: boolean;
+  /** Set once a valid timed attempt exists, so a confirmation run can be offered. */
+  readonly timingSummary: string | null;
+  readonly awaitingRetryConfirmation: boolean;
 }
 
 export interface ContentState {
@@ -234,6 +284,25 @@ export interface ImportSummary {
   readonly warnings: readonly string[];
   readonly unparsedLineCount: number;
   readonly provenance: string;
+}
+
+/** Mutable working state for the guided test currently open. */
+interface GuidedFlowInternal {
+  testId: string; title: string; stage: GuidedFlowStage;
+  about: GuidedTestAbout; consequence: string; category: string; risk: string;
+  planSummary: GuidedFlowState["planSummary"];
+  previews: Framebuffer[]; regions: DiagnosticRegionView[];
+  observationSpecs: ObservationFieldSpec[]; values: Record<string, ObservationValue>;
+  timerSpec: GuidedTestTimer | null; timerPhaseIndex: number; finalWriteAcceptedAt: string | null; timerStopped: boolean;
+  startedAt: string; transferProgress: string | null; transactionIds: string[];
+  result: CompletedGuidedTest | null;
+  presentation: ObservationPresentation;
+  stepIndex: number;
+  /** The exact experiment parameters; a retry must reuse these unchanged. */
+  parameters: Record<string, number>;
+  attempts: ObservationAttempt[];
+  marks: PhysicalTimingMark[];
+  awaitingRetryConfirmation: boolean;
 }
 
 export class MatrixStore {
@@ -534,16 +603,7 @@ export class MatrixStore {
 
   // ---- Guided investigation flow ---------------------------------------
 
-  #guidedFlow: {
-    testId: string; title: string; stage: GuidedFlowStage;
-    about: GuidedTestAbout; consequence: string; category: string; risk: string;
-    planSummary: GuidedFlowState["planSummary"];
-    previews: Framebuffer[]; regions: DiagnosticRegionView[];
-    observationSpecs: ObservationFieldSpec[]; values: Record<string, ObservationValue>;
-    timerSpec: GuidedTestTimer | null; timerPhaseIndex: number; finalWriteAcceptedAt: string | null; timerStopped: boolean;
-    startedAt: string; transferProgress: string | null; transactionIds: string[];
-    result: CompletedGuidedTest | null;
-  } | null = null;
+  #guidedFlow: GuidedFlowInternal | null = null;
   #timerInterval: ReturnType<typeof setInterval> | null = null;
 
   startTroubleshoot(symptomId: SymptomId): void {
@@ -625,6 +685,10 @@ export class MatrixStore {
         timerSpec: test.timer ?? null, timerPhaseIndex: 0, finalWriteAcceptedAt: null, timerStopped: false,
         startedAt: new Date().toISOString(), transferProgress: null, transactionIds: [],
         result: null,
+        presentation: presentationFor(test),
+        stepIndex: 0,
+        parameters: operationParameters(this.controller.guidedTestOperation(testId)),
+        attempts: [], marks: [], awaitingRetryConfirmation: false,
       };
     } catch (error) {
       this.#error = error instanceof Error ? error.message : String(error);
@@ -639,11 +703,26 @@ export class MatrixStore {
     flow.transferProgress = `Uploading diagnostic program (${flow.planSummary?.packetCount ?? "?"} packets at ${flow.planSummary?.pacingMs ?? "?"} ms pacing)…`;
     await this.#run("Transferring diagnostic content…", async () => {
       const { transactionIds, finalWriteAcceptedAt } = await this.controller.runGuidedTestTransfer(flow.testId, { confirmedConsequence: true });
-      flow.transactionIds = [...transactionIds];
+      flow.transactionIds = [...flow.transactionIds, ...transactionIds];
       flow.finalWriteAcceptedAt = finalWriteAcceptedAt;
       flow.stage = "observe";
       flow.transferProgress = null;
-      if (flow.timerSpec && finalWriteAcceptedAt) this.#startTimerTicks();
+      // Each transfer opens a fresh observation attempt: T0 restarts, so the
+      // human's marks belong to this run and not the previous one.
+      if (flow.timerSpec) {
+        flow.marks = [];
+        flow.timerPhaseIndex = 0;
+        flow.timerStopped = false;
+        flow.attempts.push({
+          attemptNumber: flow.attempts.length + 1,
+          parameters: { ...flow.parameters },
+          t0: finalWriteAcceptedAt,
+          marks: [], values: [],
+          validity: "incomplete", invalidationReason: null, note: null,
+          startedAt: new Date().toISOString(), endedAt: null,
+        });
+        if (finalWriteAcceptedAt) { this.#startTimerTicks(); this.#signalTimingStart(); }
+      }
       this.#info = "Diagnostic content transferred. Watch the physical panel now.";
     });
     if (flow.stage === "running") { flow.stage = "about"; flow.transferProgress = null; }
@@ -661,27 +740,168 @@ export class MatrixStore {
     if (!flow?.timerSpec || !flow.finalWriteAcceptedAt || flow.timerStopped) return;
     const phase = flow.timerSpec.phases[flow.timerPhaseIndex];
     if (!phase) return;
-    const elapsed = Math.max(0, Date.now() - Date.parse(flow.finalWriteAcceptedAt));
+    const now = new Date();
+    const elapsed = Math.max(0, now.getTime() - Date.parse(flow.finalWriteAcceptedAt));
     const setBooleans = (sets?: readonly { fieldId: string; value: "yes" | "no" }[]): void => {
       for (const set of sets ?? []) flow.values[set.fieldId] = { kind: "boolean", fieldId: set.fieldId, value: set.value };
+    };
+    // The tap is a HUMAN observation of a physical event, recorded with its
+    // provenance. The timestamp is exact; the precision it represents is not.
+    const mark = (event: string, fieldId?: string): void => {
+      flow.marks.push({ event, timestamp: now.toISOString(), source: "human-observed", elapsedMs: elapsed, ...(fieldId ? { fieldId } : {}) });
     };
     if (action === "event") {
       flow.values[phase.fieldId] = { kind: "duration", fieldId: phase.fieldId, milliseconds: elapsed, measuredBy: "matrixsmith-timer" };
       setBooleans(phase.eventSets);
+      mark(phase.id, phase.fieldId);
       flow.timerPhaseIndex += 1;
-      if (flow.timerPhaseIndex >= flow.timerSpec.phases.length) { flow.timerStopped = true; this.#stopTimerTicks(); }
+      if (flow.timerPhaseIndex >= flow.timerSpec.phases.length) this.#completeAttempt("valid");
     } else if (action === "fail") {
       setBooleans(phase.failSets);
-      flow.timerStopped = true;
-      this.#stopTimerTicks();
+      mark(`${phase.id}:not-observed`);
+      // The event genuinely did not happen — that is a real observation of
+      // the hardware, not a mistimed measurement.
+      this.#completeAttempt("valid");
     } else {
       const fieldId = phase.stillDurationFieldId ?? phase.fieldId;
       flow.values[fieldId] = { kind: "duration", fieldId, milliseconds: elapsed, measuredBy: "matrixsmith-timer", note: "observation ended with the image still completely static" };
       setBooleans(phase.stillSets);
-      flow.timerStopped = true;
-      this.#stopTimerTicks();
+      mark(`${phase.id}:still`, fieldId);
+      this.#completeAttempt("valid");
     }
     this.#emit();
+  }
+
+  /**
+   * "I missed it." The measurement attempt is invalid — that is emphatically
+   * NOT the same as the hardware failing to do the thing, so no observation
+   * value survives and no negative evidence is produced. The attempt itself
+   * stays in the record as investigation metadata.
+   */
+  markObservationMissed(reason: Extract<AttemptValidity, "missed-t1" | "missed-t2" | "accidental-tap">): void {
+    const flow = this.#guidedFlow;
+    if (!flow?.timerSpec || flow.timerStopped) return;
+    this.#discardAttemptValues();
+    this.#completeAttempt(reason);
+    flow.awaitingRetryConfirmation = true;
+    this.#info = "Measurement attempt discarded. Nothing about the display was concluded from it.";
+    this.#emit();
+  }
+
+  /**
+   * Take back the most recent mark. Only offered while the NEXT physical
+   * event has not happened yet: undoing after the fact could not recover the
+   * original moment, and pretending otherwise would manufacture precision.
+   */
+  undoLastMark(): void {
+    const flow = this.#guidedFlow;
+    if (!flow?.timerSpec || flow.timerStopped || flow.timerPhaseIndex === 0) return;
+    const removed = flow.marks.pop();
+    if (removed?.fieldId) delete flow.values[removed.fieldId];
+    const phase = flow.timerSpec.phases[flow.timerPhaseIndex - 1];
+    for (const set of phase?.eventSets ?? []) delete flow.values[set.fieldId];
+    flow.timerPhaseIndex -= 1;
+    this.#info = "Mark removed. Keep watching — the timer is still running from the upload.";
+    this.#emit();
+  }
+
+  /** Ask before re-sending; a retry retransmits persistent content. */
+  requestTimingRetry(): void {
+    const flow = this.#guidedFlow;
+    if (!flow) return;
+    flow.awaitingRetryConfirmation = true;
+    this.#emit();
+  }
+
+  cancelTimingRetry(): void {
+    const flow = this.#guidedFlow;
+    if (!flow) return;
+    flow.awaitingRetryConfirmation = false;
+    this.#emit();
+  }
+
+  /**
+   * Re-run the SAME experiment so the timeline can restart. The operation and
+   * every parameter stay identical — this repeats a measurement, it does not
+   * test a new hypothesis, and reports must be able to tell those apart.
+   */
+  async retryTimingAttempt(): Promise<void> {
+    const flow = this.#guidedFlow;
+    if (!flow || flow.stage !== "observe") return;
+    if (!flow.timerStopped) { this.#discardAttemptValues(); this.#completeAttempt("user-restarted"); }
+    flow.awaitingRetryConfirmation = false;
+    flow.stage = "about";
+    await this.confirmGuidedTransfer();
+  }
+
+  /** Close the open attempt, recording what it may and may not establish. */
+  #completeAttempt(validity: AttemptValidity): void {
+    const flow = this.#guidedFlow;
+    if (!flow) return;
+    flow.timerStopped = true;
+    this.#stopTimerTicks();
+    const open = flow.attempts.at(-1);
+    if (!open || open.endedAt !== null) return;
+    flow.attempts[flow.attempts.length - 1] = {
+      ...open,
+      marks: [...flow.marks],
+      values: validity === "valid" ? Object.values(flow.values) : [],
+      validity,
+      invalidationReason: validity === "valid" ? null : ATTEMPT_INVALIDATION_LABELS[validity],
+      endedAt: new Date().toISOString(),
+    };
+  }
+
+  /** Drop everything the failed attempt wrote, including timeline booleans. */
+  #discardAttemptValues(): void {
+    const flow = this.#guidedFlow;
+    if (!flow?.timerSpec) return;
+    for (const fieldId of timerDrivenFieldIds(flow.timerSpec)) delete flow.values[fieldId];
+    flow.marks = [];
+    flow.timerPhaseIndex = 0;
+  }
+
+  /**
+   * Optional cue at T0 so attention can stay on the panel instead of the
+   * phone. Every channel is feature-detected and failure is silent — the
+   * observation must never depend on it.
+   */
+  #signalTimingStart(): void {
+    try { navigator.vibrate?.([40, 60, 40]); } catch { /* cue is optional */ }
+  }
+
+  // ---- staged observation navigation ----
+
+  setGuidedStep(index: number): void {
+    const flow = this.#guidedFlow;
+    if (!flow) return;
+    const steps = this.#observationSteps(flow);
+    flow.stepIndex = Math.max(0, Math.min(index, Math.max(0, steps.length - 1)));
+    this.#emit();
+  }
+
+  nextGuidedStep(): void { this.setGuidedStep((this.#guidedFlow?.stepIndex ?? 0) + 1); }
+  previousGuidedStep(): void { this.setGuidedStep((this.#guidedFlow?.stepIndex ?? 0) - 1); }
+
+  /** Tapping a zone on the map jumps to that zone's question. */
+  focusRegion(regionId: string): void {
+    const flow = this.#guidedFlow;
+    if (!flow) return;
+    const steps = this.#observationSteps(flow);
+    const index = steps.findIndex((step) => step.regionId === regionId);
+    if (index >= 0) this.setGuidedStep(index);
+  }
+
+  /** Questions the human answers: timer-filled fields are never re-asked. */
+  #observationSteps(flow: GuidedFlowInternal): readonly ObservationStepView[] {
+    const driven = timerDrivenFieldIds(flow.timerSpec);
+    return flow.observationSpecs
+      .filter((spec) => !driven.has(spec.id) && spec.kind !== "duration")
+      .map((spec) => ({
+        spec,
+        regionId: spec.regionId ?? null,
+        answered: flow.values[spec.id] !== undefined,
+      }));
   }
 
   setGuidedObservation(value: ObservationValue): void {
@@ -696,7 +916,7 @@ export class MatrixStore {
     if (!flow || flow.stage !== "observe") return;
     try {
       const values = Object.values(flow.values);
-      flow.result = this.controller.recordGuidedTestObservations(flow.testId, values, flow.transactionIds, flow.startedAt);
+      flow.result = this.controller.recordGuidedTestObservations(flow.testId, values, flow.transactionIds, flow.startedAt, flow.attempts);
       flow.stage = "result";
       this.#stopTimerTicks();
       this.#persistInvestigation();
@@ -749,7 +969,10 @@ export class MatrixStore {
     const flow = this.#guidedFlow;
     if (!flow || flow.stage !== "observe") return;
     try {
-      this.controller.abandonGuidedTest(flow.testId, Object.values(flow.values), flow.transactionIds, flow.startedAt);
+      // An abandoned run still closes its open attempt, so the report can
+      // say the observation stopped rather than silently losing the timeline.
+      if (flow.timerSpec && !flow.timerStopped) this.#completeAttempt("incomplete");
+      this.controller.abandonGuidedTest(flow.testId, Object.values(flow.values), flow.transactionIds, flow.startedAt, flow.attempts);
       this.#persistInvestigation();
       this.#info = "Observation stopped. The test was recorded as incomplete — the transmitted content and automatic capture remain as evidence, and its report is available.";
     } catch (error) {
@@ -934,16 +1157,38 @@ export class MatrixStore {
     const previousEvent = previousPhase ? flow.values[previousPhase.fieldId] : undefined;
     const phaseStartMs = previousEvent?.kind === "duration" ? previousEvent.milliseconds : 0;
     const phaseElapsedMs = elapsed !== null && currentPhase ? Math.max(0, elapsed - phaseStartMs) : null;
+    const steps = this.#observationSteps(flow);
+    const stepIndex = Math.max(0, Math.min(flow.stepIndex, Math.max(0, steps.length - 1)));
+    // A timed test watches first and asks afterwards; everything else is
+    // already in its questions stage the moment the transfer lands.
+    const observeStage: "timing" | "questions" = flow.timerSpec && !flow.timerStopped ? "timing" : "questions";
+    const holds = flow.attempts
+      .filter((attempt) => attempt.validity === "valid")
+      .map((attempt) => attempt.marks.find((mark) => mark.event.startsWith("movement"))?.elapsedMs)
+      .filter((value): value is number => value !== undefined);
+    const aggregate = aggregateAttemptDurations(holds);
     return {
       testId: flow.testId, title: flow.title, stage: flow.stage, about: flow.about,
       consequence: flow.consequence, category: flow.category, risk: flow.risk,
       planSummary: flow.planSummary, previews: [...flow.previews], regions: [...flow.regions],
       observationSpecs: [...flow.observationSpecs], values: { ...flow.values },
       observationsReady: observationsComplete(flow.observationSpecs, Object.values(flow.values)),
-      timerSpec: flow.timerSpec, timerElapsedMs: elapsed, phaseElapsedMs, currentPhase, timerStopped: flow.timerStopped,
+      timerSpec: flow.timerSpec, timerElapsedMs: elapsed, phaseElapsedMs, currentPhase,
+      timerPhaseIndex: flow.timerPhaseIndex, timerStopped: flow.timerStopped,
       transferProgress: flow.transferProgress, transactionIds: [...flow.transactionIds],
       result: flow.result,
       nextTest: flow.stage === "result" ? recommendationView(this.controller.recommendations()[0] ?? null) : null,
+      presentation: flow.presentation, steps, stepIndex, observeStage,
+      attempts: flow.attempts.map((attempt) => ({
+        attemptNumber: attempt.attemptNumber, validity: attempt.validity,
+        invalidationReason: attempt.invalidationReason, parameters: attempt.parameters,
+        marks: attempt.marks,
+      })),
+      attemptNumber: Math.max(1, flow.attempts.length),
+      // Undo is only honest while the next physical event has not happened.
+      canUndoMark: Boolean(flow.timerSpec) && !flow.timerStopped && flow.timerPhaseIndex > 0,
+      timingSummary: aggregate ? describeAggregate(aggregate) : null,
+      awaitingRetryConfirmation: flow.awaitingRetryConfirmation,
     };
   }
 
@@ -1023,12 +1268,36 @@ function recommendationView(recommendation: Recommendation | null): Recommendati
   };
 }
 
+/**
+ * How a test should be presented. Derived from what the test actually
+ * declares rather than hand-tagged, so a new test cannot drift out of sync
+ * with its own content: questions about places get the spatial framework,
+ * a measured timeline gets the timed one, everything else stays a short
+ * plain list.
+ */
+function presentationFor(test: { readonly observation: readonly ObservationFieldSpec[]; readonly timer?: unknown }): ObservationPresentation {
+  if (test.observation.some((spec) => spec.regionId !== undefined)) return "spatial";
+  if (test.timer) return "timed";
+  return "simple";
+}
+
+/** The declared parameter set of the resolved operation, for attempt records. */
+function operationParameters(operation: import("../core/operations").MatrixOperation): Record<string, number> {
+  if (operation.type !== "ShowDiagnostic" || !operation.parameters) return {};
+  return { ...operation.parameters };
+}
+
 function regionView(region: DiagnosticRegion): DiagnosticRegionView {
   return {
-    label: region.label,
-    rawWordHex: `0x${region.rawWord.toString(16).padStart(4, "0").toUpperCase()}`,
+    id: region.id,
+    shortLabel: region.shortLabel,
+    displayLabel: region.displayLabel,
+    description: region.description,
+    groupId: region.groupId ?? null,
     x: region.x, y: region.y, width: region.width, height: region.height,
-    expected: region.expectedUnderRgb444 ?? null,
+    rawWordHex: region.technical.rawWord === undefined ? null : rawWordHex(region.technical.rawWord),
+    expected: region.technical.expectedUnderHypothesis ?? null,
+    technicalNotes: region.technical.notes ?? [],
   };
 }
 
@@ -1041,7 +1310,8 @@ function regionPreviewFrame(width: number, height: number, regions: readonly Dia
   const frame = new Framebuffer(width, height);
   frame.clear();
   for (const region of regions) {
-    const { r, g, b } = regionDiagramColor(region.rawWord);
+    if (region.technical.rawWord === undefined) continue;
+    const { r, g, b } = regionDiagramColor(region.technical.rawWord);
     for (let x = region.x; x < Math.min(width, region.x + region.width); x += 1) {
       for (let y = region.y; y < Math.min(height, region.y + region.height); y += 1) frame.setPixel(x, y, r, g, b);
     }

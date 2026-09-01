@@ -10,12 +10,28 @@ export interface ObservationChoiceOption {
   readonly label: string;
 }
 
+/**
+ * Fields common to every observation field kind.
+ *
+ * `regionId` is the link that makes spatial observation work: a question that
+ * refers to a place on the panel names the region instead of describing it in
+ * prose, and the UI uses that link to highlight the right zone, label it, and
+ * expose the region/question relationship to assistive technology.
+ */
+interface ObservationFieldCommon {
+  readonly id: string;
+  readonly prompt: string;
+  readonly required?: boolean;
+  /** Diagnostic region this question is about, when it is about a place. */
+  readonly regionId?: string;
+}
+
 export type ObservationFieldSpec =
-  | { readonly kind: "boolean"; readonly id: string; readonly prompt: string; readonly required?: boolean }
-  | { readonly kind: "choice"; readonly id: string; readonly prompt: string; readonly options: readonly ObservationChoiceOption[]; readonly allowOther?: boolean; readonly required?: boolean }
-  | { readonly kind: "duration"; readonly id: string; readonly prompt: string; readonly required?: boolean }
-  | { readonly kind: "number"; readonly id: string; readonly prompt: string; readonly unit?: string; readonly required?: boolean }
-  | { readonly kind: "note"; readonly id: string; readonly prompt: string };
+  | (ObservationFieldCommon & { readonly kind: "boolean" })
+  | (ObservationFieldCommon & { readonly kind: "choice"; readonly options: readonly ObservationChoiceOption[]; readonly allowOther?: boolean })
+  | (ObservationFieldCommon & { readonly kind: "duration" })
+  | (ObservationFieldCommon & { readonly kind: "number"; readonly unit?: string })
+  | (ObservationFieldCommon & { readonly kind: "note" });
 
 export type ObservationValue =
   | { readonly kind: "boolean"; readonly fieldId: string; readonly value: "yes" | "no" | "unsure"; readonly note?: string }

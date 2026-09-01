@@ -166,6 +166,22 @@ export function evaluateTestAvailability(
   return { test, available, unmetPrerequisites: unmet, missingCompletedTests: missing, reason };
 }
 
+/**
+ * Fields the measured timeline fills in. These are never presented as
+ * questions: the human taps a physical event and MatrixSmith writes the
+ * value, so asking again would invite an estimate where a measurement
+ * already exists.
+ */
+export function timerDrivenFieldIds(timer: GuidedTestTimer | null | undefined): ReadonlySet<string> {
+  const ids = new Set<string>();
+  for (const phase of timer?.phases ?? []) {
+    ids.add(phase.fieldId);
+    if (phase.stillDurationFieldId) ids.add(phase.stillDurationFieldId);
+    for (const set of [...(phase.eventSets ?? []), ...(phase.failSets ?? []), ...(phase.stillSets ?? [])]) ids.add(set.fieldId);
+  }
+  return ids;
+}
+
 /** Convenience for interpret() implementations. */
 export function findValue(values: readonly ObservationValue[], fieldId: string): ObservationValue | undefined {
   return values.find((value) => value.fieldId === fieldId);

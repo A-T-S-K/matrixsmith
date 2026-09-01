@@ -8,7 +8,7 @@ import { operationalTrust } from "../../investigation/claims";
 import { ILEDHAT_PROFILE_ID } from "../../profiles/iledhat-31ae-32x16";
 import { formatDuration } from "../../investigation/observations";
 import { MINIMUM_STATIC_HOLD_MS, VISIBLE_STATIC_HOLD_METRIC } from "../../investigation/static-viability";
-import { PIXEL_CHANNEL_PROBE_WORDS } from "./diagnostics";
+import { PIXEL_CHANNEL_PROBE_WORDS, pixelChannelZoneId } from "./diagnostics";
 
 /**
  * CoolLEDUX guided hardware tests for the iLedHat characterization phase.
@@ -73,11 +73,11 @@ const graffitiBlackTest: GuidedTestDefinition = {
   },
   operation: { type: "ShowDiagnostic", diagnosticId: "graffiti-black-probe" },
   observation: [
-    { kind: "choice", id: "zero-appearance", prompt: "What do the raw 0x0000 regions (columns 1–8 and 17–24) look like?", options: [
+    { kind: "choice", id: "zero-appearance", regionId: "black-candidate-0", prompt: "What color are the highlighted zones on the display?", options: [
       { id: "off-black", label: "Off / black" }, { id: "bright-white", label: "Bright white" }, { id: "dim-blue", label: "Dim blue" },
       { id: "another-color", label: "Another color" },
     ], allowOther: true },
-    { kind: "choice", id: "workaround-appearance", prompt: "What do the raw 0x0004 regions (columns 9–16 and 25–32) look like?", options: [
+    { kind: "choice", id: "workaround-appearance", regionId: "workaround-1", prompt: "What color are the highlighted zones on the display?", options: [
       { id: "off-black", label: "Off / black" }, { id: "dim-blue", label: "Dim blue" }, { id: "bright-white", label: "Bright white" },
       { id: "another-color", label: "Another color" },
     ], allowOther: true },
@@ -168,9 +168,9 @@ function timingObservationFields(): readonly ObservationFieldSpec[] {
       { id: "blank-interval", label: "There is a blank interval" },
       { id: "bands-tiles", label: "Bands or tiles move separately" },
     ], allowOther: true },
-    { kind: "boolean", id: "tiles-present", prompt: "Were all four vertical sections of the image present?", required: false },
-    { kind: "boolean", id: "orientation-correct", prompt: "Was the image the right way up and not mirrored?", required: false },
-    { kind: "boolean", id: "seams", prompt: "Did you notice seams or misaligned strips between sections?", required: false },
+    { kind: "boolean", id: "tiles-present", regionId: "tile-1", prompt: "Were all four highlighted sections present on the display?", required: false },
+    { kind: "boolean", id: "orientation-correct", regionId: "corner-top-left", prompt: "Was the red corner in the highlighted position — image the right way up and not mirrored?", required: false },
+    { kind: "boolean", id: "seams", regionId: "seam-1", prompt: "Did you notice a step or gap at the highlighted joins?", required: false },
     { kind: "note", id: "note", prompt: "Anything else worth recording?" },
   ];
 }
@@ -382,7 +382,7 @@ function staticRasterObservationFields(): readonly ObservationFieldSpec[] {
     { kind: "duration", id: "movement-start", prompt: "When did it move or reset? (measured by the timer)", required: false },
     { kind: "duration", id: "observation-end", prompt: "When did you stop watching the still image? (measured by the timer)", required: false },
     { kind: "boolean", id: "background-off", prompt: "Is the background genuinely off/black?" },
-    { kind: "boolean", id: "tiles-aligned", prompt: "Are all four tiles aligned with no seams?" },
+    { kind: "boolean", id: "tiles-aligned", regionId: "seam-1", prompt: "Are the sections aligned, with no step or gap at the highlighted joins?" },
     { kind: "boolean", id: "flicker", prompt: "Did you notice any flicker or periodic reset?", required: false },
     { kind: "note", id: "note", prompt: "Anything else worth recording?" },
   ];
@@ -563,9 +563,12 @@ const pixelChannelTest: GuidedTestDefinition = {
   },
   operation: { type: "ShowDiagnostic", diagnosticId: "pixel-channel-probe" },
   observation: [
+    // One question per zone. The prompt never names the raw word: the zone
+    // is identified visually on the annotated map, and the hex stays in the
+    // region's technical detail so an assumption never leads the answer.
     ...PIXEL_CHANNEL_PROBE_WORDS.map((word): ObservationFieldSpec => ({
-      kind: "choice", id: patchFieldId(word),
-      prompt: `Patch with raw value 0x${word.toString(16).padStart(4, "0").toUpperCase()} — what color is it?`,
+      kind: "choice", id: patchFieldId(word), regionId: pixelChannelZoneId(word),
+      prompt: "What color is this zone on the display?",
       options: [...COLOR_CHOICES], allowOther: true,
     })),
     { kind: "note", id: "note", prompt: "Relative brightness differences or anything else worth recording?" },
@@ -679,13 +682,13 @@ const colorWhiteTest: GuidedTestDefinition = {
     parameters: { includeHighNibble: operationalTrust("pixel.fourth-channel", context.evidence).trusted ? 1 : 0 },
   }),
   observation: [
-    { kind: "boolean", id: "channels-correct", prompt: "Do the red, green, and blue bands show those exact colors?" },
-    { kind: "choice", id: "white-quality", prompt: "How does the RGB-max band look?", options: [
+    { kind: "boolean", id: "channels-correct", regionId: "band-red", prompt: "Do the red, green, and blue bands show those exact colors?" },
+    { kind: "choice", id: "white-quality", regionId: "band-rgb-white", prompt: "How does this zone look?", options: [
       { id: "neutral-white", label: "Neutral white" }, { id: "tinted-white", label: "Tinted white" }, { id: "not-white", label: "Not white at all" },
     ], allowOther: true },
     { kind: "boolean", id: "imbalance", prompt: "Is any channel obviously brighter or dimmer than the others?", required: false },
-    { kind: "choice", id: "high-nibble-band", prompt: "If a bottom row of extra bands is shown: how does the left (raw 0xF000) band look?", required: false, options: [...COLOR_CHOICES], allowOther: true },
-    { kind: "choice", id: "combined-band", prompt: "If a bottom row of extra bands is shown: how does the right (raw 0xFFFF) band look?", required: false, options: [...COLOR_CHOICES], allowOther: true },
+    { kind: "choice", id: "high-nibble-band", regionId: "band-extra-channel", prompt: "What color is this zone on the display?", required: false, options: [...COLOR_CHOICES], allowOther: true },
+    { kind: "choice", id: "combined-band", regionId: "band-combined", prompt: "What color is this zone on the display?", required: false, options: [...COLOR_CHOICES], allowOther: true },
     { kind: "note", id: "note", prompt: "Describe any tint or imbalance." },
   ],
   showRegionDiagram: true,

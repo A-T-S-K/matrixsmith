@@ -2,6 +2,7 @@ import type { ClaimEvidence, ClaimId, ClaimState } from "./claims";
 import { resolveClaims } from "./claims";
 import type { InvestigationDeviceBinding } from "./device-identity";
 import type { ObservationValue } from "./observations";
+import type { ObservationAttempt } from "./timing";
 
 /**
  * First-class investigation of one physical device. Guided development,
@@ -47,6 +48,12 @@ export interface CompletedGuidedTest {
   readonly transactionIds: readonly string[];
   /** Variant parameters actually used (e.g. stayTime), for reports. */
   readonly parameters?: Readonly<Record<string, string | number | boolean>>;
+  /**
+   * Human-timed observation attempts for this run, in order. Only `valid`
+   * attempts contributed the observations above; invalid ones are retained
+   * so a report can show what was measured, what was discarded, and why.
+   */
+  readonly attempts?: readonly ObservationAttempt[];
 }
 
 export interface Investigation {

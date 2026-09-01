@@ -1,5 +1,6 @@
 import { compileAnimationStaticFrame, compileGraffitiFrame, compileGraffitiRawWords, compileAnimationRawWords, type CompiledProgram } from "./content";
 import { orientationPattern } from "../../render/patterns";
+import { rawWordHex, type DiagnosticRegion } from "../../investigation/regions";
 
 /**
  * Fixed CoolLEDUX diagnostic content. Every program here is deterministic
@@ -16,17 +17,7 @@ export type DiagnosticContentId =
   | "pixel-channel-probe"
   | "color-white-probe";
 
-export interface DiagnosticRegion {
-  /** Raw 16-bit pixel word, exactly as transmitted (no substitution, no transfer curve). */
-  readonly rawWord: number;
-  readonly x: number;
-  readonly y: number;
-  readonly width: number;
-  readonly height: number;
-  readonly label: string;
-  /** Only for words whose meaning the current RGB444 hypothesis predicts. */
-  readonly expectedUnderRgb444?: string;
-}
+export type { DiagnosticRegion };
 
 export interface DiagnosticParameter {
   readonly id: string;
@@ -68,6 +59,38 @@ const RGB444_EXPECTATIONS: Readonly<Record<number, string>> = Object.freeze({
   0xffff: "white plus unknown high nibble at max",
 });
 
+/**
+ * Human names for the pixel-channel probe zones, in patch order.
+ *
+ * The zones whose meaning the RGB444 hypothesis predicts are named for what
+ * they test ("Red test"). The high-nibble probes are deliberately NOT given
+ * color names: nothing is known about what — if anything — they drive, and
+ * naming one "white" would put an assumption in front of the observer and
+ * bias the answer. They are "Extra channel A…D" until the panel says
+ * otherwise.
+ */
+const PIXEL_CHANNEL_ZONES: readonly { readonly id: string; readonly name: string; readonly description: string }[] = Object.freeze([
+  { id: "black-reference", name: "Black reference", description: "Should be completely off. It is the reference every other zone is judged against." },
+  { id: "channel-red", name: "Red test", description: "Drives only the first RGB nibble." },
+  { id: "channel-green", name: "Green test", description: "Drives only the second RGB nibble." },
+  { id: "channel-blue", name: "Blue test", description: "Drives only the third RGB nibble." },
+  { id: "channel-rgb-white", name: "RGB white test", description: "All three RGB nibbles at maximum together." },
+  { id: "extra-channel-a", name: "Extra channel A", description: "Probes an unused part of the pixel value. It may light up, or stay dark." },
+  { id: "extra-channel-b", name: "Extra channel B", description: "Probes an unused part of the pixel value. It may light up, or stay dark." },
+  { id: "extra-channel-c", name: "Extra channel C", description: "Probes an unused part of the pixel value. It may light up, or stay dark." },
+  { id: "extra-channel-d", name: "Extra channel D", description: "Probes an unused part of the pixel value. It may light up, or stay dark." },
+  { id: "extra-channel-max", name: "Extra channel max", description: "All the unused bits at maximum together." },
+  { id: "combined-output", name: "Combined output", description: "Everything at maximum: RGB plus the unused bits." },
+]);
+
+/** Stable zone id for a probe word, so questions can reference it. */
+export function pixelChannelZoneId(word: number): string {
+  const index = PIXEL_CHANNEL_PROBE_WORDS.indexOf(word);
+  const zone = PIXEL_CHANNEL_ZONES[index];
+  if (!zone) throw new Error(`No pixel-channel zone is defined for raw word ${rawWordHex(word)}.`);
+  return zone.id;
+}
+
 function requireParameter(definition: DiagnosticContentDefinition, parameters: Readonly<Record<string, number>> | undefined, id: string): number {
   const spec = definition.parameters.find((parameter) => parameter.id === id);
   if (!spec) throw new Error(`Diagnostic ${definition.id} has no parameter ${id}.`);
@@ -97,10 +120,29 @@ const graffitiBlackProbe: DiagnosticContentDefinition = {
       const regionWidth = Math.min(tileWidth, width - start);
       const rawWord = (start / tileWidth) % 2 === 0 ? 0x0000 : 0x0004;
       for (let x = start; x < start + regionWidth; x += 1) for (let y = 0; y < height; y += 1) words[y * width + x] = rawWord;
-      // Tile marker: one pixel at the top-left of each tile.
+      // Tile marker: one pixel at the top-left of each tile. It is not a
+      // question target, so it stays a technical note rather than a zone.
       words[start] = 0x0fff;
-      regions.push({ rawWord, x: start, y: 0, width: regionWidth, height, label: `columns ${start}–${start + regionWidth - 1}: raw 0x${rawWord.toString(16).padStart(4, "0").toUpperCase()}` });
-      regions.push({ rawWord: 0x0fff, x: start, y: 0, width: 1, height: 1, label: `tile marker at column ${start}`, expectedUnderRgb444: RGB444_EXPECTATIONS[0x0fff]! });
+      const index = start / tileWidth;
+      const isBlackCandidate = index % 2 === 0;
+      const zone = String.fromCharCode(65 + index);
+      regions.push({
+        id: `${isBlackCandidate ? "black-candidate" : "workaround"}-${index}`,
+        groupId: isBlackCandidate ? "black-candidate" : "workaround",
+        shortLabel: zone,
+        displayLabel: `Zone ${zone} · ${isBlackCandidate ? "Black candidate" : "Current workaround"}`,
+        description: isBlackCandidate
+          ? "True black — should be completely off if this display does not need the workaround."
+          : "The inherited workaround color, kept as a side-by-side comparison.",
+        x: start, y: 0, width: regionWidth, height,
+        technical: {
+          rawWord,
+          notes: [
+            `Columns ${start + 1}–${start + regionWidth} carry literal raw ${rawWordHex(rawWord)} with no off-color substitution.`,
+            `A single bright marker pixel (${rawWordHex(0x0fff)}) sits at this tile's top-left corner; ignore it when judging the color.`,
+          ],
+        },
+      });
     }
     return {
       compiled: compileGraffitiRawWords(words, width, height, { mode: 0, speed: 0, stayTime: 3 }),
@@ -109,6 +151,57 @@ const graffitiBlackProbe: DiagnosticContentDefinition = {
     };
   },
 };
+
+/**
+ * Human zones of the deterministic orientation raster. Placement questions
+ * ("is the red corner here?", "are the four sections all present?") reference
+ * these so the UI can highlight the exact feature being asked about instead
+ * of relying on the user to remember the intended layout.
+ */
+function orientationRegions(width: number, height: number): DiagnosticRegion[] {
+  const corner = Math.max(2, Math.min(3, Math.floor(Math.min(width, height) / 4)));
+  const tileWidth = Math.max(1, Math.floor(width / 4));
+  const corners: readonly { id: string; name: string; color: string; x: number; y: number }[] = [
+    { id: "corner-top-left", name: "Top-left corner", color: "red", x: 0, y: 0 },
+    { id: "corner-top-right", name: "Top-right corner", color: "green", x: width - corner, y: 0 },
+    { id: "corner-bottom-left", name: "Bottom-left corner", color: "blue", x: 0, y: height - corner },
+    { id: "corner-bottom-right", name: "Bottom-right corner", color: "yellow", x: width - corner, y: height - corner },
+  ];
+  const regions: DiagnosticRegion[] = corners.map((entry, index) => ({
+    id: entry.id,
+    groupId: "corners",
+    shortLabel: String(index + 1),
+    displayLabel: `Zone ${index + 1} · ${entry.name}`,
+    description: `The ${entry.name.toLowerCase()} is ${entry.color}. Together the four corners show whether the image is rotated or mirrored.`,
+    x: entry.x, y: entry.y, width: corner, height: corner,
+    technical: { expectedUnderHypothesis: entry.color, notes: [`Corner block ${corner}×${corner} px at (${entry.x}, ${entry.y}).`] },
+  }));
+  for (let index = 0; index < 4; index += 1) {
+    const x = index * tileWidth;
+    regions.push({
+      id: `tile-${index + 1}`,
+      groupId: "tiles",
+      shortLabel: `T${index + 1}`,
+      displayLabel: `Section ${index + 1}`,
+      description: "One of the four vertical sections the panel is built from. All four should be present and aligned.",
+      x, y: 0, width: index === 3 ? width - x : tileWidth, height,
+      technical: { notes: [`Vertical section covering columns ${x + 1}–${index === 3 ? width : x + tileWidth}.`] },
+    });
+  }
+  for (let index = 1; index < 4; index += 1) {
+    const x = index * tileWidth;
+    regions.push({
+      id: `seam-${index}`,
+      groupId: "seams",
+      shortLabel: `S${index}`,
+      displayLabel: `Seam ${index}`,
+      description: "The join between two sections. A visible step or gap here means the sections are misaligned.",
+      x: Math.max(0, x - 1), y: 0, width: 2, height,
+      technical: { notes: [`Boundary between sections ${index} and ${index + 1} at column ${x + 1}.`] },
+    });
+  }
+  return regions;
+}
 
 /**
  * TEST B/C content — Graffiti playback timing with an explicit stayTime
@@ -127,7 +220,7 @@ const graffitiTimingProbe: DiagnosticContentDefinition = {
     const frame = orientationPattern(profile.width, profile.height);
     return {
       compiled: compileGraffitiFrame(frame, 8, { mode: 0, speed: 0, stayTime }),
-      contentType: "graffiti", frameCount: 1, regions: [],
+      contentType: "graffiti", frameCount: 1, regions: orientationRegions(profile.width, profile.height),
       playback: { mode: 0, speed: 0, stayTime },
     };
   },
@@ -150,7 +243,7 @@ const animationStaticRaster: DiagnosticContentDefinition = {
     const delayMs = 1000;
     return {
       compiled: compileAnimationStaticFrame(frame, frames === 1 ? "single" : "identical-pair", delayMs),
-      contentType: "animation", frameCount: frames, regions: [],
+      contentType: "animation", frameCount: frames, regions: orientationRegions(profile.width, profile.height),
       frameDelaysMs: Array.from({ length: frames }, () => delayMs),
     };
   },
@@ -183,11 +276,24 @@ const pixelChannelProbe: DiagnosticContentDefinition = {
       const patchWidth = 3;
       const patchHeight = Math.min(6, height - y);
       for (let px = x; px < x + patchWidth; px += 1) for (let py = y; py < y + patchHeight; py += 1) words[py * width + px] = rawWord;
-      const hex = `0x${rawWord.toString(16).padStart(4, "0").toUpperCase()}`;
+      const zone = PIXEL_CHANNEL_ZONES[index]!;
+      const expected = RGB444_EXPECTATIONS[rawWord];
       regions.push({
-        rawWord, x, y, width: patchWidth, height: patchHeight,
-        label: `patch ${index + 1}: raw ${hex}`,
-        ...(RGB444_EXPECTATIONS[rawWord] ? { expectedUnderRgb444: RGB444_EXPECTATIONS[rawWord] } : {}),
+        id: zone.id,
+        shortLabel: String(index + 1),
+        displayLabel: `Zone ${index + 1} · ${zone.name}`,
+        description: zone.description,
+        x, y, width: patchWidth, height: patchHeight,
+        technical: {
+          rawWord,
+          ...(expected ? { expectedUnderHypothesis: expected } : {}),
+          notes: [
+            `Raw pixel word ${rawWordHex(rawWord)}, transmitted untransformed.`,
+            expected
+              ? `Current hypothesis predicts: ${expected}.`
+              : "No expectation is claimed for this word — record exactly what the panel shows.",
+          ],
+        },
       });
     });
     return {
@@ -215,28 +321,52 @@ const colorWhiteProbe: DiagnosticContentDefinition = {
     const { width, height } = profile;
     const words = new Uint16Array(width * height);
     const regions: DiagnosticRegion[] = [];
-    const topBands: readonly { word: number; label: string; expected?: string }[] = [
-      { word: 0x0f00, label: "pure red band", expected: RGB444_EXPECTATIONS[0x0f00]! },
-      { word: 0x00f0, label: "pure green band", expected: RGB444_EXPECTATIONS[0x00f0]! },
-      { word: 0x000f, label: "pure blue band", expected: RGB444_EXPECTATIONS[0x000f]! },
-      { word: 0x0fff, label: "RGB-max band", expected: RGB444_EXPECTATIONS[0x0fff]! },
+    const topBands: readonly { word: number; id: string; name: string; description: string }[] = [
+      { word: 0x0f00, id: "band-red", name: "Red band", description: "Pure red at full strength." },
+      { word: 0x00f0, id: "band-green", name: "Green band", description: "Pure green at full strength." },
+      { word: 0x000f, id: "band-blue", name: "Blue band", description: "Pure blue at full strength." },
+      { word: 0x0fff, id: "band-rgb-white", name: "RGB white band", description: "Red, green, and blue together at full strength." },
     ];
     const bandWidth = Math.floor(width / topBands.length);
     topBands.forEach((band, index) => {
       const x = index * bandWidth;
       for (let px = x; px < x + bandWidth; px += 1) for (let py = 1; py < Math.min(7, height); py += 1) words[py * width + px] = band.word;
-      regions.push({ rawWord: band.word, x, y: 1, width: bandWidth, height: Math.min(6, height - 1), label: band.label, expectedUnderRgb444: band.expected! });
+      const expected = RGB444_EXPECTATIONS[band.word];
+      regions.push({
+        id: band.id,
+        shortLabel: String(index + 1),
+        displayLabel: `Zone ${index + 1} · ${band.name}`,
+        description: band.description,
+        x, y: 1, width: bandWidth, height: Math.min(6, height - 1),
+        technical: {
+          rawWord: band.word,
+          ...(expected ? { expectedUnderHypothesis: expected } : {}),
+          notes: [`Raw pixel word ${rawWordHex(band.word)}.`],
+        },
+      });
     });
     if (includeHighNibble && height >= 16) {
-      const bottomBands: readonly { word: number; label: string }[] = [
-        { word: 0xf000, label: "high-nibble-only band (raw 0xF000)" },
-        { word: 0xffff, label: "combined band (raw 0xFFFF)" },
+      // Named for what is being probed, never for a color: the fourth
+      // channel's appearance is exactly what this test is asking about.
+      const bottomBands: readonly { word: number; id: string; name: string; description: string }[] = [
+        { word: 0xf000, id: "band-extra-channel", name: "Extra channel band", description: "The fourth channel on its own, with no red, green, or blue." },
+        { word: 0xffff, id: "band-combined", name: "Combined band", description: "The fourth channel together with red, green, and blue." },
       ];
       const bottomWidth = Math.floor(width / bottomBands.length);
       bottomBands.forEach((band, index) => {
         const x = index * bottomWidth;
         for (let px = x; px < x + bottomWidth; px += 1) for (let py = 9; py < Math.min(15, height); py += 1) words[py * width + px] = band.word;
-        regions.push({ rawWord: band.word, x, y: 9, width: bottomWidth, height: 6, label: band.label });
+        regions.push({
+          id: band.id,
+          shortLabel: String(topBands.length + index + 1),
+          displayLabel: `Zone ${topBands.length + index + 1} · ${band.name}`,
+          description: band.description,
+          x, y: 9, width: bottomWidth, height: 6,
+          technical: {
+            rawWord: band.word,
+            notes: [`Raw pixel word ${rawWordHex(band.word)}, transmitted untransformed.`],
+          },
+        });
       });
     }
     return {

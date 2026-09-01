@@ -18,6 +18,7 @@ import { packetHex } from "../core/transmission";
 import type { ProtocolTransaction, TransactionSource } from "../diagnostics/transactions";
 import { transactionId } from "../diagnostics/transactions";
 import type { DiagnosticRun, DiagnosticStepResult } from "../diagnostics/workflows";
+import type { ObservationAttempt } from "../investigation/timing";
 import { findImporter, type ImportedEvidence } from "../diagnostics/importers";
 import { chooseTestBrightness, COOLLEDUX_DIAGNOSTIC_TOOLS, diagnosticRunId } from "../diagnostics/workflows";
 import { CONTENT_VALIDATION_WORKFLOWS, evaluateValidationAnswers, sessionValidationId, type ContentValidationWorkflow, type ValidationAnswer } from "../diagnostics/validation";
@@ -541,7 +542,18 @@ export class MatrixController {
    * current session, and the investigation advances. A validated raster
    * strategy from the outcome is applied to this session only.
    */
-  recordGuidedTestObservations(testId: string, values: readonly ObservationValue[], transactionIds: readonly string[] = [], startedAt = new Date().toISOString()): CompletedGuidedTest {
+  recordGuidedTestObservations(
+    testId: string,
+    values: readonly ObservationValue[],
+    transactionIds: readonly string[] = [],
+    startedAt = new Date().toISOString(),
+    /**
+     * Human-timed attempts behind this result. Only valid attempts supplied
+     * the values above; invalid ones ride along so a report can show what was
+     * measured and what was discarded, without ever establishing a claim.
+     */
+    attempts: readonly ObservationAttempt[] = [],
+  ): CompletedGuidedTest {
     const test = this.guidedTest(testId);
     // Domain-layer validation: UI checks are never relied on. Invalid or
     // incomplete submissions are rejected before any evidence is produced,
@@ -566,6 +578,7 @@ export class MatrixController {
       established: interpretation.established, rejected: interpretation.rejected, unknowns: interpretation.unknowns,
       summary: interpretation.summary, transactionIds: [...transactionIds],
       ...(parameters ? { parameters } : {}),
+      ...(attempts.length > 0 ? { attempts: [...attempts] } : {}),
     };
     this.#investigation = recordCompletedTest(this.ensureInvestigation(), completed, evidence, completedAt);
     this.#deriveSessionRasterStrategy(testId);
@@ -594,7 +607,7 @@ export class MatrixController {
    * claim conclusions beyond automatic capture. A partial test report stays
    * available; failed or abandoned tests are still evidence.
    */
-  abandonGuidedTest(testId: string, values: readonly ObservationValue[], transactionIds: readonly string[], startedAt = new Date().toISOString()): CompletedGuidedTest {
+  abandonGuidedTest(testId: string, values: readonly ObservationValue[], transactionIds: readonly string[], startedAt = new Date().toISOString(), attempts: readonly ObservationAttempt[] = []): CompletedGuidedTest {
     const test = this.guidedTest(testId);
     if (transactionIds.length === 0) throw new Error("Nothing was transmitted; close the test instead of abandoning it.");
     const completedAt = new Date().toISOString();
@@ -610,6 +623,7 @@ export class MatrixController {
       summary: "The diagnostic program was transmitted and the stored display content was replaced, but the physical observation was abandoned.",
       transactionIds: [...transactionIds],
       ...(parameters ? { parameters } : {}),
+      ...(attempts.length > 0 ? { attempts: [...attempts] } : {}),
     };
     this.#investigation = recordCompletedTest(this.ensureInvestigation(), completed, [], completedAt);
     this.trace.record("guided-test.abandoned", { testId, transactionCount: transactionIds.length });
