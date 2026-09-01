@@ -319,3 +319,168 @@ Each of these was invisible in the source and obvious in the rendered page:
 - The colour test asked about high-nibble zones that only exist when those
   bands are actually sent, so the store now drops questions whose zone is not
   part of the run being observed.
+
+---
+
+# Investigation orchestration (2026-09-01, phase 4)
+
+The first real hardware session exposed a problem the UX work could not fix.
+The user experienced what felt like an endless static-image test and could not
+tell whether MatrixSmith was retrying a missed observation, running a
+controlled variant, repeating a finished test, or stuck in its own
+recommendation logic. The exported report could not answer that either: 35
+transactions, one Graffiti payload sent 21 times, "Observations: None
+recorded", and a closing suggestion from a superseded engine.
+
+Crucially, **some of those repeats were legitimate** — the user deliberately
+asked to measure again after missing a timing event. The defect was never that
+the bytes repeated. It was that nothing in the system could say why.
+
+## The semantic execution model
+
+Protocol transactions are the wrong unit for guided work. On the wire, a
+legitimate retry and an accidental resend are identical.
+
+```text
+Investigation
+  CorePlan                 — bounded, numbered milestones
+    ExperimentRun          — one experiment: definition + parameters
+      ObservationAttempt   — one human attempt at observing it
+        TransferRecord     — one transmission, with a reason
+```
+
+`src/investigation/orchestration.ts` defines these. Nothing duplicates protocol
+transactions; records link to them by id.
+
+**Experiment vs attempt is absolute.** Three attempts at Test 2 leave the user
+on Test 2. Retries increment `Attempt N` and never advance plan progress.
+
+**Retry vs controlled variant** are different things. A retry repeats the same
+experiment because a human measurement failed; a variant changes one
+scientifically meaningful value (`stayTime=3` → `stayTime=0`) and is a
+different experiment with a different identity. Reports preserve the
+distinction.
+
+## Transfer reasons and the duplicate guard
+
+Every guided transmission names a reason from a closed set:
+`initial-experiment`, `explicit-retry-missed-observation`,
+`explicit-measure-again`, `confirmation-run`, `controlled-variant`,
+`explicit-reopen`. There is deliberately no generic "send again" — an
+unexplained resend is a type error, not a silent side effect on someone's
+display.
+
+A `DiagnosticExecutionFingerprint` identifies one concrete execution: device
+binding, test, diagnostic, resolved parameters, raster strategy, with the
+program CRC carried as corroborating evidence rather than as identity. CRC
+alone is not identity — the same bytes can be a different experiment, and the
+same experiment can be a legitimate repeat.
+
+The guard blocks a transmission whose reason **asserts novelty** for a
+diagnostic already showing on the panel. Repeat reasons pass, because
+repeating is what they mean. Timing retries are therefore fully supported.
+
+## The anti-loop fix
+
+The loop had a specific cause. A `partial` timing result left its target claim
+unresolved, so the identical experiment kept scoring as the best next move —
+forever. Only `passed` tests were excluded from the rotation.
+
+A **concluded** experiment — anything except `abandoned` — now leaves the
+automatic rotation. Re-running it would produce the identical non-answer.
+Reopening is an explicit act that records why. `continueToNextTest` refuses to
+launch a concluded experiment even if the engine offers one, and a
+recommendation-sequence guard watches for a test recurring with no new
+evidence in between.
+
+## Two claim-status corrections
+
+Both surfaced while simulating the branches, and both were the same mistake:
+recording *incomplete* as *contradicted*.
+
+`unresolved` outranks `verified` in claim resolution — deliberately, so a
+contradiction cannot be papered over. But baseline movement at `stayTime=3` is
+not a contradiction; it means one justified configuration moved and the other
+is untested. Recording it as contradicted made the `stayTime` discriminator
+structurally unable to settle the question it exists to settle. The same
+applied to a static hold that stopped short of the 15s threshold. Both now
+leave the claim **undecided**; only exhausting both configurations rejects it.
+
+Separately, tiling and orientation were recorded only when *wrong*, so one "I
+saw seams" answer stuck permanently — a later clean observation had nothing to
+say. Both are now recorded symmetrically.
+
+## The bounded core plan
+
+A driver contributes a plan for a profile (`driver.corePlan`). Milestones are
+numbered **slots**, not a script: a slot is satisfied by trusted evidence
+(verified *or* conclusively rejected — "this path does not work" is an answer),
+or skipped when the branch taken makes it unnecessary. Skipped slots keep their
+place in the list and leave the denominator, so progress never moves backwards.
+
+The iLedHat plan:
+
+1. Still image baseline — does an image appear at all
+2. Does it stay still — including the one justified alternative setting
+3. Black / off behavior — skipped if the native path is ruled out
+4. Color channel mapping — required before any image or text is trustworthy
+5. Fallback still image — skipped once the native path is proven
+6. Support decision
+
+White calibration, GIF, persistence and power-cycle recovery are deliberately
+**not** core. A user should not have to finish reverse-engineering a display
+before MatrixSmith will say whether it can show a picture.
+
+Recommendations follow plan order (a large boost for the current milestone)
+rather than raw score, so progress reads as a sequence. `stepForTest` resolves
+to the milestone a test is currently *serving*, not the first that mentions it
+— the baseline run answers two milestones, and labelling it by the first told
+users they were on Test 1 when the plan had moved past it.
+
+## What the UI says
+
+The test dialog leads with `Test 2 of 6` and, when repeating, `Attempt 2` — in
+the header, not in technical details. Investigate home carries a compact
+progress strip with the milestone list including skips and their reasons. When
+core work finishes, the product says **Core characterization complete**, states
+the support decision, and offers Finish; optional characterization is a
+deliberate choice rather than an automatic next test.
+
+`experimentRunId`, execution fingerprints and transfer reasons never appear on
+the guided path. They live in Developer tools → Guided orchestration, because
+from the outside a retry and a loop look identical.
+
+## Report routing
+
+Share now defaults to the **investigation report** whenever an investigation is
+active; forensic and low-level views are selectable. The low-level device
+report predates the atomic-claim model, so during an investigation it states
+in-band that its support table and suggestions do not reflect what the
+investigation established — the two views can no longer quietly contradict each
+other.
+
+The investigation report gains: core plan progress with skipped milestones and
+why, experiments grouped with numbered attempts and transfer reasons, invalid
+attempts shown as *excluded* rather than omitted, a transfer summary
+classifying repeated payloads, and the current engine's next step.
+
+Repeated identical payloads are **explained, not flagged**. A duplicate is only
+called a workflow problem when its stated reason claims novelty the bytes
+contradict.
+
+## Testing
+
+`tests/investigation/session-regression.test.ts` reconstructs the real
+retry-heavy session: repeated identical payloads, a genuine controlled
+variant, multiple observations, valid completion. It asserts the retries stay
+one numbered experiment, are not reported as a workflow problem, and survive
+into the report with their reasons.
+
+`tests/investigation/core-finishability.test.ts` walks all four outcome
+branches, asserting each reaches a support decision within seven distinct
+experiments and never repeats one. Retries are not counted — a human missing a
+timing event says nothing about whether the plan converges.
+
+Transmission-count assertions cover the hard invariant: one spatial test sends
+once, and navigating between eleven zone questions or editing answers causes
+zero BLE writes.
