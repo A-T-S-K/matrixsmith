@@ -7,7 +7,13 @@ import { toRgba } from "../../render/pixel-format";
  * Draws a logical framebuffer as a crisp, scaled LED-style preview. Host
  * preview only: no device color order or orientation is assumed.
  */
-export function FramePreview({ frame, scale = 8, label, fill = false, showSize = true }: {
+export function FramePreview({
+  frame,
+  scale = 8,
+  label,
+  fill = false,
+  showSize = true,
+}: {
   readonly frame: Framebuffer;
   readonly scale?: number;
   readonly label?: string;
@@ -25,12 +31,39 @@ export function FramePreview({ frame, scale = 8, label, fill = false, showSize =
     canvas.height = frame.height;
     const context = canvas.getContext("2d");
     if (!context) return;
-    context.putImageData(new ImageData(new Uint8ClampedArray(toRgba(frame)), frame.width, frame.height), 0, 0);
+    context.putImageData(
+      new ImageData(
+        new Uint8ClampedArray(toRgba(frame)),
+        frame.width,
+        frame.height,
+      ),
+      0,
+      0,
+    );
   }, [frame]);
-  return <div class="frame-preview" role="img" aria-label={label ?? `${frame.width}×${frame.height} preview`}>
-    <canvas ref={canvasRef} style={fill
-      ? { width: "100%", height: "auto", imageRendering: "pixelated" }
-      : { width: `${frame.width * scale}px`, maxWidth: "100%", imageRendering: "pixelated" }}/>
-    {showSize && <small>{frame.width}×{frame.height}</small>}
-  </div>;
+  return (
+    <div
+      class="frame-preview"
+      role="img"
+      aria-label={label ?? `${frame.width}×${frame.height} preview`}
+    >
+      <canvas
+        ref={canvasRef}
+        style={
+          fill
+            ? { width: "100%", height: "auto", imageRendering: "pixelated" }
+            : {
+                width: `${frame.width * scale}px`,
+                maxWidth: "100%",
+                imageRendering: "pixelated",
+              }
+        }
+      />
+      {showSize && (
+        <small>
+          {frame.width}×{frame.height}
+        </small>
+      )}
+    </div>
+  );
 }

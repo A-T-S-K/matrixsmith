@@ -1,0 +1,33 @@
+- main:
+    - text: MS MatrixSmith
+    - paragraph: BLUETOOTH MATRIX WORKBENCH
+    - heading "Make the display explain itself." [level=1]:
+        - text: ""
+        - emphasis: explain itself.
+    - paragraph: Control supported displays, diagnose unfamiliar hardware, and capture protocol evidence—all locally in your browser.
+    - button "Connect a display"
+    - article:
+        - text: ◎
+        - heading "Diagnose / identify" [level=2]
+        - paragraph: Connect a display and run only verified, safe identification checks.
+        - button "Start diagnosis →"
+    - article:
+        - text: ⌁
+        - heading "Explore unknown BLE" [level=2]
+        - paragraph: Open the browser chooser and inspect authorized GATT services without a generic writer.
+        - text: Optional service UUIDs
+        - textbox "Optional service UUIDs":
+            - /placeholder: FFF0, A950, …
+        - paragraph: These UUIDs tell the browser which services MatrixSmith may inspect after you select the device. Services not requested here can stay hidden.
+        - button "Choose device →"
+    - article:
+        - text: ⇧
+        - heading "Open diagnostic report" [level=2]
+        - paragraph: Review a portable MatrixSmith JSON bundle entirely offline.
+        - button "Choose JSON report →"
+    - article:
+        - text: ⇩
+        - heading "Import external capture" [level=2]
+        - paragraph: Bring an nRF Connect text log into MatrixSmith. Imported evidence is decoded and correlated but never transmitted.
+        - button "Choose .txt/.log capture →"
+    - text: Local-first · no backend · no analytics Chrome Android recommended

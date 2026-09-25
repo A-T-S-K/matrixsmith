@@ -1,92 +1,79 @@
 import type { JSX } from "preact";
 import { useState } from "preact/hooks";
-import type { AppSnapshot, MatrixStore, TransactionFilter } from "../store";
-import type { ProtocolTransaction } from "../../diagnostics/transactions";
+import type { AppSnapshot, PresentationStore } from "../../presentation/store";
 import { StatusBadge } from "../components/StatusBadge";
-import { analyzeStoredProgramUpload, describeUploadAnalysis } from "../../diagnostics/upload-analysis";
-import { decodeCoolLedUxNotification } from "../../drivers/coolledux/notifications";
+import {
+  CandidateSection,
+  ToolSection,
+} from "../features/develop/CandidateTools";
+import { GattSection } from "../features/develop/GattSection";
+import { TransactionSection } from "../features/develop/TransactionSection";
+import {
+  RawSection,
+  EvidenceSection,
+} from "../features/develop/EvidenceSections";
+import { OrchestrationSection } from "../features/develop/OrchestrationSection";
 
-export function DevelopView({ snapshot, store }: { readonly snapshot: AppSnapshot; readonly store: MatrixStore }): JSX.Element { const [section, setSection] = useState("transactions"); return <section class="view develop-view"><div class="view-heading"><div><p class="eyebrow">PROTOCOL WORKBENCH</p><h1>Develop</h1><p>Decoded activity first, exact bytes always available underneath.</p></div><div class="safety-copy"><StatusBadge tone="good">Safety policy active</StatusBadge><span>Verified controls are available. Experimental, persistent, destructive, firmware, and arbitrary operations remain restricted.</span></div></div><nav class="subnav" aria-label="Develop sections">{[["candidates","Protocol candidates"],["tools","Family probes & tests"],["gatt","GATT explorer"],["transactions","Transactions"],["raw","Raw events"],["evidence","Evidence / observations"],["orchestration","Guided orchestration"]].map(([id,label]) => <button class={section === id ? "active" : ""} onClick={() => setSection(id!)}>{label}</button>)}</nav>{section === "candidates" && <CandidateSection snapshot={snapshot} store={store}/>} {section === "tools" && <ToolSection snapshot={snapshot} store={store}/>} {section === "gatt" && <GattSection snapshot={snapshot} store={store}/>} {section === "transactions" && <TransactionSection snapshot={snapshot} store={store}/>} {section === "raw" && <RawSection snapshot={snapshot} store={store}/>} {section === "evidence" && <EvidenceSection snapshot={snapshot} store={store}/>} {section === "orchestration" && <OrchestrationSection snapshot={snapshot}/>}</section>; }
-
-function CandidateSection({ snapshot, store }: { snapshot: AppSnapshot; store: MatrixStore }): JSX.Element { return <section><div class="section-heading"><h2>Protocol candidates</h2><p>Session evidence and safe actions, with numeric match details kept secondary.</p></div><div class="candidate-grid">{snapshot.candidates.map((candidate) => <article class="candidate-card"><div><h3>{candidate.family}</h3><StatusBadge tone={candidate.state.startsWith("VERIFIED") ? "good" : candidate.state.startsWith("Rejected") ? "bad" : "warn"}>{candidate.state}</StatusBadge></div><p>{candidate.summary}</p>{candidate.canIdentify ? <button class="primary" onClick={() => void store.identify()}>Run safe identification</button> : candidate.id === "coolledx" && candidate.state === "Candidate" ? <p class="notice">No verified read-only discriminator available.</p> : null}<details><summary>Match details</summary><p>Score: {candidate.score}</p><ul>{candidate.reasons.map((reason) => <li>{reason}</li>)}{candidate.contradictions.map((reason) => <li>Contradiction: {reason}</li>)}</ul></details></article>)}</div></section>; }
-function ToolSection({ snapshot, store }: { snapshot: AppSnapshot; store: MatrixStore }): JSX.Element { return <section><div class="section-heading"><h2>Family probes & tests</h2><p>Constrained semantic workflows; raw transport is not exposed.</p></div><div class="tool-grid">{snapshot.diagnosticTools.map((tool) => <article class="tool-card"><span class={`tool-kind ${tool.kind}`}>{tool.kind}</span><h3>{tool.label}</h3><p>{tool.explanation}</p><button class="secondary" disabled={!tool.available || snapshot.busy !== null} title={tool.unavailableReason} onClick={() => void store.runDiagnostic(tool.id)}>Run</button></article>)}</div></section>; }
-function GattSection({ snapshot, store }: { snapshot: AppSnapshot; store: MatrixStore }): JSX.Element { return <section><div class="section-heading"><h2>GATT explorer</h2><p>Browser-authorized services and characteristic-scoped safe actions.</p></div><div class="gatt-tree">{snapshot.gatt.length ? snapshot.gatt.map((service) => <details open><summary><span class="service-icon">S</span><strong>{service.uuid}</strong><small>{service.primary ? "Primary service" : "Service"}</small><Copy value={service.uuid} store={store}/></summary><div class="characteristics">{service.characteristics.map((c) => <article class="characteristic"><div class="characteristic-main"><span class="char-icon">C</span><div><code>{c.uuid}</code><div class="property-list">{c.properties.map((p) => <span>{p}</span>)}</div></div></div><div class="char-actions"><Copy value={c.uuid} store={store}/>{c.canRead && <button class="secondary small" disabled={!snapshot.liveConnected} title={snapshot.liveConnected ? "" : "Live operations are blocked for offline reports."} onClick={() => void store.readCharacteristic({ serviceUuid: c.serviceUuid, characteristicUuid: c.uuid })}>Read</button>}{c.canSubscribe && <button class="secondary small" disabled={c.subscribed || !snapshot.liveConnected} title={snapshot.liveConnected ? "" : "Live operations are blocked for offline reports."} onClick={() => void store.toggleSubscription({ serviceUuid: c.serviceUuid, characteristicUuid: c.uuid })}>{c.subscribed ? "Subscribed" : "Subscribe"}</button>}</div></article>)}</div></details>) : <p class="empty">No accessible GATT hierarchy. Browser permission limits may apply.</p>}</div></section>; }
-function TransactionSection({ snapshot, store }: { snapshot: AppSnapshot; store: MatrixStore }): JSX.Element { const filters: readonly [TransactionFilter,string][] = [["all","All"],["txrx","TX/RX"],["queries","Queries"],["probes","Probes"],["diagnostics","Diagnostics"],["errors","Errors"]]; return <section><div class="section-heading"><h2>Transactions</h2><p>Semantic operations correlated with exact TX/RX evidence.</p></div><div class="transaction-toolbar"><div class="filter-pills">{filters.map(([value,label]) => <button class={snapshot.transactionFilter === value ? "active" : ""} onClick={() => store.setTransactionFilter(value)}>{label}</button>)}</div><input type="search" placeholder="Search opcode, operation, hex, driver…" value={snapshot.transactionSearch} onInput={(event) => store.setTransactionSearch((event.currentTarget as HTMLInputElement).value)}/></div><div class="transaction-list"><div class="transaction-head"><span>Timestamp</span><span>Operation</span><span>Direction / result</span><span>Duration</span></div>{snapshot.transactions.length ? [...snapshot.transactions].reverse().map((t) => <Transaction transaction={t} store={store} compilation={snapshot.contentCompilations.find((record) => record.transactionId === t.id) ?? null}/>) : <p class="empty">No matching transactions. Run a safe query or diagnostic to begin the capture.</p>}</div></section>; }
-function Transaction({ transaction: t, store, compilation }: { transaction: ProtocolTransaction; store: MatrixStore; compilation: import("../../diagnostics/content-evidence").ContentCompilationRecord | null }): JSX.Element { const status = t.error || t.responseTimedOut ? "Error" : t.deviceStateVerified ? "Device verified" : t.protocolAcknowledged ? "Protocol acknowledged" : t.hostAccepted ? "Host accepted" : "Not accepted"; return <details class="transaction"><summary><time>{new Date(t.startedAt).toLocaleTimeString([], { hour12: false })}</time><strong>{t.operation}</strong><span>{t.packets.map((p) => p.direction).join(" → ") || t.source} · {status}</span><small>{t.durationMs} ms</small></summary><div class="transaction-body">{compilation && <div class="decoded program-summary"><div><strong>Compiled program ({compilation.contentType})</strong></div><dl><div><dt>Logical size</dt><dd>{compilation.width}×{compilation.height}</dd></div><div><dt>Tiles</dt><dd>{compilation.tileCount} × {compilation.tileWidth}-col</dd></div><div><dt>Program</dt><dd>{compilation.programBytes} B uncompressed</dd></div><div><dt>CRC32</dt><dd>0x{compilation.crc32.toString(16).padStart(8, "0").toUpperCase()}</dd></div><div><dt>Compressed</dt><dd>{compilation.compressedBytes} B ({compilation.compression}; ratio {(compilation.compressedBytes / Math.max(1, compilation.programBytes)).toFixed(2)})</dd></div><div><dt>Chunks</dt><dd>1 announce + {compilation.chunkCount} data</dd></div><div><dt>Pacing</dt><dd>{compilation.pacingMs} ms/packet · ~{Math.round((compilation.chunkCount + 1) * compilation.pacingMs / 100) / 10}s</dd></div>{compilation.frameCount !== undefined && <div><dt>Frames</dt><dd>{compilation.frameCount}</dd></div>}</dl><UploadAnalysis transaction={t} chunkCount={compilation.chunkCount}/></div>}<dl><div><dt>Driver / profile</dt><dd>{t.driverId ?? "none"} / {t.profileId ?? "none"}</dd></div><div><dt>Safety</dt><dd>{t.safety.risk} · {t.safety.validation}</dd></div><div><dt>Host result</dt><dd>{String(t.hostAccepted)}</dd></div><div><dt>Protocol result</dt><dd>{String(t.protocolAcknowledged)}</dd></div><div><dt>Verification result</dt><dd>{String(t.deviceStateVerified)}</dd></div></dl>{t.packets.length > 6 ? <details class="packet-collection"><summary>{t.packets.length} packets ({t.packets.filter((p) => p.direction === "TX").length} TX / {t.packets.filter((p) => p.direction === "RX").length} RX) — expand for per-packet hex</summary>{t.packets.map((packet, packetIndex) => <div class={`packet ${packet.direction.toLowerCase()}`}><div><strong>{packet.direction} #{packetIndex}{compilation && packet.direction === "TX" ? packetIndex === 0 ? " · announce" : ` · chunk ${packetIndex - 1}` : ""}</strong><Copy value={packet.hex} store={store}/></div><code>{packet.hex || "(zero bytes)"}</code></div>)}</details> : t.packets.map((packet) => <div class={`packet ${packet.direction.toLowerCase()}`}><div><strong>{packet.direction} RAW HEX</strong><Copy value={packet.hex} store={store}/></div><code>{packet.hex || "(zero bytes)"}</code></div>)}<div class="decoded"><div><strong>Decoded response</strong>{t.decodedResponse?.payloadHex && <Copy value={t.decodedResponse.payloadHex} store={store}/>}</div><p>{t.decodedResponse?.summary ?? "No decoded response. Raw bytes remain preserved above."}</p>{t.decodedResponse && <code>{JSON.stringify(t.decodedResponse.fields, null, 2)}</code>}</div>{t.error && <p class="notice error">{t.error}</p>}</div></details>; }
-function RawSection({ snapshot, store }: { snapshot: AppSnapshot; store: MatrixStore }): JSX.Element { return <section><div class="section-heading"><h2>Raw events</h2><p>Advanced ground-truth trace. Decoding failures never remove raw notifications.</p></div><details class="raw-layer"><summary>Show full raw event trace ({snapshot.rawEvents.length} events)</summary><ol>{[...snapshot.rawEvents].reverse().map((event) => { const hex = event.rawBytes ? [...event.rawBytes].map((b) => b.toString(16).padStart(2,"0")).join(" ").toUpperCase() : ""; return <li><time>{event.timestamp}</time><strong>{event.type}</strong><span>{JSON.stringify(event.metadata)}</span>{hex && <><code>{hex}</code><Copy value={hex} store={store}/></>}</li>; })}</ol></details></section>; }
-function EvidenceSection({ snapshot, store }: { snapshot: AppSnapshot; store: MatrixStore }): JSX.Element { const [note, setNote] = useState(""); return <section><div class="section-heading"><h2>Evidence / observations</h2><p>Attach a lightweight note to this capture session. Electronically verifiable state is recorded automatically.</p></div><article class="panel"><div class="inline-form"><input value={note} placeholder="What did you observe?" onInput={(event) => setNote((event.currentTarget as HTMLInputElement).value)}/><button class="primary" disabled={!note.trim()} onClick={() => { store.recordObservation(note); setNote(""); }}>Add session note</button></div><ul class="observation-list">{snapshot.observations.map((o) => <li><time>{o.recordedAt}</time><span>{o.summary}</span><StatusBadge>{o.confidence}</StatusBadge></li>)}</ul></article><ImportPanel snapshot={snapshot} store={store}/></section>; }
-function ImportPanel({ snapshot, store }: { snapshot: AppSnapshot; store: MatrixStore }): JSX.Element {
-  const [pasted, setPasted] = useState("");
-  const importFile = async (event: Event): Promise<void> => { const file = (event.currentTarget as HTMLInputElement).files?.[0]; if (file) store.importExternalCapture(await file.text()); };
-  const summary = snapshot.lastImport;
-  return <article class="panel import-panel"><div class="panel-title"><div><span class="panel-kicker">EXTERNAL EVIDENCE</span><h2>Import external capture</h2></div><StatusBadge tone="good">Read-only</StatusBadge></div>
-    <p>Paste or open an nRF Connect text log. Packets are decoded with the installed drivers, correlated into transactions, and shown alongside live evidence. Imported captures never transmit.</p>
-    <textarea rows={5} placeholder="Paste an nRF Connect log export here…" value={pasted} onInput={(event) => setPasted((event.currentTarget as HTMLTextAreaElement).value)}/>
-    <div class="inline-form">
-      <button class="primary" disabled={!pasted.trim() || snapshot.busy !== null} onClick={() => { store.importExternalCapture(pasted); setPasted(""); }}>Import pasted log</button>
-      <label class="text-action file-action">Open .txt/.log file →<input type="file" accept=".txt,.log,text/plain" onChange={(event) => void importFile(event)}/></label>
-    </div>
-    {summary && <div class="import-summary"><h3>Last import</h3><dl>
-      <div><dt>Source</dt><dd>{summary.provenance}</dd></div>
-      <div><dt>Parsed device</dt><dd>{summary.deviceName ?? "unknown"}</dd></div>
-      <div><dt>BLE address</dt><dd>{summary.bleAddress ? `${summary.bleAddress} (kept out of shareable reports)` : "not present"}</dd></div>
-      <div><dt>GATT</dt><dd>{summary.serviceCount} service(s), {summary.characteristicCount} characteristic(s)</dd></div>
-      <div><dt>Transactions</dt><dd>{summary.transactionCount} parsed, {summary.decodedCount} decoded by drivers</dd></div>
-      <div><dt>Unparsed lines</dt><dd>{summary.unparsedLineCount}</dd></div>
-    </dl>{summary.warnings.length > 0 && <ul class="observation-list">{summary.warnings.map((warning) => <li><span>{warning}</span></li>)}</ul>}
-    <div class="inline-form"><button class="secondary" onClick={() => store.openReport()}>Open report (Copy/Download Markdown &amp; JSON)</button></div></div>}
-  </article>; }
-/** Layered receipt/timing summary for stored-program uploads: semantics first, raw bytes stay underneath. */
-function UploadAnalysis({ transaction, chunkCount }: { transaction: ProtocolTransaction; chunkCount: number }): JSX.Element {
-  const analysis = analyzeStoredProgramUpload(transaction, chunkCount, decodeCoolLedUxNotification);
-  return <div class="decoded"><div><strong>Receipts &amp; measured timing</strong></div><ul class="observation-list">{describeUploadAnalysis(analysis).map((line) => <li><span>{line}</span></li>)}</ul></div>;
-}
-
-function Copy({ value, store }: { value: string; store: MatrixStore }): JSX.Element { return <button class="copy" title="Copy" aria-label="Copy to clipboard" onClick={(event) => { event.preventDefault(); event.stopPropagation(); void store.copy(value); }}>Copy</button>; }
-
-
-/**
- * Guided orchestration state, for diagnosing workflow bugs.
- *
- * Developer tooling only: the guided path never shows run ids or execution
- * fingerprints. From the outside a retry and a loop look identical — the same
- * picture reappears — so this shows the identities that actually distinguish
- * them.
- */
-function OrchestrationSection({ snapshot }: { snapshot: AppSnapshot }): JSX.Element {
-  const debug = snapshot.orchestration;
-  return <section>
-    <div class="section-heading"><h2>Guided orchestration</h2><p>Experiment, attempt, and transfer identities behind the guided workflow.</p></div>
-    <dl class="state-grid">
-      <div><dt>Investigation</dt><dd>{debug.investigationId ?? "none"}</dd></div>
-      <div><dt>Core step</dt><dd>{debug.corePlanStepId ?? "none"}</dd></div>
-      <div><dt>Cycle guard</dt><dd>{debug.cycling ? "CYCLE DETECTED" : "clear"}</dd></div>
-      <div><dt>Unclassified duplicates</dt><dd>{debug.unclassifiedDuplicates}</dd></div>
-      {/* The belief the duplicate guard actually consults. "known-active"
-          means this exact program is presumed on the panel; anything else
-          means a guided diagnostic may legitimately be sent again. */}
-      <div><dt>Panel program</dt><dd>{debug.panelProgram.certainty} · {debug.panelProgram.kind} · {debug.panelProgram.label}</dd></div>
-      <div><dt>Panel fingerprint</dt><dd>{debug.panelProgram.fingerprintKey ? <code>{debug.panelProgram.fingerprintKey}</code> : "none"}</dd></div>
-    </dl>
-    <div class="section-heading"><h3>Experiments</h3></div>
-    {debug.experiments.length === 0 ? <p class="empty">No guided experiments in this session.</p> : <div class="run-list">
-      {debug.experiments.map((run) => <details class="run">
-        <summary><span>{run.definitionId}</span><small>{run.status} · {run.resolution ?? "open"} · {run.attempts.length} attempt(s)</small></summary>
-        <dl class="state-grid">
-          <div><dt>Run id</dt><dd><code>{run.experimentRunId}</code></dd></div>
-          <div><dt>Core step</dt><dd>{run.corePlanStepId ?? "none"}</dd></div>
-          <div><dt>Execution fingerprint</dt><dd><code>{run.fingerprintKey}</code></dd></div>
-        </dl>
-        <ol>{run.attempts.map((attempt) => <li><strong>Attempt {attempt.attemptNumber}</strong><span>{attempt.reason} · {attempt.validity}{attempt.failureKind ? ` · ${attempt.failureKind}` : ""} · <code>{attempt.attemptId}</code></span></li>)}</ol>
-      </details>)}
-    </div>}
-    <div class="section-heading"><h3>Transfers</h3></div>
-    {debug.transfers.length === 0 ? <p class="empty">No guided transfers in this session.</p> : <ol class="observation-list">
-      {debug.transfers.map((transfer) => <li><span>{transfer.reason} · CRC {transfer.programCrc32 ?? "unknown"} · attempt <code>{transfer.attemptId}</code> · {transfer.transactionIds.length} transaction(s){transfer.failureReason ? ` · FAILED: ${transfer.failureReason}` : ""}</span></li>)}
-    </ol>}
-    <div class="section-heading"><h3>Recommendation trail</h3></div>
-    {debug.recommendationTrail.length === 0 ? <p class="empty">No recommendations taken yet.</p> : <ol class="observation-list">
-      {debug.recommendationTrail.map((entry) => <li><span>{entry.testId} <small>({entry.origin ?? "automatic-recommendation"}; evidence at the time: {entry.evidenceCount})</small></span></li>)}
-    </ol>}
-  </section>;
+export function DevelopView({
+  snapshot,
+  store,
+}: {
+  readonly snapshot: AppSnapshot;
+  readonly store: PresentationStore;
+}): JSX.Element {
+  const [section, setSection] = useState("transactions");
+  return (
+    <section class="view develop-view">
+      <div class="view-heading">
+        <div>
+          <p class="eyebrow">PROTOCOL WORKBENCH</p>
+          <h1>Develop</h1>
+          <p>
+            Decoded activity first, exact bytes always available underneath.
+          </p>
+        </div>
+        <div class="safety-copy">
+          <StatusBadge tone="good">Safety policy active</StatusBadge>
+          <span>
+            Verified controls are available. Experimental, persistent,
+            destructive, firmware, and arbitrary operations remain restricted.
+          </span>
+        </div>
+      </div>
+      <nav class="subnav" aria-label="Develop sections">
+        {[
+          ["candidates", "Protocol candidates"],
+          ["tools", "Family probes & tests"],
+          ["gatt", "GATT explorer"],
+          ["transactions", "Transactions"],
+          ["raw", "Raw events"],
+          ["evidence", "Evidence / observations"],
+          ["orchestration", "Guided orchestration"],
+        ].map(([id, label]) => (
+          <button
+            key={id}
+            class={section === id ? "active" : ""}
+            onClick={() => setSection(id!)}
+          >
+            {label}
+          </button>
+        ))}
+      </nav>
+      {section === "candidates" && (
+        <CandidateSection snapshot={snapshot} store={store} />
+      )}{" "}
+      {section === "tools" && <ToolSection snapshot={snapshot} store={store} />}{" "}
+      {section === "gatt" && <GattSection snapshot={snapshot} store={store} />}{" "}
+      {section === "transactions" && (
+        <TransactionSection snapshot={snapshot} store={store} />
+      )}{" "}
+      {section === "raw" && <RawSection snapshot={snapshot} store={store} />}{" "}
+      {section === "evidence" && (
+        <EvidenceSection snapshot={snapshot} store={store} />
+      )}{" "}
+      {section === "orchestration" && (
+        <OrchestrationSection snapshot={snapshot} />
+      )}
+    </section>
+  );
 }

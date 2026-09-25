@@ -1,0 +1,23 @@
+- paragraph: PROTOCOL WORKBENCH
+- heading "Develop" [level=1]
+- paragraph: Decoded activity first, exact bytes always available underneath.
+- text: Safety policy active Verified controls are available. Experimental, persistent, destructive, firmware, and arbitrary operations remain restricted.
+- navigation "Develop sections":
+    - button "Protocol candidates"
+    - button "Family probes & tests"
+    - button "GATT explorer"
+    - button "Transactions"
+    - button "Raw events"
+    - button "Evidence / observations"
+    - button "Guided orchestration"
+- heading "Transactions" [level=2]
+- paragraph: Semantic operations correlated with exact TX/RX evidence.
+- button "All"
+- button "TX/RX"
+- button "Queries"
+- button "Probes"
+- button "Diagnostics"
+- button "Errors"
+- searchbox "Search opcode, operation, hex, driver…"
+- text: Timestamp Operation Direction / result Duration
+- paragraph: No matching transactions. Run a safe query or diagnostic to begin the capture.

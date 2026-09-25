@@ -1,0 +1,23 @@
+- heading "Investigate" [level=1]
+- region "This model is ready for normal use.":
+    - paragraph: READY
+    - heading "This model is ready for normal use." [level=2]
+    - paragraph: Shipped physical evidence already establishes the normal content path. Revalidation is optional and records this unit’s observations separately.
+    - button "Create content"
+    - button "View evidence"
+- region "What we know so far":
+    - list:
+        - listitem: /\d+ verified/
+        - listitem: 3 ruled out
+        - listitem: 1 unresolved
+        - listitem: 5 open
+    - paragraph:
+        - text: Static images work via
+        - strong: One-frame Animation program
+        - text: .
+- button "Troubleshoot another problem"
+- group: All guided tests (8)
+- group: Previous tests
+- group: Technical support map
+- group: Reports
+- group: Developer tools

@@ -1,6 +1,6 @@
 import type { JSX } from "preact";
 import type { Framebuffer } from "../../render/framebuffer";
-import type { DiagnosticRegionView } from "../store";
+import type { DiagnosticRegionView } from "../../presentation/store";
 import { FramePreview } from "./FramePreview";
 
 export type RegionMapState = "active" | "peer" | "answered" | "pending";
@@ -15,7 +15,12 @@ export type RegionMapState = "active" | "peer" | "answered" | "pending";
  * change, and the active zone is additionally announced via aria-current.
  */
 export function RegionMap({
-  frame, regions, activeRegionId, answeredRegionIds, onSelect, label,
+  frame,
+  regions,
+  activeRegionId,
+  answeredRegionIds,
+  onSelect,
+  label,
 }: {
   readonly frame: Framebuffer;
   readonly regions: readonly DiagnosticRegionView[];
@@ -32,35 +37,55 @@ export function RegionMap({
     if (answeredRegionIds?.has(region.id)) return "answered";
     return "pending";
   };
-  return <div class="region-map">
-    <div class="region-map-stage">
-      <FramePreview frame={frame} fill showSize={false} label={label ?? "Diagnostic pattern with labelled zones"}/>
-      <div class="region-map-overlay" aria-hidden="true">
-        {regions.map((region) => {
-          const state = stateOf(region);
-          const style = {
-            left: `${(region.x / frame.width) * 100}%`,
-            top: `${(region.y / frame.height) * 100}%`,
-            width: `${(region.width / frame.width) * 100}%`,
-            height: `${(region.height / frame.height) * 100}%`,
-          };
-          return <span class={`region-box ${state}`} style={style}>
-            <span class="region-chip">{state === "active" ? "▶" : state === "answered" ? "✓" : ""}{region.shortLabel}</span>
-          </span>;
-        })}
+  return (
+    <div class="region-map">
+      <div class="region-map-stage">
+        <FramePreview
+          frame={frame}
+          fill
+          showSize={false}
+          label={label ?? "Diagnostic pattern with labelled zones"}
+        />
+        <div class="region-map-overlay" aria-hidden="true">
+          {regions.map((region) => {
+            const state = stateOf(region);
+            const style = {
+              left: `${(region.x / frame.width) * 100}%`,
+              top: `${(region.y / frame.height) * 100}%`,
+              width: `${(region.width / frame.width) * 100}%`,
+              height: `${(region.height / frame.height) * 100}%`,
+            };
+            return (
+              <span key={region.id} class={`region-box ${state}`} style={style}>
+                <span class="region-chip">
+                  {state === "active" ? "▶" : state === "answered" ? "✓" : ""}
+                  {region.shortLabel}
+                </span>
+              </span>
+            );
+          })}
+        </div>
       </div>
+      {onSelect && (
+        <div class="region-jump" role="group" aria-label="Jump to a zone">
+          {regions.map((region) => {
+            const state = stateOf(region);
+            return (
+              <button
+                key={region.id}
+                type="button"
+                class={`zone-chip ${state}`}
+                aria-current={state === "active" ? "true" : undefined}
+                aria-label={`${region.displayLabel}${state === "answered" ? " — answered" : ""}`}
+                onClick={() => onSelect(region.id)}
+              >
+                {state === "answered" ? "✓ " : ""}
+                {region.shortLabel}
+              </button>
+            );
+          })}
+        </div>
+      )}
     </div>
-    {onSelect && <div class="region-jump" role="group" aria-label="Jump to a zone">
-      {regions.map((region) => {
-        const state = stateOf(region);
-        return <button
-          type="button"
-          class={`zone-chip ${state}`}
-          aria-current={state === "active" ? "true" : undefined}
-          aria-label={`${region.displayLabel}${state === "answered" ? " — answered" : ""}`}
-          onClick={() => onSelect(region.id)}
-        >{state === "answered" ? "✓ " : ""}{region.shortLabel}</button>;
-      })}
-    </div>}
-  </div>;
+  );
 }

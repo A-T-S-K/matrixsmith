@@ -1,0 +1,43 @@
+- main:
+    - button "iLedHat — back to MatrixSmith home":
+        - strong: iLedHat
+        - text: Connected
+    - button "Device actions": ⋮
+    - complementary:
+        - paragraph: DEVICE WORKSPACE
+        - navigation:
+            - button "◉ Create"
+            - button "◇ Investigate"
+        - paragraph: DEVELOPER TOOLS
+        - button "⌘ Protocol workbench Optional — never required for guided workflows"
+        - text: ✓
+        - strong: Safety policy active
+        - text: Unsafe operations restricted
+    - heading "Create" [level=1]
+    - tablist "Content type":
+        - tab "Text" [selected]
+        - tab "Image"
+        - tab "Demo animation"
+        - tab "GIFnot yet verified": GIF●
+    - tabpanel "Text":
+        - text: ""
+        - textbox "Text":
+            - /placeholder: HELLO
+        - text: Display
+        - combobox "Display":
+            - option "Auto" [selected]
+            - option "Still"
+            - option "Scroll"
+        - paragraph: Type something to preview it.
+        - text: Color
+        - textbox "Color": "#ff8800"
+        - text: Background
+        - textbox "Background": /#\d+/
+        - text: Alignment
+        - combobox "Alignment":
+            - option "Left"
+            - option "Center" [selected]
+            - option "Right"
+        - button "Display it" [disabled]
+        - paragraph: Enter text before sending.
+    - group: Brightness and display status
