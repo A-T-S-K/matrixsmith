@@ -66,6 +66,21 @@ body {
   min-height: 100vh;
   background: radial-gradient(circle at 20% -10%, #164363 0, #07111f 38rem);
 }
+.demo-page {
+  min-height: 100vh;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 2rem;
+  padding: 2rem;
+}
+.demo-matrix {
+  width: min(100%, 150vh);
+}
+.demo-matrix canvas {
+  display: block;
+  width: 100%;
+}
 button,
 input,
 textarea,

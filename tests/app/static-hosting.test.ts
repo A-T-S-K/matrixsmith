@@ -7,7 +7,8 @@ const publicFile = (name: string): string =>
 describe("static hosting contract", () => {
   it("ships Cloudflare security and cache headers", () => {
     const headers = publicFile("_headers");
-    expect(headers).toContain("frame-ancestors 'none'");
+    expect(headers).toContain("frame-ancestors https://aivillage.org");
+    expect(headers).not.toContain("X-Frame-Options");
     expect(headers).toContain("Permissions-Policy: bluetooth=(self)");
     expect(headers).toContain("X-Content-Type-Options: nosniff");
     expect(headers).toContain("max-age=31536000, immutable");
