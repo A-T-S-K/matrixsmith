@@ -25,7 +25,13 @@ export interface InvestigationDeviceBinding {
  */
 export function fingerprintIdentityKey(fingerprint: DeviceFingerprint): string {
   const services = fingerprint.services
-    .map((service) => `${service.uuid}:${service.characteristics.map((characteristic) => characteristic.uuid).sort().join(",")}`)
+    .map(
+      (service) =>
+        `${service.uuid}:${service.characteristics
+          .map((characteristic) => characteristic.uuid)
+          .sort()
+          .join(",")}`,
+    )
     .sort()
     .join(";");
   return [
@@ -37,10 +43,15 @@ export function fingerprintIdentityKey(fingerprint: DeviceFingerprint): string {
   ].join("|");
 }
 
-export function deviceIdentityBinding(fingerprint: DeviceFingerprint | null, profileId: string | null): InvestigationDeviceBinding | null {
+export function deviceIdentityBinding(
+  fingerprint: DeviceFingerprint | null,
+  profileId: string | null,
+): InvestigationDeviceBinding | null {
   if (!fingerprint) return null;
   return {
-    ...(fingerprint.browserDeviceId ? { browserDeviceId: fingerprint.browserDeviceId } : {}),
+    ...(fingerprint.browserDeviceId
+      ? { browserDeviceId: fingerprint.browserDeviceId }
+      : {}),
     profileId,
     fingerprintKey: fingerprintIdentityKey(fingerprint),
   };
@@ -55,10 +66,18 @@ export type BindingComparison =
   /** One side has no binding at all. */
   | "unknown";
 
-export function compareBindings(a: InvestigationDeviceBinding | null | undefined, b: InvestigationDeviceBinding | null | undefined): BindingComparison {
+export function compareBindings(
+  a: InvestigationDeviceBinding | null | undefined,
+  b: InvestigationDeviceBinding | null | undefined,
+): BindingComparison {
   if (!a || !b) return "unknown";
-  if (a.browserDeviceId && b.browserDeviceId) return a.browserDeviceId === b.browserDeviceId ? "same-authorized-device" : "different";
-  return a.fingerprintKey === b.fingerprintKey ? "same-fingerprint-shape" : "different";
+  if (a.browserDeviceId && b.browserDeviceId)
+    return a.browserDeviceId === b.browserDeviceId
+      ? "same-authorized-device"
+      : "different";
+  return a.fingerprintKey === b.fingerprintKey
+    ? "same-fingerprint-shape"
+    : "different";
 }
 
 /**
@@ -68,6 +87,9 @@ export function compareBindings(a: InvestigationDeviceBinding | null | undefined
  * device id proves the same physical unit; a matching fingerprint shape can
  * be a different identical display and never carries evidence across.
  */
-export function bindingAllowsSessionContinuity(bound: InvestigationDeviceBinding | null | undefined, connected: InvestigationDeviceBinding | null | undefined): boolean {
+export function bindingAllowsSessionContinuity(
+  bound: InvestigationDeviceBinding | null | undefined,
+  connected: InvestigationDeviceBinding | null | undefined,
+): boolean {
   return compareBindings(bound, connected) === "same-authorized-device";
 }

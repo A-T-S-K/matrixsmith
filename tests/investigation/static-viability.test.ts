@@ -1,9 +1,28 @@
 import { describe, expect, it } from "vitest";
-import { evaluateStaticViability, MINIMUM_STATIC_HOLD_MS, VISIBLE_STATIC_HOLD_METRIC } from "../../src/investigation/static-viability";
-import type { ClaimEvidence, ClaimId, ClaimStatus } from "../../src/investigation/claims";
+import {
+  evaluateStaticViability,
+  MINIMUM_STATIC_HOLD_MS,
+  VISIBLE_STATIC_HOLD_METRIC,
+} from "../../src/investigation/static-viability";
+import type {
+  ClaimEvidence,
+  ClaimId,
+  ClaimStatus,
+} from "../../src/investigation/claims";
 
-function session(claimId: ClaimId, status: ClaimStatus = "verified", extra: Partial<ClaimEvidence> = {}): ClaimEvidence {
-  return { claimId, status, scope: "current-session", provenance: "observed", summary: `${claimId} ${status}`, ...extra };
+function session(
+  claimId: ClaimId,
+  status: ClaimStatus = "verified",
+  extra: Partial<ClaimEvidence> = {},
+): ClaimEvidence {
+  return {
+    claimId,
+    status,
+    scope: "current-session",
+    provenance: "observed",
+    summary: `${claimId} ${status}`,
+    ...extra,
+  };
 }
 
 const GRAFFITI_BASE: ClaimEvidence[] = [
@@ -19,40 +38,65 @@ const CHANNELS_OK: ClaimEvidence[] = [
 ];
 
 function graffiti(evidence: readonly ClaimEvidence[]) {
-  return evaluateStaticViability(evidence).strategies.find((entry) => entry.strategy === "graffiti")!;
+  return evaluateStaticViability(evidence).strategies.find(
+    (entry) => entry.strategy === "graffiti",
+  )!;
 }
 
 describe("static viability aggregator", () => {
   it("CASE A: verified render/tiling/orientation with unresolved playback is NOT viable", () => {
-    const result = graffiti([...GRAFFITI_BASE, session("graffiti.playback-stability", "unresolved")]);
+    const result = graffiti([
+      ...GRAFFITI_BASE,
+      session("graffiti.playback-stability", "unresolved"),
+    ]);
     expect(result.verdict).toBe("open");
     expect(evaluateStaticViability([...GRAFFITI_BASE]).selected).toBeNull();
   });
 
   it("CASE B: playback verified for only 2 seconds is NOT viable", () => {
-    const evidence = [...GRAFFITI_BASE, ...CHANNELS_OK,
+    const evidence = [
+      ...GRAFFITI_BASE,
+      ...CHANNELS_OK,
       session("graffiti.black-semantics"),
-      session("graffiti.playback-stability", "verified", { metrics: { [VISIBLE_STATIC_HOLD_METRIC]: 2000 } }),
+      session("graffiti.playback-stability", "verified", {
+        metrics: { [VISIBLE_STATIC_HOLD_METRIC]: 2000 },
+      }),
     ];
     const result = graffiti(evidence);
     expect(result.verdict).toBe("open");
-    expect(result.requirements.find((requirement) => requirement.claimId === "graffiti.playback-stability")?.state).toBe("open");
+    expect(
+      result.requirements.find(
+        (requirement) => requirement.claimId === "graffiti.playback-stability",
+      )?.state,
+    ).toBe("open");
     expect(evaluateStaticViability(evidence).selected).toBeNull();
   });
 
   it("CASE C: stable ≥15s but unknown black semantics is NOT yet fully viable", () => {
-    const evidence = [...GRAFFITI_BASE, ...CHANNELS_OK,
-      session("graffiti.playback-stability", "verified", { metrics: { [VISIBLE_STATIC_HOLD_METRIC]: MINIMUM_STATIC_HOLD_MS } }),
+    const evidence = [
+      ...GRAFFITI_BASE,
+      ...CHANNELS_OK,
+      session("graffiti.playback-stability", "verified", {
+        metrics: { [VISIBLE_STATIC_HOLD_METRIC]: MINIMUM_STATIC_HOLD_MS },
+      }),
     ];
     const result = graffiti(evidence);
     expect(result.verdict).toBe("open");
-    expect(result.requirements.find((requirement) => requirement.claimId === "graffiti.black-semantics")?.state).toBe("open");
+    expect(
+      result.requirements.find(
+        (requirement) => requirement.claimId === "graffiti.black-semantics",
+      )?.state,
+    ).toBe("open");
   });
 
   it("CASE D: full graffiti requirement set is viable and selected", () => {
-    const evidence = [...GRAFFITI_BASE, ...CHANNELS_OK,
+    const evidence = [
+      ...GRAFFITI_BASE,
+      ...CHANNELS_OK,
       session("graffiti.black-semantics"),
-      session("graffiti.playback-stability", "verified", { metrics: { [VISIBLE_STATIC_HOLD_METRIC]: 16000 } }),
+      session("graffiti.playback-stability", "verified", {
+        metrics: { [VISIBLE_STATIC_HOLD_METRIC]: 16000 },
+      }),
     ];
     const assessment = evaluateStaticViability(evidence);
     expect(graffiti(evidence).verdict).toBe("viable");
@@ -88,8 +132,12 @@ describe("static viability aggregator", () => {
       ...CHANNELS_OK,
     ];
     const assessment = evaluateStaticViability(evidence);
-    const single = assessment.strategies.find((entry) => entry.strategy === "animation-single-frame")!;
-    const pair = assessment.strategies.find((entry) => entry.strategy === "animation-identical-frames")!;
+    const single = assessment.strategies.find(
+      (entry) => entry.strategy === "animation-single-frame",
+    )!;
+    const pair = assessment.strategies.find(
+      (entry) => entry.strategy === "animation-identical-frames",
+    )!;
     expect(single.verdict).toBe("not-viable");
     expect(pair.verdict).toBe("viable");
     expect(assessment.selected).toBe("animation-identical-frames");
@@ -104,9 +152,20 @@ describe("static viability aggregator", () => {
   });
 
   it("only trusted scopes feed viability", () => {
-    const historical = GRAFFITI_BASE.map((entry) => ({ ...entry, scope: "previous-local-session" as const }));
-    const assessment = evaluateStaticViability([...historical,
-      { claimId: "graffiti.playback-stability", status: "verified", scope: "previous-local-session", provenance: "observed", summary: "old", metrics: { [VISIBLE_STATIC_HOLD_METRIC]: 20000 } },
+    const historical = GRAFFITI_BASE.map((entry) => ({
+      ...entry,
+      scope: "previous-local-session" as const,
+    }));
+    const assessment = evaluateStaticViability([
+      ...historical,
+      {
+        claimId: "graffiti.playback-stability",
+        status: "verified",
+        scope: "previous-local-session",
+        provenance: "observed",
+        summary: "old",
+        metrics: { [VISIBLE_STATIC_HOLD_METRIC]: 20000 },
+      },
     ]);
     expect(assessment.selected).toBeNull();
   });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MatrixController } from "../../src/app/controller";
+import { ApplicationRuntime } from "../../src/application/runtime";
 import { TraceRecorder } from "../../src/diagnostics/trace";
 import { parseDiagnosticBundle } from "../../src/diagnostics/bundle";
 import { parseHexBytes } from "../../src/discovery/advertisement";
@@ -8,19 +8,35 @@ import { ScriptedCoolLedUxDevice } from "../helpers/scripted-device";
 import infoFixture from "../fixtures/iledhat/coolledux-device-info-cc.json";
 import type { ObservationValue } from "../../src/investigation/observations";
 
-async function controllerWithBlackTest(): Promise<MatrixController> {
+async function controllerWithBlackTest(): Promise<ApplicationRuntime> {
   const transport = new ScriptedCoolLedUxDevice(knownIledHatFingerprint());
-  const controller = new MatrixController(transport, new TraceRecorder());
+  const controller = new ApplicationRuntime(transport, new TraceRecorder());
   await controller.connect();
   transport.notificationOnWrite = parseHexBytes(infoFixture.rxHex);
   await controller.probe();
   transport.notificationOnWrite = null;
-  const transfer = await controller.runGuidedTestTransfer("coolledux-graffiti-black", { confirmedConsequence: true, reason: "initial-experiment", attemptId: "attempt:test" });
+  const transfer = await controller.runGuidedTestTransfer(
+    "coolledux-graffiti-black",
+    {
+      confirmedConsequence: true,
+      reason: "initial-experiment",
+      attemptId: "attempt:test",
+    },
+  );
   const values: ObservationValue[] = [
     { kind: "choice", fieldId: "zero-appearance", optionId: "bright-white" },
-    { kind: "choice", fieldId: "workaround-appearance", optionId: "dim-blue", note: "clearly blue-ish" },
+    {
+      kind: "choice",
+      fieldId: "workaround-appearance",
+      optionId: "dim-blue",
+      note: "clearly blue-ish",
+    },
   ];
-  controller.recordGuidedTestObservations("coolledux-graffiti-black", values, transfer.transactionIds);
+  controller.recordGuidedTestObservations(
+    "coolledux-graffiti-black",
+    values,
+    transfer.transactionIds,
+  );
   return controller;
 }
 
@@ -29,12 +45,28 @@ describe("test report", () => {
     const controller = await controllerWithBlackTest();
     const report = controller.testReportMarkdown("coolledux-graffiti-black");
     for (const section of [
-      "# MatrixSmith Hardware Test Report", "## Question", "## Device", "## Existing relevant evidence",
-      "## Why this test was run", "## Test performed", "## Safety / side effects", "## Protocol operation",
-      "## Compiler / transmission summary", "## Automatic observations", "## Physical observations", "## Result",
-      "## What this establishes", "## What this rejects", "## What remains unknown", "## Recommended next discriminator",
-      "## Relevant transactions", "## Relevant packet exemplars", "## Reproduction information", "## Requested AI task",
-    ]) expect(report).toContain(section);
+      "# MatrixSmith Hardware Test Report",
+      "## Question",
+      "## Device",
+      "## Existing relevant evidence",
+      "## Why this test was run",
+      "## Test performed",
+      "## Safety / side effects",
+      "## Protocol operation",
+      "## Compiler / transmission summary",
+      "## Automatic observations",
+      "## Physical observations",
+      "## Result",
+      "## What this establishes",
+      "## What this rejects",
+      "## What remains unknown",
+      "## Recommended next discriminator",
+      "## Relevant transactions",
+      "## Relevant packet exemplars",
+      "## Reproduction information",
+      "## Requested AI task",
+    ])
+      expect(report).toContain(section);
     expect(report).toContain("bright white");
     expect(report).toContain("iledhat-31ae-32x16");
   }, 30000);
@@ -60,14 +92,34 @@ describe("investigation report", () => {
     const controller = await controllerWithBlackTest();
     const report = controller.investigationReportMarkdown();
     for (const section of [
-      "## Objective", "## Device identity", "## Advertisement / manufacturer evidence", "## Transport / GATT",
-      "## Protocol candidates", "## Verified operations", "## Stored-program behavior", "## Geometry / orientation / tiling",
-      "## Black / off behavior by content path", "## Pixel / channel mapping", "## Color observations",
-      "## Animation behavior", "## Static behavior", "## Text / image / GIF support", "## Controls",
-      "## Persistence / recovery", "## Tests performed", "## Structured physical observations", "## Claims and confidence",
-      "## Rejected hypotheses", "## Open hypotheses", "## Known limitations", "## Driver / profile recommendations",
-      "## Relevant transactions", "## Reproduction environment", "## Requested AI task",
-    ]) expect(report).toContain(section);
+      "## Objective",
+      "## Device identity",
+      "## Advertisement / manufacturer evidence",
+      "## Transport / GATT",
+      "## Protocol candidates",
+      "## Verified operations",
+      "## Stored-program behavior",
+      "## Geometry / orientation / tiling",
+      "## Black / off behavior by content path",
+      "## Pixel / channel mapping",
+      "## Color observations",
+      "## Animation behavior",
+      "## Static behavior",
+      "## Text / image / GIF support",
+      "## Controls",
+      "## Persistence / recovery",
+      "## Tests performed",
+      "## Structured physical observations",
+      "## Claims and confidence",
+      "## Rejected hypotheses",
+      "## Open hypotheses",
+      "## Known limitations",
+      "## Driver / profile recommendations",
+      "## Relevant transactions",
+      "## Reproduction environment",
+      "## Requested AI task",
+    ])
+      expect(report).toContain(section);
     expect(report).toContain("colorModeRaw=3 (semantics unknown)");
     expect(report).toContain("Implement or fix MatrixSmith support");
   }, 30000);
@@ -85,7 +137,9 @@ describe("forensic report", () => {
     const controller = await controllerWithBlackTest();
     const forensic = controller.forensicReportMarkdown();
     expect(forensic).toContain("# MatrixSmith Forensic Appendix");
-    expect(forensic).toContain("| Time | Dir | Gap ms | Host accepted | Bytes |");
+    expect(forensic).toContain(
+      "| Time | Dir | Gap ms | Host accepted | Bytes |",
+    );
     // Every TX packet of the upload appears.
     const rows = forensic.match(/\| TX \|/g) ?? [];
     expect(rows.length).toBeGreaterThan(5);
@@ -99,11 +153,15 @@ describe("bundle round-trip", () => {
     const json = controller.exportBundle();
     const bundle = parseDiagnosticBundle(json);
     expect(bundle.investigation?.completedTests).toHaveLength(1);
-    const imported = new MatrixController(new ScriptedCoolLedUxDevice(null), new TraceRecorder());
+    const imported = new ApplicationRuntime(
+      new ScriptedCoolLedUxDevice(null),
+      new TraceRecorder(),
+    );
     imported.importBundle(json);
     expect(imported.investigation?.completedTests).toHaveLength(1);
     // Bundle content is external data: every evidence entry is demoted
     // regardless of its serialized scope field.
-    for (const entry of imported.investigation?.claimEvidence ?? []) expect(entry.scope).toBe("imported-external");
+    for (const entry of imported.investigation?.claimEvidence ?? [])
+      expect(entry.scope).toBe("imported-external");
   }, 30000);
 });

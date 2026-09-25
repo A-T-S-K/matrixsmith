@@ -1,6 +1,7 @@
-import { MatrixController } from "../../src/app/controller";
+import { createPresentationStore } from "./presentation-fixture";
+import { ApplicationRuntime } from "../../src/application/runtime";
 import { TraceRecorder } from "../../src/diagnostics/trace";
-import { MatrixStore } from "../../src/ui/store";
+import { PresentationStore } from "../../src/presentation/store";
 import { coolLedUxDriver } from "../../src/drivers/coolledux";
 import { coolLedXDriver } from "../../src/drivers/coolledx";
 import { DriverRegistry } from "../../src/drivers/registry";
@@ -25,23 +26,43 @@ import { uncharacterizedCoolLedUxEvidence } from "./evidence";
  * one — it just starts from a device nobody has measured yet.
  */
 export function uncharacterizedCoolLedUxDriver(): MatrixDriver {
-  return { ...coolLedUxDriver, claimEvidence: () => uncharacterizedCoolLedUxEvidence() };
+  return {
+    ...coolLedUxDriver,
+    claimEvidence: () => uncharacterizedCoolLedUxEvidence(),
+  };
 }
 
 export function uncharacterizedRegistry(): DriverRegistry {
   return new DriverRegistry([coolLedXDriver, uncharacterizedCoolLedUxDriver()]);
 }
 
-export async function uncharacterizedController(): Promise<{ controller: MatrixController; transport: ScriptedCoolLedUxDevice }> {
+export async function uncharacterizedController(): Promise<{
+  controller: ApplicationRuntime;
+  transport: ScriptedCoolLedUxDevice;
+}> {
   const transport = new ScriptedCoolLedUxDevice(knownIledHatFingerprint());
-  const controller = new MatrixController(transport, new TraceRecorder(), uncharacterizedRegistry());
+  const controller = new ApplicationRuntime(
+    transport,
+    new TraceRecorder(),
+    uncharacterizedRegistry(),
+  );
   await controller.connect();
   return { controller, transport };
 }
 
-export async function uncharacterizedStore(): Promise<{ store: MatrixStore; transport: ScriptedCoolLedUxDevice }> {
+export async function uncharacterizedStore(): Promise<{
+  store: PresentationStore;
+  transport: ScriptedCoolLedUxDevice;
+}> {
   const transport = new ScriptedCoolLedUxDevice(knownIledHatFingerprint());
-  const store = new MatrixStore(new MatrixController(transport, new TraceRecorder(), uncharacterizedRegistry()), transport);
+  const store = createPresentationStore(
+    new ApplicationRuntime(
+      transport,
+      new TraceRecorder(),
+      uncharacterizedRegistry(),
+    ),
+    transport,
+  );
   await store.connect();
   await store.identify();
   return { store, transport };

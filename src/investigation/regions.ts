@@ -47,15 +47,23 @@ export function rawWordHex(word: number): string {
   return `0x${word.toString(16).padStart(4, "0").toUpperCase()}`;
 }
 
-export function findRegion(regions: readonly DiagnosticRegion[], id: string): DiagnosticRegion | undefined {
+export function findRegion(
+  regions: readonly DiagnosticRegion[],
+  id: string,
+): DiagnosticRegion | undefined {
   return regions.find((region) => region.id === id);
 }
 
 /** Peers of the active region: same group, excluding the region itself. */
-export function regionPeers(regions: readonly DiagnosticRegion[], id: string): readonly DiagnosticRegion[] {
+export function regionPeers(
+  regions: readonly DiagnosticRegion[],
+  id: string,
+): readonly DiagnosticRegion[] {
   const active = findRegion(regions, id);
   if (!active?.groupId) return [];
-  return regions.filter((region) => region.id !== id && region.groupId === active.groupId);
+  return regions.filter(
+    (region) => region.id !== id && region.groupId === active.groupId,
+  );
 }
 
 /**
@@ -64,19 +72,36 @@ export function regionPeers(regions: readonly DiagnosticRegion[], id: string): r
  * without a human label would force the raw hex to become the user-facing
  * name — both are defects in the test definition, not user errors.
  */
-export function validateRegions(regions: readonly DiagnosticRegion[], bounds?: { readonly width: number; readonly height: number }): string[] {
+export function validateRegions(
+  regions: readonly DiagnosticRegion[],
+  bounds?: { readonly width: number; readonly height: number },
+): string[] {
   const errors: string[] = [];
   const seen = new Set<string>();
   for (const region of regions) {
-    if (!region.id.trim()) { errors.push("A diagnostic region has an empty id."); continue; }
-    if (seen.has(region.id)) errors.push(`Duplicate diagnostic region id "${region.id}".`);
+    if (!region.id.trim()) {
+      errors.push("A diagnostic region has an empty id.");
+      continue;
+    }
+    if (seen.has(region.id))
+      errors.push(`Duplicate diagnostic region id "${region.id}".`);
     seen.add(region.id);
-    if (!region.displayLabel.trim()) errors.push(`Region "${region.id}" has no human-readable displayLabel.`);
-    if (!region.shortLabel.trim()) errors.push(`Region "${region.id}" has no shortLabel for the map.`);
-    if (region.width <= 0 || region.height <= 0) errors.push(`Region "${region.id}" has a non-positive size.`);
-    if (region.x < 0 || region.y < 0) errors.push(`Region "${region.id}" starts outside the panel.`);
-    if (bounds && (region.x + region.width > bounds.width || region.y + region.height > bounds.height)) {
-      errors.push(`Region "${region.id}" extends past the ${bounds.width}×${bounds.height} panel.`);
+    if (!region.displayLabel.trim())
+      errors.push(`Region "${region.id}" has no human-readable displayLabel.`);
+    if (!region.shortLabel.trim())
+      errors.push(`Region "${region.id}" has no shortLabel for the map.`);
+    if (region.width <= 0 || region.height <= 0)
+      errors.push(`Region "${region.id}" has a non-positive size.`);
+    if (region.x < 0 || region.y < 0)
+      errors.push(`Region "${region.id}" starts outside the panel.`);
+    if (
+      bounds &&
+      (region.x + region.width > bounds.width ||
+        region.y + region.height > bounds.height)
+    ) {
+      errors.push(
+        `Region "${region.id}" extends past the ${bounds.width}×${bounds.height} panel.`,
+      );
     }
   }
   return errors;
@@ -91,7 +116,8 @@ export function validateRegionReferences(
   const errors: string[] = [];
   for (const reference of references) {
     if (reference === undefined) continue;
-    if (!known.has(reference)) errors.push(`Observation references unknown region "${reference}".`);
+    if (!known.has(reference))
+      errors.push(`Observation references unknown region "${reference}".`);
   }
   return errors;
 }

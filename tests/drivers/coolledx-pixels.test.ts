@@ -2,7 +2,11 @@ import { describe, expect, it } from "vitest";
 import { packCoolLedPixels } from "../../src/drivers/coolledx/pixels";
 import { Framebuffer } from "../../src/render/framebuffer";
 
-const solid = (r: number, g: number, b: number): Framebuffer => { const frame = new Framebuffer(32, 16); frame.fill(r, g, b); return frame; };
+const solid = (r: number, g: number, b: number): Framebuffer => {
+  const frame = new Framebuffer(32, 16);
+  frame.fill(r, g, b);
+  return frame;
+};
 
 describe("CoolLEDX pixel packing", () => {
   it.each([
@@ -12,7 +16,9 @@ describe("CoolLEDX pixel packing", () => {
     ["blue", 0, 0, 255, 0x00, 0x00, 0xff],
     ["white", 255, 255, 255, 0xff, 0xff, 0xff],
   ])("packs %s into separate channel planes", (_name, r, g, b, er, eg, eb) => {
-    const packed = packCoolLedPixels(solid(r as number, g as number, b as number));
+    const packed = packCoolLedPixels(
+      solid(r as number, g as number, b as number),
+    );
     expect(packed).toHaveLength(192);
     expect(new Set(packed.slice(0, 64))).toEqual(new Set([er]));
     expect(new Set(packed.slice(64, 128))).toEqual(new Set([eg]));

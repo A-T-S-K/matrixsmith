@@ -4,5 +4,8 @@ import { matchCoolLedGatt } from "../coolled/common/matcher";
 import { applyKnownProfileDisposition } from "../coolled/common/known-device";
 
 export function matchCoolLedX(fingerprint: DeviceFingerprint): DriverMatch {
-  return applyKnownProfileDisposition(matchCoolLedGatt(fingerprint, "coolledx"), fingerprint);
+  return applyKnownProfileDisposition(
+    matchCoolLedGatt(fingerprint, "coolledx"),
+    fingerprint,
+  );
 }

@@ -13,7 +13,8 @@ import type { GuidedTestStatus } from "./investigation";
  * edits view code or recommendation conditionals.
  */
 
-export type GuidedTestCategory = "core" | "recommended" | "advanced" | "optional";
+export type GuidedTestCategory =
+  "core" | "recommended" | "advanced" | "optional";
 
 export interface ClaimRequirement {
   readonly claimId: ClaimId;
@@ -149,7 +150,10 @@ export interface GuidedOperationContext {
 }
 
 /** Resolve a guided test's exact operation for the current evidence. */
-export function resolveGuidedOperation(test: GuidedTestDefinition, context: GuidedOperationContext): MatrixOperation {
+export function resolveGuidedOperation(
+  test: GuidedTestDefinition,
+  context: GuidedOperationContext,
+): MatrixOperation {
   return test.buildOperation ? test.buildOperation(context) : test.operation;
 }
 
@@ -166,13 +170,28 @@ export function evaluateTestAvailability(
   evidence: readonly ClaimEvidence[],
   completedTestIds: readonly string[],
 ): GuidedTestAvailability {
-  const unmet = test.prerequisites.filter((requirement) => !requirement.anyOf.includes(claimState(requirement.claimId, evidence).status));
-  const missing = test.requiresCompletedTests.filter((id) => !completedTestIds.includes(id));
+  const unmet = test.prerequisites.filter(
+    (requirement) =>
+      !requirement.anyOf.includes(
+        claimState(requirement.claimId, evidence).status,
+      ),
+  );
+  const missing = test.requiresCompletedTests.filter(
+    (id) => !completedTestIds.includes(id),
+  );
   const available = unmet.length === 0 && missing.length === 0;
-  const reason = available ? null : unmet.length > 0
-    ? `Needs ${unmet.map((requirement) => `${requirement.claimId} to be ${requirement.anyOf.join(" or ")}`).join("; ")}.`
-    : `Run ${missing.join(", ")} first.`;
-  return { test, available, unmetPrerequisites: unmet, missingCompletedTests: missing, reason };
+  const reason = available
+    ? null
+    : unmet.length > 0
+      ? `Needs ${unmet.map((requirement) => `${requirement.claimId} to be ${requirement.anyOf.join(" or ")}`).join("; ")}.`
+      : `Run ${missing.join(", ")} first.`;
+  return {
+    test,
+    available,
+    unmetPrerequisites: unmet,
+    missingCompletedTests: missing,
+    reason,
+  };
 }
 
 /**
@@ -181,43 +200,70 @@ export function evaluateTestAvailability(
  * value, so asking again would invite an estimate where a measurement
  * already exists.
  */
-export function timerDrivenFieldIds(timer: GuidedTestTimer | null | undefined): ReadonlySet<string> {
+export function timerDrivenFieldIds(
+  timer: GuidedTestTimer | null | undefined,
+): ReadonlySet<string> {
   const ids = new Set<string>();
   for (const phase of timer?.phases ?? []) {
     ids.add(phase.fieldId);
     if (phase.stillDurationFieldId) ids.add(phase.stillDurationFieldId);
-    for (const set of [...(phase.eventSets ?? []), ...(phase.failSets ?? []), ...(phase.stillSets ?? [])]) ids.add(set.fieldId);
+    for (const set of [
+      ...(phase.eventSets ?? []),
+      ...(phase.failSets ?? []),
+      ...(phase.stillSets ?? []),
+    ])
+      ids.add(set.fieldId);
   }
   return ids;
 }
 
 /** Convenience for interpret() implementations. */
-export function findValue(values: readonly ObservationValue[], fieldId: string): ObservationValue | undefined {
+export function findValue(
+  values: readonly ObservationValue[],
+  fieldId: string,
+): ObservationValue | undefined {
   return values.find((value) => value.fieldId === fieldId);
 }
 
-export function booleanAnswer(values: readonly ObservationValue[], fieldId: string): "yes" | "no" | "unsure" | null {
+export function booleanAnswer(
+  values: readonly ObservationValue[],
+  fieldId: string,
+): "yes" | "no" | "unsure" | null {
   const value = findValue(values, fieldId);
   return value?.kind === "boolean" ? value.value : null;
 }
 
-export function choiceAnswer(values: readonly ObservationValue[], fieldId: string): string | null {
+export function choiceAnswer(
+  values: readonly ObservationValue[],
+  fieldId: string,
+): string | null {
   const value = findValue(values, fieldId);
   return value?.kind === "choice" ? value.optionId : null;
 }
 
-export function durationAnswer(values: readonly ObservationValue[], fieldId: string): number | null {
+export function durationAnswer(
+  values: readonly ObservationValue[],
+  fieldId: string,
+): number | null {
   const value = findValue(values, fieldId);
   return value?.kind === "duration" ? value.milliseconds : null;
 }
 
 /** Only MatrixSmith-measured durations are evidence-grade; user estimates never verify a claim. */
-export function measuredDurationAnswer(values: readonly ObservationValue[], fieldId: string): number | null {
+export function measuredDurationAnswer(
+  values: readonly ObservationValue[],
+  fieldId: string,
+): number | null {
   const value = findValue(values, fieldId);
-  return value?.kind === "duration" && value.measuredBy === "matrixsmith-timer" ? value.milliseconds : null;
+  return value?.kind === "duration" && value.measuredBy === "matrixsmith-timer"
+    ? value.milliseconds
+    : null;
 }
 
-export function noteAnswer(values: readonly ObservationValue[], fieldId: string): string | null {
+export function noteAnswer(
+  values: readonly ObservationValue[],
+  fieldId: string,
+): string | null {
   const value = findValue(values, fieldId);
   if (value?.kind === "note") return value.text;
   return value && "note" in value && value.note ? value.note : null;

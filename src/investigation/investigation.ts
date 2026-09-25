@@ -3,7 +3,11 @@ import { resolveClaims } from "./claims";
 import type { InvestigationDeviceBinding } from "./device-identity";
 import type { ObservationValue } from "./observations";
 import type { InvestigationOrchestration } from "./orchestration";
-import { demoteOrchestration, emptyOrchestration, type ExperimentResolution } from "./orchestration";
+import {
+  demoteOrchestration,
+  emptyOrchestration,
+  type ExperimentResolution,
+} from "./orchestration";
 import type { ObservationAttempt } from "./timing";
 
 /**
@@ -35,7 +39,8 @@ export interface InvestigationGoal {
   readonly description: string;
 }
 
-export type GuidedTestStatus = "passed" | "failed" | "partial" | "inconclusive" | "abandoned";
+export type GuidedTestStatus =
+  "passed" | "failed" | "partial" | "inconclusive" | "abandoned";
 
 export interface CompletedGuidedTest {
   readonly testId: string;
@@ -86,7 +91,9 @@ export interface CompletedGuidedTest {
  * Older records (and any that predate the field) fall back to the coarse
  * status mapping this replaced, so history stays readable.
  */
-export function completedTestResolution(test: CompletedGuidedTest): ExperimentResolution {
+export function completedTestResolution(
+  test: CompletedGuidedTest,
+): ExperimentResolution {
   if (test.resolution) return test.resolution;
   return test.status === "abandoned" ? "abandoned" : "settled";
 }
@@ -118,17 +125,32 @@ export interface Investigation {
 }
 
 export function investigationId(): string {
-  const value = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  const value =
+    globalThis.crypto?.randomUUID?.() ??
+    `${Date.now()}-${Math.random().toString(16).slice(2)}`;
   return `investigation:${value}`;
 }
 
-export function createInvestigation(input: { profileId: string | null; deviceName: string | null; deviceBinding?: InvestigationDeviceBinding | null; goal: InvestigationGoal; now?: string }): Investigation {
+export function createInvestigation(input: {
+  profileId: string | null;
+  deviceName: string | null;
+  deviceBinding?: InvestigationDeviceBinding | null;
+  goal: InvestigationGoal;
+  now?: string;
+}): Investigation {
   const now = input.now ?? new Date().toISOString();
   return {
-    id: investigationId(), createdAt: now, updatedAt: now,
-    profileId: input.profileId, deviceName: input.deviceName,
+    id: investigationId(),
+    createdAt: now,
+    updatedAt: now,
+    profileId: input.profileId,
+    deviceName: input.deviceName,
     deviceBinding: input.deviceBinding ?? null,
-    goal: input.goal, status: "active", completedTests: [], claimEvidence: [], notes: [],
+    goal: input.goal,
+    status: "active",
+    completedTests: [],
+    claimEvidence: [],
+    notes: [],
     orchestration: emptyOrchestration(),
   };
 }
@@ -148,7 +170,10 @@ export function demoteInvestigationEvidence(
 ): Investigation {
   return {
     ...investigation,
-    claimEvidence: investigation.claimEvidence.map((entry) => ({ ...entry, scope })),
+    claimEvidence: investigation.claimEvidence.map((entry) => ({
+      ...entry,
+      scope,
+    })),
     // Semantic orchestration history is preserved verbatim — it is a record of
     // what happened. Only the belief that a program is physically on the panel
     // is dropped: nothing in the new context observed the display.
@@ -162,28 +187,52 @@ export function demoteInvestigationEvidence(
 }
 
 /** Replace the orchestration state, stamping the investigation as updated. */
-export function withOrchestration(investigation: Investigation, orchestration: InvestigationOrchestration, now = new Date().toISOString()): Investigation {
+export function withOrchestration(
+  investigation: Investigation,
+  orchestration: InvestigationOrchestration,
+  now = new Date().toISOString(),
+): Investigation {
   return { ...investigation, orchestration, updatedAt: now };
 }
 
-export function recordCompletedTest(investigation: Investigation, test: CompletedGuidedTest, evidence: readonly ClaimEvidence[], now = new Date().toISOString()): Investigation {
+export function recordCompletedTest(
+  investigation: Investigation,
+  test: CompletedGuidedTest,
+  evidence: readonly ClaimEvidence[],
+  now = new Date().toISOString(),
+): Investigation {
   return {
-    ...investigation, updatedAt: now,
+    ...investigation,
+    updatedAt: now,
     completedTests: [...investigation.completedTests, test],
     claimEvidence: [...investigation.claimEvidence, ...evidence],
   };
 }
 
-export function addClaimEvidence(investigation: Investigation, evidence: readonly ClaimEvidence[], now = new Date().toISOString()): Investigation {
+export function addClaimEvidence(
+  investigation: Investigation,
+  evidence: readonly ClaimEvidence[],
+  now = new Date().toISOString(),
+): Investigation {
   if (evidence.length === 0) return investigation;
-  return { ...investigation, updatedAt: now, claimEvidence: [...investigation.claimEvidence, ...evidence] };
+  return {
+    ...investigation,
+    updatedAt: now,
+    claimEvidence: [...investigation.claimEvidence, ...evidence],
+  };
 }
 
-export function stopInvestigation(investigation: Investigation, now = new Date().toISOString()): Investigation {
+export function stopInvestigation(
+  investigation: Investigation,
+  now = new Date().toISOString(),
+): Investigation {
   return { ...investigation, status: "stopped", updatedAt: now };
 }
 
-export function resumeInvestigation(investigation: Investigation, now = new Date().toISOString()): Investigation {
+export function resumeInvestigation(
+  investigation: Investigation,
+  now = new Date().toISOString(),
+): Investigation {
   return { ...investigation, status: "active", updatedAt: now };
 }
 
@@ -192,48 +241,84 @@ export function resumeInvestigation(investigation: Investigation, now = new Date
  * profile facts, source references, imported evidence). Investigation-scoped
  * evidence is combined with — never substituted for — the base evidence.
  */
-export function investigationClaims(investigation: Investigation, baseEvidence: readonly ClaimEvidence[] = []): readonly ClaimState[] {
+export function investigationClaims(
+  investigation: Investigation,
+  baseEvidence: readonly ClaimEvidence[] = [],
+): readonly ClaimState[] {
   return resolveClaims([...baseEvidence, ...investigation.claimEvidence]);
 }
 
-export function hasCompletedTest(investigation: Investigation, testId: string): boolean {
+export function hasCompletedTest(
+  investigation: Investigation,
+  testId: string,
+): boolean {
   return investigation.completedTests.some((test) => test.testId === testId);
 }
 
-export function latestTestResult(investigation: Investigation, testId: string): CompletedGuidedTest | null {
-  for (let index = investigation.completedTests.length - 1; index >= 0; index -= 1) {
+export function latestTestResult(
+  investigation: Investigation,
+  testId: string,
+): CompletedGuidedTest | null {
+  for (
+    let index = investigation.completedTests.length - 1;
+    index >= 0;
+    index -= 1
+  ) {
     const test = investigation.completedTests[index];
     if (test && test.testId === testId) return test;
   }
   return null;
 }
 
-export const SYMPTOM_LABELS: Readonly<Record<SymptomId, string>> = Object.freeze({
-  "cannot-find-display": "My display cannot be found",
-  "wont-connect": "My display won't connect",
-  disconnects: "My display keeps disconnecting",
-  "content-wont-send": "Text or image won't send",
-  "display-returned-to-default-content": "Display returned to built-in/default content after sending",
-  "image-looks-wrong": "The image looks wrong",
-  "colors-look-wrong": "The colors look wrong",
-  "content-moves-unexpectedly": "Content moves unexpectedly",
-  "animation-looks-wrong": "The animation behaves incorrectly",
-  "brightness-problem": "Brightness problem",
-  "display-frozen": "The display appears frozen",
-  other: "Something else",
-});
+export const SYMPTOM_LABELS: Readonly<Record<SymptomId, string>> =
+  Object.freeze({
+    "cannot-find-display": "My display cannot be found",
+    "wont-connect": "My display won't connect",
+    disconnects: "My display keeps disconnecting",
+    "content-wont-send": "Text or image won't send",
+    "display-returned-to-default-content":
+      "Display returned to built-in/default content after sending",
+    "image-looks-wrong": "The image looks wrong",
+    "colors-look-wrong": "The colors look wrong",
+    "content-moves-unexpectedly": "Content moves unexpectedly",
+    "animation-looks-wrong": "The animation behaves incorrectly",
+    "brightness-problem": "Brightness problem",
+    "display-frozen": "The display appears frozen",
+    other: "Something else",
+  });
 
 /** Claims a symptom most directly depends on; the recommendation engine biases toward discriminators for these. */
-export const SYMPTOM_FOCUS_CLAIMS: Readonly<Record<SymptomId, readonly ClaimId[]>> = Object.freeze({
+export const SYMPTOM_FOCUS_CLAIMS: Readonly<
+  Record<SymptomId, readonly ClaimId[]>
+> = Object.freeze({
   "cannot-find-display": ["transport.bluetooth"],
   "wont-connect": ["transport.bluetooth"],
   disconnects: ["transport.bluetooth"],
   "content-wont-send": ["stored-program.upload", "static.strategy"],
-  "display-returned-to-default-content": ["stored-program.upload", "static.strategy", "recovery.manual-reset"],
-  "image-looks-wrong": ["raster.tiling", "raster.orientation", "graffiti.initial-render"],
-  "colors-look-wrong": ["pixel.channel-map", "graffiti.color-mapping", "pixel.color-calibration"],
-  "content-moves-unexpectedly": ["graffiti.playback-stability", "static.strategy"],
-  "animation-looks-wrong": ["animation.frames", "animation.timing", "animation.tile-sync"],
+  "display-returned-to-default-content": [
+    "stored-program.upload",
+    "static.strategy",
+    "recovery.manual-reset",
+  ],
+  "image-looks-wrong": [
+    "raster.tiling",
+    "raster.orientation",
+    "graffiti.initial-render",
+  ],
+  "colors-look-wrong": [
+    "pixel.channel-map",
+    "graffiti.color-mapping",
+    "pixel.color-calibration",
+  ],
+  "content-moves-unexpectedly": [
+    "graffiti.playback-stability",
+    "static.strategy",
+  ],
+  "animation-looks-wrong": [
+    "animation.frames",
+    "animation.timing",
+    "animation.tile-sync",
+  ],
   "brightness-problem": ["brightness.control"],
   "display-frozen": ["device-info.query", "recovery.manual-reset"],
   other: [],

@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { MatrixController } from "../../src/app/controller";
-import { TraceRecorder } from "../../src/diagnostics/trace";
-import { MatrixStore } from "../../src/ui/store";
-import { knownIledHatFingerprint } from "../helpers/fixtures";
+import { PresentationStore } from "../../src/presentation/store";
 import { uncharacterizedStore } from "../helpers/uncharacterized-device";
 import { completedTestResolution } from "../../src/investigation/investigation";
-import { detectRecommendationCycle, isConcludedTest } from "../../src/investigation/recommendations";
+import {
+  detectRecommendationCycle,
+  isConcludedTest,
+} from "../../src/investigation/recommendations";
 
 /**
  * Settled is not the same as finished with.
@@ -17,18 +17,28 @@ import { detectRecommendationCycle, isConcludedTest } from "../../src/investigat
  * told no further test was recommended.
  */
 
-async function connectedStore(): Promise<MatrixStore> {
+async function connectedStore(): Promise<PresentationStore> {
   // Resolution semantics are a property of the guided journey, so these run
   // against a device whose static substrate is still open.
   return (await uncharacterizedStore()).store;
 }
 
-const flow = (store: MatrixStore) => store.getSnapshot().guidedFlow!;
+const flow = (store: PresentationStore) => store.getSnapshot().guidedFlow!;
 
-function answerRemaining(store: MatrixStore): void {
+function answerRemaining(store: PresentationStore): void {
   for (const step of flow(store).steps) {
-    if (step.spec.kind === "boolean") store.setGuidedObservation({ kind: "boolean", fieldId: step.spec.id, value: "yes" });
-    if (step.spec.kind === "choice") store.setGuidedObservation({ kind: "choice", fieldId: step.spec.id, optionId: step.spec.options[0]!.id });
+    if (step.spec.kind === "boolean")
+      store.setGuidedObservation({
+        kind: "boolean",
+        fieldId: step.spec.id,
+        value: "yes",
+      });
+    if (step.spec.kind === "choice")
+      store.setGuidedObservation({
+        kind: "choice",
+        fieldId: step.spec.id,
+        optionId: step.spec.options[0]!.id,
+      });
   }
 }
 
@@ -36,7 +46,10 @@ function answerRemaining(store: MatrixStore): void {
  * The user watches, sees nothing move, and stops well before the required
  * window — the sub-15-second case. T1 is marked, then "still".
  */
-async function runShortStillObservation(store: MatrixStore, testId = "coolledux-graffiti-timing"): Promise<void> {
+async function runShortStillObservation(
+  store: PresentationStore,
+  testId = "coolledux-graffiti-timing",
+): Promise<void> {
   store.startGuidedTest(testId);
   await store.confirmGuidedTransfer();
   store.recordGuidedTimeline("event");
@@ -46,7 +59,10 @@ async function runShortStillObservation(store: MatrixStore, testId = "coolledux-
 }
 
 /** Rendered, then moved: a real answer, positive or negative. */
-async function runMovedObservation(store: MatrixStore, testId = "coolledux-graffiti-timing"): Promise<void> {
+async function runMovedObservation(
+  store: PresentationStore,
+  testId = "coolledux-graffiti-timing",
+): Promise<void> {
   store.startGuidedTest(testId);
   await store.confirmGuidedTransfer();
   store.recordGuidedTimeline("event");
@@ -64,13 +80,17 @@ describe("sub-15-second observation is retryable, not a dead end", () => {
     expect(completedTestResolution(completed)).toBe("retryable-incomplete");
     expect(isConcludedTest(completed)).toBe(true);
     // The experiment stays open for a repeat rather than being retired.
-    expect(store.controller.retryableExperimentIds()).toContain("coolledux-graffiti-timing");
+    expect(store.controller.retryableExperimentIds()).toContain(
+      "coolledux-graffiti-timing",
+    );
   }, 30000);
 
   it("neither verifies nor rejects stability from an insufficient window", async () => {
     const store = await connectedStore();
     await runShortStillObservation(store);
-    const stability = store.controller.claims().find((claim) => claim.id === "graffiti.playback-stability");
+    const stability = store.controller
+      .claims()
+      .find((claim) => claim.id === "graffiti.playback-stability");
     expect(stability?.status).not.toBe("verified");
     expect(stability?.status).not.toBe("rejected");
   }, 30000);
@@ -84,7 +104,9 @@ describe("sub-15-second observation is retryable, not a dead end", () => {
     expect(snapshot.error).toBeNull();
     expect(snapshot.info).toMatch(/did not run long enough/u);
     expect(snapshot.info).not.toMatch(/No further test is recommended/u);
-    expect(snapshot.coreProgress!.retryableTestId).toBe("coolledux-graffiti-timing");
+    expect(snapshot.coreProgress!.retryableTestId).toBe(
+      "coolledux-graffiti-timing",
+    );
     expect(snapshot.coreProgress!.complete).toBe(false);
   }, 30000);
 
@@ -112,12 +134,16 @@ describe("sub-15-second observation is retryable, not a dead end", () => {
 
     const completed = store.controller.investigation!.completedTests.at(-1)!;
     expect(completedTestResolution(completed)).toBe("settled");
-    expect(store.controller.retryableExperimentIds()).not.toContain("coolledux-graffiti-timing");
+    expect(store.controller.retryableExperimentIds()).not.toContain(
+      "coolledux-graffiti-timing",
+    );
     // The repeat continued the SAME experiment: its attempts kept counting up
     // rather than starting a parallel run of the identical measurement.
     const run = store.controller.experiments.at(-1)!;
     expect(run.attempts.length).toBeGreaterThan(attemptsBefore);
-    expect(run.attempts.map((attempt) => attempt.attemptNumber)).toEqual(run.attempts.map((_, index) => index + 1));
+    expect(run.attempts.map((attempt) => attempt.attemptNumber)).toEqual(
+      run.attempts.map((_, index) => index + 1),
+    );
   }, 30000);
 });
 
@@ -127,17 +153,26 @@ describe("settled experiments leave automatic rotation", () => {
     await runMovedObservation(store);
     const completed = store.controller.investigation!.completedTests.at(-1)!;
     expect(completedTestResolution(completed)).toBe("settled");
-    expect(store.controller.recommendations().some((entry) => entry.testId === "coolledux-graffiti-timing")).toBe(false);
+    expect(
+      store.controller
+        .recommendations()
+        .some((entry) => entry.testId === "coolledux-graffiti-timing"),
+    ).toBe(false);
   }, 30000);
 
   it("requires an explicit reopen to run a settled experiment again", async () => {
     const store = await connectedStore();
     await runMovedObservation(store);
     store.closeGuidedTest();
-    store.reopenExperiment("coolledux-graffiti-timing", "Confirming the movement onset.");
+    store.reopenExperiment(
+      "coolledux-graffiti-timing",
+      "Confirming the movement onset.",
+    );
     expect(store.getSnapshot().error).toBeNull();
     expect(flow(store).testId).toBe("coolledux-graffiti-timing");
-    expect(store.controller.experiments.at(-1)!.reopenReason).toBe("Confirming the movement onset.");
+    expect(store.controller.experiments.at(-1)!.reopenReason).toBe(
+      "Confirming the movement onset.",
+    );
   }, 30000);
 });
 
@@ -192,8 +227,12 @@ describe("the cycle guard distinguishes engine loops from user decisions", () =>
 describe("controlled variants stay distinct experiments", () => {
   it("gives stayTime=3 and stayTime=0 different execution identities", async () => {
     const store = await connectedStore();
-    const baseline = store.controller.guidedExecutionFingerprint("coolledux-graffiti-timing");
-    const variant = store.controller.guidedExecutionFingerprint("coolledux-graffiti-staytime");
+    const baseline = store.controller.guidedExecutionFingerprint(
+      "coolledux-graffiti-timing",
+    );
+    const variant = store.controller.guidedExecutionFingerprint(
+      "coolledux-graffiti-staytime",
+    );
     expect(baseline.parameterKey).toBe("stayTime=3");
     expect(variant.parameterKey).toBe("stayTime=0");
     expect(baseline.key).not.toBe(variant.key);
@@ -225,43 +264,79 @@ describe("controlled variants stay distinct experiments", () => {
     await store.retryTimingAttempt();
     const variantRun = store.controller.experiments.at(-1)!;
     expect(variantRun.definitionId).toBe("coolledux-graffiti-staytime");
-    expect(variantRun.attempts.map((attempt) => attempt.attemptNumber)).toEqual([1, 2]);
+    expect(variantRun.attempts.map((attempt) => attempt.attemptNumber)).toEqual(
+      [1, 2],
+    );
     expect(store.controller.experiments).toHaveLength(2);
   }, 30000);
 });
 
 describe("optional characterization is never the automatic next step", () => {
   /** Drive the plan to a complete core through the shortest branch. */
-  async function completeCore(store: MatrixStore): Promise<void> {
+  async function completeCore(store: PresentationStore): Promise<void> {
     const c = store.controller;
-    const timer = (fieldId: string, milliseconds: number) => ({ kind: "duration" as const, fieldId, milliseconds, measuredBy: "matrixsmith-timer" as const });
+    const timer = (fieldId: string, milliseconds: number) => ({
+      kind: "duration" as const,
+      fieldId,
+      milliseconds,
+      measuredBy: "matrixsmith-timer" as const,
+    });
     const MIN = 15_000;
-    c.recordGuidedTestObservations("coolledux-graffiti-timing", [
-      { kind: "boolean", fieldId: "initial-correct", value: "yes" },
-      timer("image-visible", 1200),
-      { kind: "boolean", fieldId: "moved", value: "yes" },
-      timer("movement-start", 4400),
-    ], []);
-    c.recordGuidedTestObservations("coolledux-graffiti-staytime", [
-      { kind: "boolean", fieldId: "initial-correct", value: "yes" },
-      timer("image-visible", 1200),
-      { kind: "boolean", fieldId: "moved", value: "yes" },
-      timer("movement-start", 2000),
-    ], []);
-    c.recordGuidedTestObservations("coolledux-animation-static", [
-      { kind: "boolean", fieldId: "initial-correct", value: "yes" },
-      timer("image-visible", 1100),
-      { kind: "boolean", fieldId: "moved", value: "no" },
-      timer("observation-end", 1100 + MIN + 400),
-      { kind: "boolean", fieldId: "background-off", value: "yes" },
-      { kind: "boolean", fieldId: "tiles-aligned", value: "yes" },
-      { kind: "boolean", fieldId: "flicker", value: "no" },
-    ], []);
-    const patch = (word: number, optionId: string) => ({ kind: "choice" as const, fieldId: `patch-0x${word.toString(16).padStart(4, "0")}`, optionId });
-    c.recordGuidedTestObservations("coolledux-pixel-channels", [
-      patch(0x0000, "off"), patch(0x0f00, "red"), patch(0x00f0, "green"), patch(0x000f, "blue"), patch(0x0fff, "tinted-white"),
-      patch(0x1000, "off"), patch(0x2000, "off"), patch(0x4000, "off"), patch(0x8000, "off"), patch(0xf000, "off"), patch(0xffff, "tinted-white"),
-    ], []);
+    c.recordGuidedTestObservations(
+      "coolledux-graffiti-timing",
+      [
+        { kind: "boolean", fieldId: "initial-correct", value: "yes" },
+        timer("image-visible", 1200),
+        { kind: "boolean", fieldId: "moved", value: "yes" },
+        timer("movement-start", 4400),
+      ],
+      [],
+    );
+    c.recordGuidedTestObservations(
+      "coolledux-graffiti-staytime",
+      [
+        { kind: "boolean", fieldId: "initial-correct", value: "yes" },
+        timer("image-visible", 1200),
+        { kind: "boolean", fieldId: "moved", value: "yes" },
+        timer("movement-start", 2000),
+      ],
+      [],
+    );
+    c.recordGuidedTestObservations(
+      "coolledux-animation-static",
+      [
+        { kind: "boolean", fieldId: "initial-correct", value: "yes" },
+        timer("image-visible", 1100),
+        { kind: "boolean", fieldId: "moved", value: "no" },
+        timer("observation-end", 1100 + MIN + 400),
+        { kind: "boolean", fieldId: "background-off", value: "yes" },
+        { kind: "boolean", fieldId: "tiles-aligned", value: "yes" },
+        { kind: "boolean", fieldId: "flicker", value: "no" },
+      ],
+      [],
+    );
+    const patch = (word: number, optionId: string) => ({
+      kind: "choice" as const,
+      fieldId: `patch-0x${word.toString(16).padStart(4, "0")}`,
+      optionId,
+    });
+    c.recordGuidedTestObservations(
+      "coolledux-pixel-channels",
+      [
+        patch(0x0000, "off"),
+        patch(0x0f00, "red"),
+        patch(0x00f0, "green"),
+        patch(0x000f, "blue"),
+        patch(0x0fff, "tinted-white"),
+        patch(0x1000, "off"),
+        patch(0x2000, "off"),
+        patch(0x4000, "off"),
+        patch(0x8000, "off"),
+        patch(0xf000, "off"),
+        patch(0xffff, "tinted-white"),
+      ],
+      [],
+    );
   }
 
   it("stops instead of opening colour work once every core slot is resolved", async () => {
@@ -274,7 +349,9 @@ describe("optional characterization is never the automatic next step", () => {
     store.continueToNextTest();
     expect(store.getSnapshot().guidedFlow).toBeNull();
     expect(store.getSnapshot().error).toBeNull();
-    expect(store.getSnapshot().info).toMatch(/Core characterization is complete/u);
+    expect(store.getSnapshot().info).toMatch(
+      /Core characterization is complete/u,
+    );
   }, 60000);
 
   it("opens optional work only when the user explicitly asks for it", async () => {

@@ -1,4 +1,10 @@
-import { compileAnimationStaticFrame, compileGraffitiFrame, compileGraffitiRawWords, compileAnimationRawWords, type CompiledProgram } from "./content";
+import {
+  compileAnimationStaticFrame,
+  compileGraffitiFrame,
+  compileGraffitiRawWords,
+  compileAnimationRawWords,
+  type CompiledProgram,
+} from "./content";
 import { orientationPattern } from "../../render/patterns";
 import { Framebuffer } from "../../render/framebuffer";
 import { rawWordHex, type DiagnosticRegion } from "../../investigation/regions";
@@ -42,7 +48,11 @@ export interface BuiltDiagnosticContent {
   readonly contentType: "graffiti" | "animation";
   readonly frameCount: number;
   readonly regions: readonly DiagnosticRegion[];
-  readonly playback?: { readonly mode: number; readonly speed: number; readonly stayTime: number };
+  readonly playback?: {
+    readonly mode: number;
+    readonly speed: number;
+    readonly stayTime: number;
+  };
   readonly frameDelaysMs?: readonly number[];
 }
 
@@ -61,15 +71,19 @@ export interface DiagnosticContentDefinition {
    * an execution identity that borrows the session's current preference
    * describes the session rather than the experiment.
    */
-  rasterStrategy?(parameters?: Readonly<Record<string, number>>): RasterStrategy | null;
-  build(profile: { readonly width: number; readonly height: number }, parameters?: Readonly<Record<string, number>>): BuiltDiagnosticContent;
+  rasterStrategy?(
+    parameters?: Readonly<Record<string, number>>,
+  ): RasterStrategy | null;
+  build(
+    profile: { readonly width: number; readonly height: number },
+    parameters?: Readonly<Record<string, number>>,
+  ): BuiltDiagnosticContent;
 }
-
 
 /** Raw words probed by the pixel-channel diagnostic, in patch order. */
 export const PIXEL_CHANNEL_PROBE_WORDS: readonly number[] = Object.freeze([
-  0x0000, 0x0f00, 0x00f0, 0x000f, 0x0fff,
-  0x1000, 0x2000, 0x4000, 0x8000, 0xf000, 0xffff,
+  0x0000, 0x0f00, 0x00f0, 0x000f, 0x0fff, 0x1000, 0x2000, 0x4000, 0x8000,
+  0xf000, 0xffff,
 ]);
 
 const RGB444_EXPECTATIONS: Readonly<Record<number, string>> = Object.freeze({
@@ -91,25 +105,81 @@ const RGB444_EXPECTATIONS: Readonly<Record<number, string>> = Object.freeze({
  * bias the answer. They are "Extra channel A…D" until the panel says
  * otherwise.
  */
-const PIXEL_CHANNEL_ZONES: readonly { readonly id: string; readonly name: string; readonly description: string }[] = Object.freeze([
-  { id: "black-reference", name: "Black reference", description: "Should be completely off. It is the reference every other zone is judged against." },
-  { id: "channel-red", name: "Red test", description: "Drives only the first RGB nibble." },
-  { id: "channel-green", name: "Green test", description: "Drives only the second RGB nibble." },
-  { id: "channel-blue", name: "Blue test", description: "Drives only the third RGB nibble." },
-  { id: "channel-rgb-white", name: "RGB white test", description: "All three RGB nibbles at maximum together." },
-  { id: "extra-channel-a", name: "Extra channel A", description: "Probes an unused part of the pixel value. It may light up, or stay dark." },
-  { id: "extra-channel-b", name: "Extra channel B", description: "Probes an unused part of the pixel value. It may light up, or stay dark." },
-  { id: "extra-channel-c", name: "Extra channel C", description: "Probes an unused part of the pixel value. It may light up, or stay dark." },
-  { id: "extra-channel-d", name: "Extra channel D", description: "Probes an unused part of the pixel value. It may light up, or stay dark." },
-  { id: "extra-channel-max", name: "Extra channel max", description: "All the unused bits at maximum together." },
-  { id: "combined-output", name: "Combined output", description: "Everything at maximum: RGB plus the unused bits." },
+const PIXEL_CHANNEL_ZONES: readonly {
+  readonly id: string;
+  readonly name: string;
+  readonly description: string;
+}[] = Object.freeze([
+  {
+    id: "black-reference",
+    name: "Black reference",
+    description:
+      "Should be completely off. It is the reference every other zone is judged against.",
+  },
+  {
+    id: "channel-red",
+    name: "Red test",
+    description: "Drives only the first RGB nibble.",
+  },
+  {
+    id: "channel-green",
+    name: "Green test",
+    description: "Drives only the second RGB nibble.",
+  },
+  {
+    id: "channel-blue",
+    name: "Blue test",
+    description: "Drives only the third RGB nibble.",
+  },
+  {
+    id: "channel-rgb-white",
+    name: "RGB white test",
+    description: "All three RGB nibbles at maximum together.",
+  },
+  {
+    id: "extra-channel-a",
+    name: "Extra channel A",
+    description:
+      "Probes an unused part of the pixel value. It may light up, or stay dark.",
+  },
+  {
+    id: "extra-channel-b",
+    name: "Extra channel B",
+    description:
+      "Probes an unused part of the pixel value. It may light up, or stay dark.",
+  },
+  {
+    id: "extra-channel-c",
+    name: "Extra channel C",
+    description:
+      "Probes an unused part of the pixel value. It may light up, or stay dark.",
+  },
+  {
+    id: "extra-channel-d",
+    name: "Extra channel D",
+    description:
+      "Probes an unused part of the pixel value. It may light up, or stay dark.",
+  },
+  {
+    id: "extra-channel-max",
+    name: "Extra channel max",
+    description: "All the unused bits at maximum together.",
+  },
+  {
+    id: "combined-output",
+    name: "Combined output",
+    description: "Everything at maximum: RGB plus the unused bits.",
+  },
 ]);
 
 /** Stable zone id for a probe word, so questions can reference it. */
 export function pixelChannelZoneId(word: number): string {
   const index = PIXEL_CHANNEL_PROBE_WORDS.indexOf(word);
   const zone = PIXEL_CHANNEL_ZONES[index];
-  if (!zone) throw new Error(`No pixel-channel zone is defined for raw word ${rawWordHex(word)}.`);
+  if (!zone)
+    throw new Error(
+      `No pixel-channel zone is defined for raw word ${rawWordHex(word)}.`,
+    );
   return zone.id;
 }
 
@@ -119,7 +189,11 @@ export function pixelChannelZoneId(word: number): string {
  * RGB content renders mid-gray, because claiming it will be dark would be
  * exactly the assumption these probes exist to test.
  */
-function rawWordPreview(words: Uint16Array, width: number, height: number): Framebuffer {
+function rawWordPreview(
+  words: Uint16Array,
+  width: number,
+  height: number,
+): Framebuffer {
   const frame = new Framebuffer(width, height);
   frame.clear();
   for (let y = 0; y < height; y += 1) {
@@ -129,7 +203,8 @@ function rawWordPreview(words: Uint16Array, width: number, height: number): Fram
       const g = ((word >> 4) & 0x0f) * 17;
       const b = (word & 0x0f) * 17;
       const highNibble = (word >> 12) & 0x0f;
-      if (highNibble !== 0 && r === 0 && g === 0 && b === 0) frame.setPixel(x, y, 120, 120, 120);
+      if (highNibble !== 0 && r === 0 && g === 0 && b === 0)
+        frame.setPixel(x, y, 120, 120, 120);
       else if (word === 0x0004) frame.setPixel(x, y, 0, 0, 68);
       else frame.setPixel(x, y, r, g, b);
     }
@@ -137,11 +212,19 @@ function rawWordPreview(words: Uint16Array, width: number, height: number): Fram
   return frame;
 }
 
-function requireParameter(definition: DiagnosticContentDefinition, parameters: Readonly<Record<string, number>> | undefined, id: string): number {
+function requireParameter(
+  definition: DiagnosticContentDefinition,
+  parameters: Readonly<Record<string, number>> | undefined,
+  id: string,
+): number {
   const spec = definition.parameters.find((parameter) => parameter.id === id);
-  if (!spec) throw new Error(`Diagnostic ${definition.id} has no parameter ${id}.`);
+  if (!spec)
+    throw new Error(`Diagnostic ${definition.id} has no parameter ${id}.`);
   const value = parameters?.[id] ?? spec.defaultValue;
-  if (!spec.allowed.includes(value)) throw new Error(`Diagnostic ${definition.id} does not allow ${id}=${value}; allowed values are ${spec.allowed.join(", ")}.`);
+  if (!spec.allowed.includes(value))
+    throw new Error(
+      `Diagnostic ${definition.id} does not allow ${id}=${value}; allowed values are ${spec.allowed.join(", ")}.`,
+    );
   return value;
 }
 
@@ -156,7 +239,8 @@ const graffitiBlackProbe: DiagnosticContentDefinition = {
   id: "graffiti-black-probe",
   rasterStrategy: () => "graffiti",
   label: "Graffiti black/off probe",
-  description: "Alternating 8-column regions of literal raw 0x0000 and raw 0x0004 on the Graffiti path.",
+  description:
+    "Alternating 8-column regions of literal raw 0x0000 and raw 0x0004 on the Graffiti path.",
   parameters: [],
   build(profile) {
     const { width, height } = profile;
@@ -166,7 +250,8 @@ const graffitiBlackProbe: DiagnosticContentDefinition = {
     for (let start = 0; start < width; start += tileWidth) {
       const regionWidth = Math.min(tileWidth, width - start);
       const rawWord = (start / tileWidth) % 2 === 0 ? 0x0000 : 0x0004;
-      for (let x = start; x < start + regionWidth; x += 1) for (let y = 0; y < height; y += 1) words[y * width + x] = rawWord;
+      for (let x = start; x < start + regionWidth; x += 1)
+        for (let y = 0; y < height; y += 1) words[y * width + x] = rawWord;
       // Tile marker: one pixel at the top-left of each tile. It is not a
       // question target, so it stays a technical note rather than a zone.
       words[start] = 0x0fff;
@@ -181,7 +266,10 @@ const graffitiBlackProbe: DiagnosticContentDefinition = {
         description: isBlackCandidate
           ? "True black — should be completely off if this display does not need the workaround."
           : "The inherited workaround color, kept as a side-by-side comparison.",
-        x: start, y: 0, width: regionWidth, height,
+        x: start,
+        y: 0,
+        width: regionWidth,
+        height,
         technical: {
           rawWord,
           notes: [
@@ -192,9 +280,15 @@ const graffitiBlackProbe: DiagnosticContentDefinition = {
       });
     }
     return {
-      compiled: compileGraffitiRawWords(words, width, height, { mode: 0, speed: 0, stayTime: 3 }),
+      compiled: compileGraffitiRawWords(words, width, height, {
+        mode: 0,
+        speed: 0,
+        stayTime: 3,
+      }),
       preview: rawWordPreview(words, width, height),
-      contentType: "graffiti", frameCount: 1, regions,
+      contentType: "graffiti",
+      frameCount: 1,
+      regions,
       playback: { mode: 0, speed: 0, stayTime: 3 },
     };
   },
@@ -207,13 +301,46 @@ const graffitiBlackProbe: DiagnosticContentDefinition = {
  * of relying on the user to remember the intended layout.
  */
 function orientationRegions(width: number, height: number): DiagnosticRegion[] {
-  const corner = Math.max(2, Math.min(3, Math.floor(Math.min(width, height) / 4)));
+  const corner = Math.max(
+    2,
+    Math.min(3, Math.floor(Math.min(width, height) / 4)),
+  );
   const tileWidth = Math.max(1, Math.floor(width / 4));
-  const corners: readonly { id: string; name: string; color: string; x: number; y: number }[] = [
-    { id: "corner-top-left", name: "Top-left corner", color: "red", x: 0, y: 0 },
-    { id: "corner-top-right", name: "Top-right corner", color: "green", x: width - corner, y: 0 },
-    { id: "corner-bottom-left", name: "Bottom-left corner", color: "blue", x: 0, y: height - corner },
-    { id: "corner-bottom-right", name: "Bottom-right corner", color: "yellow", x: width - corner, y: height - corner },
+  const corners: readonly {
+    id: string;
+    name: string;
+    color: string;
+    x: number;
+    y: number;
+  }[] = [
+    {
+      id: "corner-top-left",
+      name: "Top-left corner",
+      color: "red",
+      x: 0,
+      y: 0,
+    },
+    {
+      id: "corner-top-right",
+      name: "Top-right corner",
+      color: "green",
+      x: width - corner,
+      y: 0,
+    },
+    {
+      id: "corner-bottom-left",
+      name: "Bottom-left corner",
+      color: "blue",
+      x: 0,
+      y: height - corner,
+    },
+    {
+      id: "corner-bottom-right",
+      name: "Bottom-right corner",
+      color: "yellow",
+      x: width - corner,
+      y: height - corner,
+    },
   ];
   const regions: DiagnosticRegion[] = corners.map((entry, index) => ({
     id: entry.id,
@@ -221,8 +348,16 @@ function orientationRegions(width: number, height: number): DiagnosticRegion[] {
     shortLabel: String(index + 1),
     displayLabel: `Zone ${index + 1} · ${entry.name}`,
     description: `The ${entry.name.toLowerCase()} is ${entry.color}. Together the four corners show whether the image is rotated or mirrored.`,
-    x: entry.x, y: entry.y, width: corner, height: corner,
-    technical: { expectedUnderHypothesis: entry.color, notes: [`Corner block ${corner}×${corner} px at (${entry.x}, ${entry.y}).`] },
+    x: entry.x,
+    y: entry.y,
+    width: corner,
+    height: corner,
+    technical: {
+      expectedUnderHypothesis: entry.color,
+      notes: [
+        `Corner block ${corner}×${corner} px at (${entry.x}, ${entry.y}).`,
+      ],
+    },
   }));
   for (let index = 0; index < 4; index += 1) {
     const x = index * tileWidth;
@@ -231,9 +366,17 @@ function orientationRegions(width: number, height: number): DiagnosticRegion[] {
       groupId: "tiles",
       shortLabel: `T${index + 1}`,
       displayLabel: `Section ${index + 1}`,
-      description: "One of the four vertical sections the panel is built from. All four should be present and aligned.",
-      x, y: 0, width: index === 3 ? width - x : tileWidth, height,
-      technical: { notes: [`Vertical section covering columns ${x + 1}–${index === 3 ? width : x + tileWidth}.`] },
+      description:
+        "One of the four vertical sections the panel is built from. All four should be present and aligned.",
+      x,
+      y: 0,
+      width: index === 3 ? width - x : tileWidth,
+      height,
+      technical: {
+        notes: [
+          `Vertical section covering columns ${x + 1}–${index === 3 ? width : x + tileWidth}.`,
+        ],
+      },
     });
   }
   for (let index = 1; index < 4; index += 1) {
@@ -243,9 +386,17 @@ function orientationRegions(width: number, height: number): DiagnosticRegion[] {
       groupId: "seams",
       shortLabel: `S${index}`,
       displayLabel: `Seam ${index}`,
-      description: "The join between two sections. A visible step or gap here means the sections are misaligned.",
-      x: Math.max(0, x - 1), y: 0, width: 2, height,
-      technical: { notes: [`Boundary between sections ${index} and ${index + 1} at column ${x + 1}.`] },
+      description:
+        "The join between two sections. A visible step or gap here means the sections are misaligned.",
+      x: Math.max(0, x - 1),
+      y: 0,
+      width: 2,
+      height,
+      technical: {
+        notes: [
+          `Boundary between sections ${index} and ${index + 1} at column ${x + 1}.`,
+        ],
+      },
     });
   }
   return regions;
@@ -262,15 +413,25 @@ const graffitiTimingProbe: DiagnosticContentDefinition = {
   id: "graffiti-timing-probe",
   rasterStrategy: () => "graffiti",
   label: "Graffiti playback timing probe",
-  description: "Deterministic high-contrast Graffiti raster with mode=0, speed=0, and a declared stayTime.",
-  parameters: [{ id: "stayTime", label: "Graffiti stayTime byte", allowed: [3, 0], defaultValue: 3 }],
+  description:
+    "Deterministic high-contrast Graffiti raster with mode=0, speed=0, and a declared stayTime.",
+  parameters: [
+    {
+      id: "stayTime",
+      label: "Graffiti stayTime byte",
+      allowed: [3, 0],
+      defaultValue: 3,
+    },
+  ],
   build(profile, parameters) {
     const stayTime = requireParameter(this, parameters, "stayTime");
     const frame = orientationPattern(profile.width, profile.height);
     return {
       compiled: compileGraffitiFrame(frame, 8, { mode: 0, speed: 0, stayTime }),
       preview: frame,
-      contentType: "graffiti", frameCount: 1, regions: orientationRegions(profile.width, profile.height),
+      contentType: "graffiti",
+      frameCount: 1,
+      regions: orientationRegions(profile.width, profile.height),
       playback: { mode: 0, speed: 0, stayTime },
     };
   },
@@ -285,20 +446,32 @@ const graffitiTimingProbe: DiagnosticContentDefinition = {
 const animationStaticRaster: DiagnosticContentDefinition = {
   id: "animation-static-raster",
   label: "Static raster via Animation",
-  description: "The orientation raster compiled as a tiled Animation program with literal 0x0000 background.",
-  parameters: [{ id: "frames", label: "Frame count", allowed: [1, 2], defaultValue: 1 }],
+  description:
+    "The orientation raster compiled as a tiled Animation program with literal 0x0000 background.",
+  parameters: [
+    { id: "frames", label: "Frame count", allowed: [1, 2], defaultValue: 1 },
+  ],
   // The two frame counts are genuinely different experiments, and the
   // identity says so: one frame is the single-frame strategy, two identical
   // frames the identical-pair one.
-  rasterStrategy: (parameters) => (parameters?.frames ?? 1) === 2 ? "animation-identical-frames" : "animation-single-frame",
+  rasterStrategy: (parameters) =>
+    (parameters?.frames ?? 1) === 2
+      ? "animation-identical-frames"
+      : "animation-single-frame",
   build(profile, parameters) {
     const frames = requireParameter(this, parameters, "frames");
     const frame = orientationPattern(profile.width, profile.height);
     const delayMs = 1000;
     return {
-      compiled: compileAnimationStaticFrame(frame, frames === 1 ? "single" : "identical-pair", delayMs),
+      compiled: compileAnimationStaticFrame(
+        frame,
+        frames === 1 ? "single" : "identical-pair",
+        delayMs,
+      ),
       preview: frame,
-      contentType: "animation", frameCount: frames, regions: orientationRegions(profile.width, profile.height),
+      contentType: "animation",
+      frameCount: frames,
+      regions: orientationRegions(profile.width, profile.height),
       frameDelaysMs: Array.from({ length: frames }, () => delayMs),
     };
   },
@@ -313,7 +486,8 @@ const animationStaticRaster: DiagnosticContentDefinition = {
 const pixelChannelProbe: DiagnosticContentDefinition = {
   id: "pixel-channel-probe",
   label: "Raw pixel-channel probe",
-  description: "Eleven small fixed raw-word patches (RGB nibbles plus high-nibble probes) on the Animation path.",
+  description:
+    "Eleven small fixed raw-word patches (RGB nibbles plus high-nibble probes) on the Animation path.",
   parameters: [],
   build(profile) {
     const { width, height } = profile;
@@ -325,12 +499,17 @@ const pixelChannelProbe: DiagnosticContentDefinition = {
     PIXEL_CHANNEL_PROBE_WORDS.forEach((rawWord, index) => {
       const cellX = (index % columns) * cellWidth;
       const cellY = Math.floor(index / columns) * cellHeight;
-      if (cellX + cellWidth > width || cellY + cellHeight > height) throw new Error("Pixel-channel probe does not fit this profile geometry.");
+      if (cellX + cellWidth > width || cellY + cellHeight > height)
+        throw new Error(
+          "Pixel-channel probe does not fit this profile geometry.",
+        );
       const x = cellX;
       const y = cellY + 1;
       const patchWidth = 3;
       const patchHeight = Math.min(6, height - y);
-      for (let px = x; px < x + patchWidth; px += 1) for (let py = y; py < y + patchHeight; py += 1) words[py * width + px] = rawWord;
+      for (let px = x; px < x + patchWidth; px += 1)
+        for (let py = y; py < y + patchHeight; py += 1)
+          words[py * width + px] = rawWord;
       const zone = PIXEL_CHANNEL_ZONES[index]!;
       const expected = RGB444_EXPECTATIONS[rawWord];
       regions.push({
@@ -338,7 +517,10 @@ const pixelChannelProbe: DiagnosticContentDefinition = {
         shortLabel: String(index + 1),
         displayLabel: `Zone ${index + 1} · ${zone.name}`,
         description: zone.description,
-        x, y, width: patchWidth, height: patchHeight,
+        x,
+        y,
+        width: patchWidth,
+        height: patchHeight,
         technical: {
           rawWord,
           ...(expected ? { expectedUnderHypothesis: expected } : {}),
@@ -354,7 +536,9 @@ const pixelChannelProbe: DiagnosticContentDefinition = {
     return {
       compiled: compileAnimationRawWords([words], [60000], width, height),
       preview: rawWordPreview(words, width, height),
-      contentType: "animation", frameCount: 1, regions,
+      contentType: "animation",
+      frameCount: 1,
+      regions,
       frameDelaysMs: [60000],
     };
   },
@@ -370,30 +554,69 @@ const pixelChannelProbe: DiagnosticContentDefinition = {
 const colorWhiteProbe: DiagnosticContentDefinition = {
   id: "color-white-probe",
   label: "Color / white probe",
-  description: "Labeled bands of pure red, green, blue, RGB-max white, and (when established) the high-nibble channel.",
-  parameters: [{ id: "includeHighNibble", label: "Include high-nibble white bands", allowed: [0, 1], defaultValue: 0 }],
+  description:
+    "Labeled bands of pure red, green, blue, RGB-max white, and (when established) the high-nibble channel.",
+  parameters: [
+    {
+      id: "includeHighNibble",
+      label: "Include high-nibble white bands",
+      allowed: [0, 1],
+      defaultValue: 0,
+    },
+  ],
   build(profile, parameters) {
-    const includeHighNibble = requireParameter(this, parameters, "includeHighNibble") === 1;
+    const includeHighNibble =
+      requireParameter(this, parameters, "includeHighNibble") === 1;
     const { width, height } = profile;
     const words = new Uint16Array(width * height);
     const regions: DiagnosticRegion[] = [];
-    const topBands: readonly { word: number; id: string; name: string; description: string }[] = [
-      { word: 0x0f00, id: "band-red", name: "Red band", description: "Pure red at full strength." },
-      { word: 0x00f0, id: "band-green", name: "Green band", description: "Pure green at full strength." },
-      { word: 0x000f, id: "band-blue", name: "Blue band", description: "Pure blue at full strength." },
-      { word: 0x0fff, id: "band-rgb-white", name: "RGB white band", description: "Red, green, and blue together at full strength." },
+    const topBands: readonly {
+      word: number;
+      id: string;
+      name: string;
+      description: string;
+    }[] = [
+      {
+        word: 0x0f00,
+        id: "band-red",
+        name: "Red band",
+        description: "Pure red at full strength.",
+      },
+      {
+        word: 0x00f0,
+        id: "band-green",
+        name: "Green band",
+        description: "Pure green at full strength.",
+      },
+      {
+        word: 0x000f,
+        id: "band-blue",
+        name: "Blue band",
+        description: "Pure blue at full strength.",
+      },
+      {
+        word: 0x0fff,
+        id: "band-rgb-white",
+        name: "RGB white band",
+        description: "Red, green, and blue together at full strength.",
+      },
     ];
     const bandWidth = Math.floor(width / topBands.length);
     topBands.forEach((band, index) => {
       const x = index * bandWidth;
-      for (let px = x; px < x + bandWidth; px += 1) for (let py = 1; py < Math.min(7, height); py += 1) words[py * width + px] = band.word;
+      for (let px = x; px < x + bandWidth; px += 1)
+        for (let py = 1; py < Math.min(7, height); py += 1)
+          words[py * width + px] = band.word;
       const expected = RGB444_EXPECTATIONS[band.word];
       regions.push({
         id: band.id,
         shortLabel: String(index + 1),
         displayLabel: `Zone ${index + 1} · ${band.name}`,
         description: band.description,
-        x, y: 1, width: bandWidth, height: Math.min(6, height - 1),
+        x,
+        y: 1,
+        width: bandWidth,
+        height: Math.min(6, height - 1),
         technical: {
           rawWord: band.word,
           ...(expected ? { expectedUnderHypothesis: expected } : {}),
@@ -404,23 +627,46 @@ const colorWhiteProbe: DiagnosticContentDefinition = {
     if (includeHighNibble && height >= 16) {
       // Named for what is being probed, never for a color: the fourth
       // channel's appearance is exactly what this test is asking about.
-      const bottomBands: readonly { word: number; id: string; name: string; description: string }[] = [
-        { word: 0xf000, id: "band-extra-channel", name: "Extra channel band", description: "The fourth channel on its own, with no red, green, or blue." },
-        { word: 0xffff, id: "band-combined", name: "Combined band", description: "The fourth channel together with red, green, and blue." },
+      const bottomBands: readonly {
+        word: number;
+        id: string;
+        name: string;
+        description: string;
+      }[] = [
+        {
+          word: 0xf000,
+          id: "band-extra-channel",
+          name: "Extra channel band",
+          description:
+            "The fourth channel on its own, with no red, green, or blue.",
+        },
+        {
+          word: 0xffff,
+          id: "band-combined",
+          name: "Combined band",
+          description: "The fourth channel together with red, green, and blue.",
+        },
       ];
       const bottomWidth = Math.floor(width / bottomBands.length);
       bottomBands.forEach((band, index) => {
         const x = index * bottomWidth;
-        for (let px = x; px < x + bottomWidth; px += 1) for (let py = 9; py < Math.min(15, height); py += 1) words[py * width + px] = band.word;
+        for (let px = x; px < x + bottomWidth; px += 1)
+          for (let py = 9; py < Math.min(15, height); py += 1)
+            words[py * width + px] = band.word;
         regions.push({
           id: band.id,
           shortLabel: String(topBands.length + index + 1),
           displayLabel: `Zone ${topBands.length + index + 1} · ${band.name}`,
           description: band.description,
-          x, y: 9, width: bottomWidth, height: 6,
+          x,
+          y: 9,
+          width: bottomWidth,
+          height: 6,
           technical: {
             rawWord: band.word,
-            notes: [`Raw pixel word ${rawWordHex(band.word)}, transmitted untransformed.`],
+            notes: [
+              `Raw pixel word ${rawWordHex(band.word)}, transmitted untransformed.`,
+            ],
           },
         });
       });
@@ -428,24 +674,39 @@ const colorWhiteProbe: DiagnosticContentDefinition = {
     return {
       compiled: compileAnimationRawWords([words], [60000], width, height),
       preview: rawWordPreview(words, width, height),
-      contentType: "animation", frameCount: 1, regions,
+      contentType: "animation",
+      frameCount: 1,
+      regions,
       frameDelaysMs: [60000],
     };
   },
 };
 
 /** The strategy identity of a diagnostic, or null when it tests no strategy. */
-export function diagnosticRasterStrategy(diagnosticId: string, parameters?: Readonly<Record<string, number>>): RasterStrategy | null {
-  const definition = COOLLEDUX_DIAGNOSTIC_CONTENT.find((candidate) => candidate.id === diagnosticId);
+export function diagnosticRasterStrategy(
+  diagnosticId: string,
+  parameters?: Readonly<Record<string, number>>,
+): RasterStrategy | null {
+  const definition = COOLLEDUX_DIAGNOSTIC_CONTENT.find(
+    (candidate) => candidate.id === diagnosticId,
+  );
   return definition?.rasterStrategy?.(parameters) ?? null;
 }
 
-export const COOLLEDUX_DIAGNOSTIC_CONTENT: readonly DiagnosticContentDefinition[] = Object.freeze([
-  graffitiBlackProbe, graffitiTimingProbe, animationStaticRaster, pixelChannelProbe, colorWhiteProbe,
-]);
+export const COOLLEDUX_DIAGNOSTIC_CONTENT: readonly DiagnosticContentDefinition[] =
+  Object.freeze([
+    graffitiBlackProbe,
+    graffitiTimingProbe,
+    animationStaticRaster,
+    pixelChannelProbe,
+    colorWhiteProbe,
+  ]);
 
 export function diagnosticContent(id: string): DiagnosticContentDefinition {
-  const definition = COOLLEDUX_DIAGNOSTIC_CONTENT.find((candidate) => candidate.id === id);
-  if (!definition) throw new Error(`Unknown CoolLEDUX diagnostic content ${id}.`);
+  const definition = COOLLEDUX_DIAGNOSTIC_CONTENT.find(
+    (candidate) => candidate.id === id,
+  );
+  if (!definition)
+    throw new Error(`Unknown CoolLEDUX diagnostic content ${id}.`);
   return definition;
 }

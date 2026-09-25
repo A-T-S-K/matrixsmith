@@ -2,7 +2,8 @@ import type { Framebuffer } from "../framebuffer";
 
 export type ImageMode = "auto" | "artwork" | "photo" | "pixel-art" | "legacy";
 export type ResolvedImageMode = Exclude<ImageMode, "auto">;
-export type CompositionMode = "contain" | "cover" | "foreground-trim" | "custom";
+export type CompositionMode =
+  "contain" | "cover" | "foreground-trim" | "custom";
 
 export interface DecodedImageSource {
   readonly rgba: Uint8ClampedArray;
@@ -27,7 +28,12 @@ export interface ImageAnalysis {
 
 export interface ImageComposition {
   readonly mode: CompositionMode;
-  readonly crop?: { readonly x: number; readonly y: number; readonly width: number; readonly height: number };
+  readonly crop?: {
+    readonly x: number;
+    readonly y: number;
+    readonly width: number;
+    readonly height: number;
+  };
   readonly zoom?: number;
   readonly offsetX?: number;
   readonly offsetY?: number;
@@ -54,7 +60,13 @@ export interface ProcessedImage {
   readonly resolvedComposition: ImageComposition;
   readonly outputColorCount: number;
   readonly warnings: readonly string[];
-  readonly processingMetadata: Readonly<Record<string, string | number | boolean>>;
+  readonly processingMetadata: Readonly<
+    Record<string, string | number | boolean>
+  >;
 }
 
-export const ILEDHAT_RGB444: DeviceColorModel = Object.freeze({ id: "iledhat-rgb444", channelBits: 4, trueBlack: true });
+export const ILEDHAT_RGB444: DeviceColorModel = Object.freeze({
+  id: "iledhat-rgb444",
+  channelBits: 4,
+  trueBlack: true,
+});

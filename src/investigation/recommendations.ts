@@ -4,7 +4,10 @@ import type { GuidedTestAvailability, GuidedTestCategory } from "./tests";
 import type { CompletedGuidedTest, InvestigationGoal } from "./investigation";
 import { completedTestResolution, SYMPTOM_FOCUS_CLAIMS } from "./investigation";
 import { leavesAutomaticRotation } from "./orchestration";
-import { evaluateStaticViability, STRATEGY_PREFERENCE } from "./static-viability";
+import {
+  evaluateStaticViability,
+  STRATEGY_PREFERENCE,
+} from "./static-viability";
 import type { RasterStrategy } from "../core/raster-strategy";
 
 /**
@@ -68,7 +71,9 @@ export interface RecommendationInput {
  */
 export function isConcludedTest(test: CompletedGuidedTest): boolean {
   const resolution = completedTestResolution(test);
-  return leavesAutomaticRotation(resolution) || resolution === "retryable-incomplete";
+  return (
+    leavesAutomaticRotation(resolution) || resolution === "retryable-incomplete"
+  );
 }
 
 /**
@@ -77,7 +82,9 @@ export function isConcludedTest(test: CompletedGuidedTest): boolean {
  * these belong to: an incomplete measurement is not progress, but it is also
  * not a dead end.
  */
-export function retryableIncompleteTestIds(completedTests: readonly CompletedGuidedTest[]): readonly string[] {
+export function retryableIncompleteTestIds(
+  completedTests: readonly CompletedGuidedTest[],
+): readonly string[] {
   const latest = new Map<string, CompletedGuidedTest>();
   for (const test of completedTests) latest.set(test.testId, test);
   return [...latest.values()]
@@ -106,7 +113,13 @@ const CATEGORY_WEIGHT: Readonly<Record<GuidedTestCategory, number>> = {
  * A test that unblocks one of these gets promoted even if it is
  * classified "advanced".
  */
-const USABILITY_CLAIMS: readonly ClaimId[] = ["static.strategy", "stored-program.upload", "brightness.control", "transport.bluetooth", "protocol.coolledux"];
+const USABILITY_CLAIMS: readonly ClaimId[] = [
+  "static.strategy",
+  "stored-program.upload",
+  "brightness.control",
+  "transport.bluetooth",
+  "protocol.coolledux",
+];
 
 /**
  * Claims that exist only to prove one specific static strategy. Tests
@@ -114,7 +127,9 @@ const USABILITY_CLAIMS: readonly ClaimId[] = ["static.strategy", "stored-program
  * currently pursued strategy are fallbacks: heavily deprioritized until the
  * pursued strategy is conclusively non-viable.
  */
-const STRATEGY_SPECIFIC_CLAIMS: Readonly<Partial<Record<ClaimId, RasterStrategy>>> = Object.freeze({
+const STRATEGY_SPECIFIC_CLAIMS: Readonly<
+  Partial<Record<ClaimId, RasterStrategy>>
+> = Object.freeze({
   "graffiti.playback-stability": "graffiti",
   "graffiti.black-semantics": "graffiti",
   "animation.static-single-frame": "animation-single-frame",
@@ -129,30 +144,46 @@ const CORE_PLAN_BOOST = 80;
 const FALLBACK_STRATEGY_PENALTY = 50;
 const REPEATED_TEST_PENALTY = 25;
 
-export function rankRecommendations(input: RecommendationInput): readonly Recommendation[] {
+export function rankRecommendations(
+  input: RecommendationInput,
+): readonly Recommendation[] {
   const claims = resolveClaims(input.evidence);
   const byId = new Map(claims.map((claim) => [claim.id, claim]));
   const reopened = new Set(input.reopenedTestIds ?? []);
   // Concluded experiments leave the automatic rotation entirely. Anything
   // that should run again does so because the user asked for it.
   const concludedTestIds = new Set(
-    input.completedTests.filter((test) => isConcludedTest(test) && !reopened.has(test.testId)).map((test) => test.testId),
+    input.completedTests
+      .filter((test) => isConcludedTest(test) && !reopened.has(test.testId))
+      .map((test) => test.testId),
   );
-  const attemptedTestIds = new Set(input.completedTests.map((test) => test.testId));
+  const attemptedTestIds = new Set(
+    input.completedTests.map((test) => test.testId),
+  );
   const currentCore = new Set(input.currentCoreTestIds ?? []);
   const coreTests = new Set(input.coreTestIds ?? []);
   const assessment = evaluateStaticViability(input.evidence);
-  const pursuedIndex = assessment.pursued ? STRATEGY_PREFERENCE.indexOf(assessment.pursued) : STRATEGY_PREFERENCE.length;
+  const pursuedIndex = assessment.pursued
+    ? STRATEGY_PREFERENCE.indexOf(assessment.pursued)
+    : STRATEGY_PREFERENCE.length;
   // Historical/imported contradictions of a trusted basis make revalidation
   // valuable even though the claim still resolves as decided.
-  const conflictedClaims = new Set(claimConflicts(input.evidence).map((conflict) => conflict.claimId));
-  const focusList = input.goal?.symptomId ? SYMPTOM_FOCUS_CLAIMS[input.goal.symptomId] : [];
+  const conflictedClaims = new Set(
+    claimConflicts(input.evidence).map((conflict) => conflict.claimId),
+  );
+  const focusList = input.goal?.symptomId
+    ? SYMPTOM_FOCUS_CLAIMS[input.goal.symptomId]
+    : [];
   const focusClaims = new Set(focusList);
   const primaryFocus = focusList[0] ?? null;
-  const usabilityBlockers = new Set(USABILITY_CLAIMS.filter((claimId) => {
-    const status = byId.get(claimId)?.status;
-    return status === "unresolved" || status === "unknown" || status === "rejected";
-  }));
+  const usabilityBlockers = new Set(
+    USABILITY_CLAIMS.filter((claimId) => {
+      const status = byId.get(claimId)?.status;
+      return (
+        status === "unresolved" || status === "unknown" || status === "rejected"
+      );
+    }),
+  );
 
   const scored: Recommendation[] = [];
   for (const availability of input.availabilities) {
@@ -163,39 +194,72 @@ export function rankRecommendations(input: RecommendationInput): readonly Recomm
       return status !== "verified" || conflictedClaims.has(claimId);
     });
     if (targets.length === 0) continue;
-    const informationValue = targets.reduce((total, claimId) => total + STATUS_VALUE[byId.get(claimId)?.status ?? "unknown"] + (conflictedClaims.has(claimId) ? 20 : 0), 0);
-    const unblocksUsability = targets.some((claimId) => usabilityBlockers.has(claimId) || claimDefinitionUnblocks(claimId, usabilityBlockers));
+    const informationValue = targets.reduce(
+      (total, claimId) =>
+        total +
+        STATUS_VALUE[byId.get(claimId)?.status ?? "unknown"] +
+        (conflictedClaims.has(claimId) ? 20 : 0),
+      0,
+    );
+    const unblocksUsability = targets.some(
+      (claimId) =>
+        usabilityBlockers.has(claimId) ||
+        claimDefinitionUnblocks(claimId, usabilityBlockers),
+    );
     // The symptom's FIRST focus claim is its most direct discriminator and
     // outweighs secondary focus claims.
-    const focusBoost = (targets.some((claimId) => focusClaims.has(claimId)) ? 60 : 0)
-      + (primaryFocus !== null && targets.includes(primaryFocus) ? 30 : 0);
+    const focusBoost =
+      (targets.some((claimId) => focusClaims.has(claimId)) ? 60 : 0) +
+      (primaryFocus !== null && targets.includes(primaryFocus) ? 30 : 0);
     // An advanced test that is the discriminator for a usability blocker is
     // temporarily treated as recommended.
-    const effectiveCategory: GuidedTestCategory = unblocksUsability && availability.test.category === "advanced" ? "recommended" : availability.test.category;
+    const effectiveCategory: GuidedTestCategory =
+      unblocksUsability && availability.test.category === "advanced"
+        ? "recommended"
+        : availability.test.category;
     // Native-static-first ordering: the pursued strategy's first open
     // viability requirement is the best next discriminator, and tests that
     // only prove a LATER (fallback) strategy wait until the pursued one is
     // conclusively non-viable.
-    const firstOpenBoost = assessment.nextOpenRequirement !== null && targets.includes(assessment.nextOpenRequirement) ? FIRST_OPEN_REQUIREMENT_BOOST : 0;
+    const firstOpenBoost =
+      assessment.nextOpenRequirement !== null &&
+      targets.includes(assessment.nextOpenRequirement)
+        ? FIRST_OPEN_REQUIREMENT_BOOST
+        : 0;
     const isFallbackStrategyTest = targets.some((claimId) => {
       const strategy = STRATEGY_SPECIFIC_CLAIMS[claimId];
-      return strategy !== undefined && STRATEGY_PREFERENCE.indexOf(strategy) > pursuedIndex;
+      return (
+        strategy !== undefined &&
+        STRATEGY_PREFERENCE.indexOf(strategy) > pursuedIndex
+      );
     });
-    const score = informationValue + CATEGORY_WEIGHT[effectiveCategory] + focusBoost + (unblocksUsability ? 25 : 0)
-      + (availability.test.risk === "read-only" ? 5 : 0)
-      + firstOpenBoost
-      + (currentCore.has(availability.test.id) ? CURRENT_CORE_STEP_BOOST : 0)
-      + (coreTests.has(availability.test.id) ? CORE_PLAN_BOOST : 0)
-      - (isFallbackStrategyTest ? FALLBACK_STRATEGY_PENALTY : 0)
-      - (attemptedTestIds.has(availability.test.id) ? REPEATED_TEST_PENALTY : 0);
+    const score =
+      informationValue +
+      CATEGORY_WEIGHT[effectiveCategory] +
+      focusBoost +
+      (unblocksUsability ? 25 : 0) +
+      (availability.test.risk === "read-only" ? 5 : 0) +
+      firstOpenBoost +
+      (currentCore.has(availability.test.id) ? CURRENT_CORE_STEP_BOOST : 0) +
+      (coreTests.has(availability.test.id) ? CORE_PLAN_BOOST : 0) -
+      (isFallbackStrategyTest ? FALLBACK_STRATEGY_PENALTY : 0) -
+      (attemptedTestIds.has(availability.test.id) ? REPEATED_TEST_PENALTY : 0);
     scored.push({
       id: `recommend:${availability.test.id}`,
       kind: "guided-test",
       testId: availability.test.id,
       title: availability.test.title,
       description: availability.test.about.question,
-      why: buildWhy(availability, targets, byId, focusClaims, firstOpenBoost > 0 ? assessment.pursued : null, conflictedClaims),
-      estimatedObservationTime: availability.test.about.estimatedObservationTime,
+      why: buildWhy(
+        availability,
+        targets,
+        byId,
+        focusClaims,
+        firstOpenBoost > 0 ? assessment.pursued : null,
+        conflictedClaims,
+      ),
+      estimatedObservationTime:
+        availability.test.about.estimatedObservationTime,
       risk: availability.test.risk,
       consequence: availability.test.consequence,
       category: effectiveCategory,
@@ -203,32 +267,59 @@ export function rankRecommendations(input: RecommendationInput): readonly Recomm
       score,
     });
   }
-  return scored.sort((a, b) => b.score - a.score || a.testId.localeCompare(b.testId));
+  return scored.sort(
+    (a, b) => b.score - a.score || a.testId.localeCompare(b.testId),
+  );
 }
 
 /** A claim unblocks usability when a blocked usability claim depends on it or it declares a contribution to one. */
-function claimDefinitionUnblocks(claimId: ClaimId, blockers: ReadonlySet<ClaimId>): boolean {
+function claimDefinitionUnblocks(
+  claimId: ClaimId,
+  blockers: ReadonlySet<ClaimId>,
+): boolean {
   const definition = claimDefinition(claimId);
-  if (definition.contributesTo?.some((target) => blockers.has(target))) return true;
+  if (definition.contributesTo?.some((target) => blockers.has(target)))
+    return true;
   for (const blocker of blockers) {
     if (claimDefinition(blocker).prerequisites.includes(claimId)) return true;
   }
   return false;
 }
 
-function buildWhy(availability: GuidedTestAvailability, targets: readonly ClaimId[], byId: ReadonlyMap<ClaimId, ClaimState>, focusClaims: ReadonlySet<ClaimId>, pursuedStrategy: RasterStrategy | null, conflictedClaims: ReadonlySet<ClaimId>): string {
+function buildWhy(
+  availability: GuidedTestAvailability,
+  targets: readonly ClaimId[],
+  byId: ReadonlyMap<ClaimId, ClaimState>,
+  focusClaims: ReadonlySet<ClaimId>,
+  pursuedStrategy: RasterStrategy | null,
+  conflictedClaims: ReadonlySet<ClaimId>,
+): string {
   const parts: string[] = [availability.test.about.whyRelevant];
-  if (pursuedStrategy) parts.push(`This is the next open requirement of the ${pursuedStrategy === "graffiti" ? "native static-image" : pursuedStrategy} path currently being characterized.`);
+  if (pursuedStrategy)
+    parts.push(
+      `This is the next open requirement of the ${pursuedStrategy === "graffiti" ? "native static-image" : pursuedStrategy} path currently being characterized.`,
+    );
   const conflicted = targets.filter((claimId) => conflictedClaims.has(claimId));
-  if (conflicted.length > 0) parts.push(`Revalidates evidence contradicted by a historical session: ${conflicted.map((claimId) => claimDefinition(claimId).label).join(", ")}.`);
-  const unresolved = targets.filter((claimId) => byId.get(claimId)?.status === "unresolved");
-  if (unresolved.length > 0) parts.push(`Resolves currently-contradicted evidence for: ${unresolved.map((claimId) => claimDefinition(claimId).label).join(", ")}.`);
+  if (conflicted.length > 0)
+    parts.push(
+      `Revalidates evidence contradicted by a historical session: ${conflicted.map((claimId) => claimDefinition(claimId).label).join(", ")}.`,
+    );
+  const unresolved = targets.filter(
+    (claimId) => byId.get(claimId)?.status === "unresolved",
+  );
+  if (unresolved.length > 0)
+    parts.push(
+      `Resolves currently-contradicted evidence for: ${unresolved.map((claimId) => claimDefinition(claimId).label).join(", ")}.`,
+    );
   const focused = targets.filter((claimId) => focusClaims.has(claimId));
-  if (focused.length > 0) parts.push("Directly addresses the reported symptom.");
+  if (focused.length > 0)
+    parts.push("Directly addresses the reported symptom.");
   return parts.join(" ");
 }
 
-export function recommendNextTest(input: RecommendationInput): Recommendation | null {
+export function recommendNextTest(
+  input: RecommendationInput,
+): Recommendation | null {
   return rankRecommendations(input)[0] ?? null;
 }
 
@@ -264,7 +355,9 @@ export type RecommendationOrigin =
    */
   | "manual-selection";
 
-export const RECOMMENDATION_ORIGIN_LABELS: Readonly<Record<RecommendationOrigin, string>> = Object.freeze({
+export const RECOMMENDATION_ORIGIN_LABELS: Readonly<
+  Record<RecommendationOrigin, string>
+> = Object.freeze({
   "automatic-recommendation": "automatic recommendation",
   "explicit-retry": "explicit retry",
   "explicit-reopen": "explicit reopen of a completed experiment",
@@ -292,11 +385,17 @@ export interface CycleVerdict {
 
 const CYCLE_WINDOW = 6;
 
-export function detectRecommendationCycle(trail: readonly RecommendationTrailEntry[]): CycleVerdict {
+export function detectRecommendationCycle(
+  trail: readonly RecommendationTrailEntry[],
+): CycleVerdict {
   // Only automatic recommendations can constitute an algorithmic loop. A
   // user-initiated retry or reopen is recorded in the trail — reports need it
   // — but it is a decision, not a symptom, and never trips this guard.
-  const automatic = trail.filter((entry) => (entry.origin ?? "automatic-recommendation") === "automatic-recommendation");
+  const automatic = trail.filter(
+    (entry) =>
+      (entry.origin ?? "automatic-recommendation") ===
+      "automatic-recommendation",
+  );
   const window = automatic.slice(-CYCLE_WINDOW);
   if (window.length < 3) return { cycling: false, testIds: [], detail: null };
   const seen = new Map<string, RecommendationTrailEntry[]>();

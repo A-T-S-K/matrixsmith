@@ -1,6 +1,15 @@
 import type { Framebuffer } from "../../render/framebuffer";
 import type { FrameSequence } from "../../render/frame-sequence";
-import { buildAnnouncePacket, buildDataChunkPackets, crc32Custom, lzssCompress, lzssCompressSafe, UX_CHUNK_DELAY_MS, UX_PACKAGE_SIZE, type DataChunk } from "./wire";
+import {
+  buildAnnouncePacket,
+  buildDataChunkPackets,
+  crc32Custom,
+  lzssCompress,
+  lzssCompressSafe,
+  UX_CHUNK_DELAY_MS,
+  UX_PACKAGE_SIZE,
+  type DataChunk,
+} from "./wire";
 import { encodeFrameRegion, offColorForBehavior } from "./pixels";
 
 /**
@@ -24,22 +33,44 @@ export interface Tile {
 }
 
 /** Split a canvas into <=tileWidth-column tiles; a non-multiple width yields a narrower final tile, never a crop. */
-export function tileColumns(width: number, tileWidth = DEFAULT_TILE_WIDTH): readonly Tile[] {
-  if (!Number.isInteger(width) || width <= 0) throw new RangeError("Canvas width must be a positive integer.");
-  if (!Number.isInteger(tileWidth) || tileWidth <= 0) throw new RangeError("Tile width must be a positive integer.");
+export function tileColumns(
+  width: number,
+  tileWidth = DEFAULT_TILE_WIDTH,
+): readonly Tile[] {
+  if (!Number.isInteger(width) || width <= 0)
+    throw new RangeError("Canvas width must be a positive integer.");
+  if (!Number.isInteger(tileWidth) || tileWidth <= 0)
+    throw new RangeError("Tile width must be a positive integer.");
   const tiles: Tile[] = [];
   for (let startColumn = 0; startColumn < width; startColumn += tileWidth) {
-    tiles.push({ startColumn, width: Math.min(tileWidth, width - startColumn) });
+    tiles.push({
+      startColumn,
+      width: Math.min(tileWidth, width - startColumn),
+    });
   }
   return tiles;
 }
 
-function u16be(value: number): [number, number] { return [(value >>> 8) & 0xff, value & 0xff]; }
-function u32be(value: number): [number, number, number, number] { return [(value >>> 24) & 0xff, (value >>> 16) & 0xff, (value >>> 8) & 0xff, value & 0xff]; }
+function u16be(value: number): [number, number] {
+  return [(value >>> 8) & 0xff, value & 0xff];
+}
+function u32be(value: number): [number, number, number, number] {
+  return [
+    (value >>> 24) & 0xff,
+    (value >>> 16) & 0xff,
+    (value >>> 8) & 0xff,
+    value & 0xff,
+  ];
+}
 function concat(parts: readonly Uint8Array[]): Uint8Array {
-  const out = new Uint8Array(parts.reduce((total, part) => total + part.length, 0));
+  const out = new Uint8Array(
+    parts.reduce((total, part) => total + part.length, 0),
+  );
   let offset = 0;
-  for (const part of parts) { out.set(part, offset); offset += part.length; }
+  for (const part of parts) {
+    out.set(part, offset);
+    offset += part.length;
+  }
   return out;
 }
 
@@ -49,13 +80,44 @@ function concat(parts: readonly Uint8Array[]): Uint8Array {
  * just the pixel stream, then the stream. mode MUST be 0 (Static): the
  * hardware ignores per-pixel color entirely under mode 2.
  */
-export function graffitiSegment(pixelStream: Uint8Array, showWidth: number, showHeight: number, options: { startColumn?: number; startRow?: number; layerType?: number; mode?: number; speed?: number; stayTime?: number } = {}): Uint8Array {
-  const { startColumn = 0, startRow = 0, layerType = 0, mode = 0, speed = 0, stayTime = 3 } = options;
+export function graffitiSegment(
+  pixelStream: Uint8Array,
+  showWidth: number,
+  showHeight: number,
+  options: {
+    startColumn?: number;
+    startRow?: number;
+    layerType?: number;
+    mode?: number;
+    speed?: number;
+    stayTime?: number;
+  } = {},
+): Uint8Array {
+  const {
+    startColumn = 0,
+    startRow = 0,
+    layerType = 0,
+    mode = 0,
+    speed = 0,
+    stayTime = 3,
+  } = options;
   const payload = Uint8Array.of(
-    0x02, 0, 0, 0, 0, 0, 0, 0,
+    0x02,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
     layerType & 0xff,
-    ...u16be(startColumn), ...u16be(startRow), ...u16be(showWidth), ...u16be(showHeight),
-    mode & 0xff, speed & 0xff, stayTime & 0xff,
+    ...u16be(startColumn),
+    ...u16be(startRow),
+    ...u16be(showWidth),
+    ...u16be(showHeight),
+    mode & 0xff,
+    speed & 0xff,
+    stayTime & 0xff,
     ...u32be(pixelStream.length),
     ...pixelStream,
   );
@@ -66,16 +128,39 @@ export function graffitiSegment(pixelStream: Uint8Array, showWidth: number, show
  * Animation segment (cmd 0x03 0x01 — a two-byte content tag): frame count,
  * per-frame delay list (u16 ms each), then the frames' pixel streams.
  */
-export function animationSegment(frameStreams: readonly Uint8Array[], delaysMs: readonly number[], showWidth: number, showHeight: number, options: { startColumn?: number; startRow?: number; layerType?: number } = {}): Uint8Array {
-  if (frameStreams.length !== delaysMs.length) throw new RangeError("Each animation frame needs a delay entry.");
-  if (delaysMs.some((delay) => !Number.isInteger(delay) || delay <= 0 || delay > 0xffff)) throw new RangeError("Frame delays must be integers in 1..65535 ms.");
+export function animationSegment(
+  frameStreams: readonly Uint8Array[],
+  delaysMs: readonly number[],
+  showWidth: number,
+  showHeight: number,
+  options: { startColumn?: number; startRow?: number; layerType?: number } = {},
+): Uint8Array {
+  if (frameStreams.length !== delaysMs.length)
+    throw new RangeError("Each animation frame needs a delay entry.");
+  if (
+    delaysMs.some(
+      (delay) => !Number.isInteger(delay) || delay <= 0 || delay > 0xffff,
+    )
+  )
+    throw new RangeError("Frame delays must be integers in 1..65535 ms.");
   const { startColumn = 0, startRow = 0, layerType = 1 } = options;
   const payload = concat([
     Uint8Array.of(
-      0x03, 0x01, 0, 0, 0, 0, 0, 0,
+      0x03,
+      0x01,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
       layerType & 0xff,
-      ...u16be(startColumn), ...u16be(startRow), ...u16be(showWidth), ...u16be(showHeight),
-      0x00, ...u16be(frameStreams.length),
+      ...u16be(startColumn),
+      ...u16be(startRow),
+      ...u16be(showWidth),
+      ...u16be(showHeight),
+      0x00,
+      ...u16be(frameStreams.length),
       ...delaysMs.flatMap((delay) => u16be(delay)),
     ),
     ...frameStreams,
@@ -88,13 +173,29 @@ export function animationSegment(frameStreams: readonly Uint8Array[], delaysMs: 
  * The sign has a native GIF decoder (hardware-confirmed by the pinned
  * reference in its untiled <=8-column zone; wider canvases are untested).
  */
-export function gifSegment(gifBytes: Uint8Array, showWidth: number, showHeight: number, options: { startColumn?: number; startRow?: number; layerType?: number } = {}): Uint8Array {
+export function gifSegment(
+  gifBytes: Uint8Array,
+  showWidth: number,
+  showHeight: number,
+  options: { startColumn?: number; startRow?: number; layerType?: number } = {},
+): Uint8Array {
   const { startColumn = 0, startRow = 0, layerType = 0 } = options;
   const payload = concat([
     Uint8Array.of(
-      0x0c, 0, 0, 0, 0, 0, 0, 0,
-      layerType & 0xff, 0x00,
-      ...u16be(startColumn), ...u16be(startRow), ...u16be(showWidth), ...u16be(showHeight),
+      0x0c,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      layerType & 0xff,
+      0x00,
+      ...u16be(startColumn),
+      ...u16be(startRow),
+      ...u16be(showWidth),
+      ...u16be(showHeight),
       ...u32be(gifBytes.length),
     ),
     gifBytes,
@@ -106,14 +207,31 @@ export function gifSegment(gifBytes: Uint8Array, showWidth: number, showHeight: 
  * Decorative Frame border segment (cmd 0x04): border LED positions from a
  * color table, not a raster grid, so it never hits the 8-column segment cap.
  */
-export function frameBorderSegment(table: Uint8Array, showWidth: number, showHeight: number, options: { layerType?: number; frameShowType?: number; speed?: number } = {}): Uint8Array {
+export function frameBorderSegment(
+  table: Uint8Array,
+  showWidth: number,
+  showHeight: number,
+  options: { layerType?: number; frameShowType?: number; speed?: number } = {},
+): Uint8Array {
   const { layerType = 0, frameShowType = 0, speed = 50 } = options;
   const payload = concat([
     Uint8Array.of(
-      0x04, 0, 0, 0, 0, 0, 0, 0,
+      0x04,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
       layerType & 0xff,
-      ...u16be(0), ...u16be(0), ...u16be(showWidth), ...u16be(showHeight),
-      frameShowType & 0xff, speed & 0xff, 0x01,
+      ...u16be(0),
+      ...u16be(0),
+      ...u16be(showWidth),
+      ...u16be(showHeight),
+      frameShowType & 0xff,
+      speed & 0xff,
+      0x01,
       ...u16be(table.length),
     ),
     table,
@@ -123,14 +241,17 @@ export function frameBorderSegment(table: Uint8Array, showWidth: number, showHei
 
 /** The reference border color table (rainbow gradient around the perimeter). */
 export const FRAME_TYPE_ONE_TABLE: Uint8Array = hexToBytes(
-  "0f000f200f400f600f800fa00fc00ff00cf00af008f006f004f002f00"
-  + "0f000f200f400f600f800fa00fc00ff00cf00af008f006f004f002f00"
-  + "0f020f040f060f080f0a0f0c0f0f0f0f0c0f0a0f080f060f040f020f00",
+  "0f000f200f400f600f800fa00fc00ff00cf00af008f006f004f002f00" +
+    "0f000f200f400f600f800fa00fc00ff00cf00af008f006f004f002f00" +
+    "0f020f040f060f080f0a0f0c0f0f0f0f0c0f0a0f080f060f040f020f00",
 );
 
 /** Program container: 8 zero bytes, content-number byte, zero byte, then the segments. */
 export function buildProgram(segments: readonly Uint8Array[]): Uint8Array {
-  return concat([Uint8Array.of(0, 0, 0, 0, 0, 0, 0, 0, segments.length & 0xff, 0x00), ...segments]);
+  return concat([
+    Uint8Array.of(0, 0, 0, 0, 0, 0, 0, 0, segments.length & 0xff, 0x00),
+    ...segments,
+  ]);
 }
 
 export type CompressionMode = "lzss-safe" | "lzss";
@@ -149,15 +270,29 @@ export interface CompiledProgram {
   readonly pacingMs: number;
 }
 
-function compileProgram(segments: readonly Uint8Array[], compression: CompressionMode, tileWidth: number): CompiledProgram {
+function compileProgram(
+  segments: readonly Uint8Array[],
+  compression: CompressionMode,
+  tileWidth: number,
+): CompiledProgram {
   const programBytes = buildProgram(segments);
-  const compressedBytes = compression === "lzss-safe" ? lzssCompressSafe(programBytes) : lzssCompress(programBytes);
+  const compressedBytes =
+    compression === "lzss-safe"
+      ? lzssCompressSafe(programBytes)
+      : lzssCompress(programBytes);
   const announcePacket = buildAnnouncePacket(programBytes, 0, 1, 1);
   const chunks = buildDataChunkPackets(compressedBytes, UX_PACKAGE_SIZE);
   return {
-    programBytes, crc32: crc32Custom(programBytes), compressedBytes, compression, announcePacket, chunks,
+    programBytes,
+    crc32: crc32Custom(programBytes),
+    compressedBytes,
+    compression,
+    announcePacket,
+    chunks,
     packets: [announcePacket, ...chunks.map((chunk) => chunk.packet)],
-    tileCount: segments.length, tileWidth, pacingMs: UX_CHUNK_DELAY_MS,
+    tileCount: segments.length,
+    tileWidth,
+    pacingMs: UX_CHUNK_DELAY_MS,
   };
 }
 
@@ -174,10 +309,21 @@ export interface GraffitiPlaybackOptions {
  * Playback options default to the upstream-used values (mode=0, speed=0,
  * stayTime=3); diagnostics may vary exactly one at a time.
  */
-export function compileGraffitiFrame(frame: Framebuffer, tileWidth = DEFAULT_TILE_WIDTH, playback: GraffitiPlaybackOptions = {}, graffitiBlack?: import("../../core/quirks").BlackSemantics | null): CompiledProgram {
+export function compileGraffitiFrame(
+  frame: Framebuffer,
+  tileWidth = DEFAULT_TILE_WIDTH,
+  playback: GraffitiPlaybackOptions = {},
+  graffitiBlack?: import("../../core/quirks").BlackSemantics | null,
+): CompiledProgram {
   const off = offColorForBehavior("graffiti", graffitiBlack);
   const segments = tileColumns(frame.width, tileWidth).map((tile) =>
-    graffitiSegment(encodeFrameRegion(frame, tile.startColumn, tile.width, "graffiti", off), tile.width, frame.height, { startColumn: tile.startColumn, ...playback }));
+    graffitiSegment(
+      encodeFrameRegion(frame, tile.startColumn, tile.width, "graffiti", off),
+      tile.width,
+      frame.height,
+      { startColumn: tile.startColumn, ...playback },
+    ),
+  );
   return compileProgram(segments, "lzss-safe", tileWidth);
 }
 
@@ -187,9 +333,19 @@ export function compileGraffitiFrame(frame: Framebuffer, tileWidth = DEFAULT_TIL
  * substitution or transfer curve. Diagnostic-only: callers are the fixed
  * diagnostic builders, never user content or a general raw writer.
  */
-export function encodeRawWordRegion(words: Uint16Array, width: number, height: number, startColumn: number, regionWidth: number): Uint8Array {
-  if (words.length !== width * height) throw new RangeError("Raw word grid does not match the declared dimensions.");
-  if (startColumn < 0 || startColumn + regionWidth > width) throw new RangeError("Region is outside the raw word grid.");
+export function encodeRawWordRegion(
+  words: Uint16Array,
+  width: number,
+  height: number,
+  startColumn: number,
+  regionWidth: number,
+): Uint8Array {
+  if (words.length !== width * height)
+    throw new RangeError(
+      "Raw word grid does not match the declared dimensions.",
+    );
+  if (startColumn < 0 || startColumn + regionWidth > width)
+    throw new RangeError("Region is outside the raw word grid.");
   const out = new Uint8Array(regionWidth * height * 2);
   let offset = 0;
   for (let x = startColumn; x < startColumn + regionWidth; x += 1) {
@@ -204,19 +360,43 @@ export function encodeRawWordRegion(words: Uint16Array, width: number, height: n
 }
 
 /** Compile a raw 16-bit word grid into a tiled Graffiti program, preserving every word exactly. Diagnostic-only. */
-export function compileGraffitiRawWords(words: Uint16Array, width: number, height: number, playback: GraffitiPlaybackOptions = {}, tileWidth = DEFAULT_TILE_WIDTH): CompiledProgram {
+export function compileGraffitiRawWords(
+  words: Uint16Array,
+  width: number,
+  height: number,
+  playback: GraffitiPlaybackOptions = {},
+  tileWidth = DEFAULT_TILE_WIDTH,
+): CompiledProgram {
   const segments = tileColumns(width, tileWidth).map((tile) =>
-    graffitiSegment(encodeRawWordRegion(words, width, height, tile.startColumn, tile.width), tile.width, height, { startColumn: tile.startColumn, ...playback }));
+    graffitiSegment(
+      encodeRawWordRegion(words, width, height, tile.startColumn, tile.width),
+      tile.width,
+      height,
+      { startColumn: tile.startColumn, ...playback },
+    ),
+  );
   return compileProgram(segments, "lzss-safe", tileWidth);
 }
 
 /** Compile raw 16-bit word frames into a tiled Animation program, preserving every word exactly. Diagnostic-only. */
-export function compileAnimationRawWords(frames: readonly Uint16Array[], delaysMs: readonly number[], width: number, height: number, tileWidth = DEFAULT_TILE_WIDTH): CompiledProgram {
+export function compileAnimationRawWords(
+  frames: readonly Uint16Array[],
+  delaysMs: readonly number[],
+  width: number,
+  height: number,
+  tileWidth = DEFAULT_TILE_WIDTH,
+): CompiledProgram {
   const segments = tileColumns(width, tileWidth).map((tile) =>
     animationSegment(
-      frames.map((frame) => encodeRawWordRegion(frame, width, height, tile.startColumn, tile.width)),
-      delaysMs, tile.width, height, { startColumn: tile.startColumn },
-    ));
+      frames.map((frame) =>
+        encodeRawWordRegion(frame, width, height, tile.startColumn, tile.width),
+      ),
+      delaysMs,
+      tile.width,
+      height,
+      { startColumn: tile.startColumn },
+    ),
+  );
   return compileProgram(segments, "lzss-safe", tileWidth);
 }
 
@@ -227,14 +407,25 @@ export function compileAnimationRawWords(frames: readonly Uint16Array[], delaysM
  * variant exists as a separately confirmed follow-up and is never chosen
  * automatically.
  */
-export function compileAnimationStaticFrame(frame: Framebuffer, variant: "single" | "identical-pair", frameDelayMs = 1000, tileWidth = DEFAULT_TILE_WIDTH): CompiledProgram {
+export function compileAnimationStaticFrame(
+  frame: Framebuffer,
+  variant: "single" | "identical-pair",
+  frameDelayMs = 1000,
+  tileWidth = DEFAULT_TILE_WIDTH,
+): CompiledProgram {
   const frames = variant === "single" ? [frame] : [frame, frame];
   const delays = frames.map(() => frameDelayMs);
   const segments = tileColumns(frame.width, tileWidth).map((tile) =>
     animationSegment(
-      frames.map((value) => encodeFrameRegion(value, tile.startColumn, tile.width, "animation")),
-      delays, tile.width, frame.height, { startColumn: tile.startColumn },
-    ));
+      frames.map((value) =>
+        encodeFrameRegion(value, tile.startColumn, tile.width, "animation"),
+      ),
+      delays,
+      tile.width,
+      frame.height,
+      { startColumn: tile.startColumn },
+    ),
+  );
   return compileProgram(segments, "lzss-safe", tileWidth);
 }
 
@@ -243,27 +434,55 @@ export function compileAnimationStaticFrame(frame: Framebuffer, variant: "single
  * carries the full frame sequence with an identical delay list so the sign
  * plays all tiles back in lockstep on its own.
  */
-export function compileAnimation(sequence: FrameSequence, tileWidth = DEFAULT_TILE_WIDTH): CompiledProgram {
+export function compileAnimation(
+  sequence: FrameSequence,
+  tileWidth = DEFAULT_TILE_WIDTH,
+): CompiledProgram {
   const delays = sequence.timing.map(({ milliseconds }) => milliseconds);
   const segments = tileColumns(sequence.width, tileWidth).map((tile) =>
     animationSegment(
-      sequence.frames.map((frame) => encodeFrameRegion(frame, tile.startColumn, tile.width, "animation")),
-      delays, tile.width, sequence.height, { startColumn: tile.startColumn },
-    ));
+      sequence.frames.map((frame) =>
+        encodeFrameRegion(frame, tile.startColumn, tile.width, "animation"),
+      ),
+      delays,
+      tile.width,
+      sequence.height,
+      { startColumn: tile.startColumn },
+    ),
+  );
   return compileProgram(segments, "lzss-safe", tileWidth);
 }
 
 /** Compile raw GIF bytes into a single-segment program (untiled: tiling GIF content is untested upstream). */
-export function compileGif(gifBytes: Uint8Array, showWidth: number, showHeight: number): CompiledProgram {
-  return compileProgram([gifSegment(gifBytes, showWidth, showHeight)], "lzss-safe", showWidth);
+export function compileGif(
+  gifBytes: Uint8Array,
+  showWidth: number,
+  showHeight: number,
+): CompiledProgram {
+  return compileProgram(
+    [gifSegment(gifBytes, showWidth, showHeight)],
+    "lzss-safe",
+    showWidth,
+  );
 }
 
 /** Compile the decorative frame border as a standalone single-segment program. */
-export function compileFrameBorder(showWidth: number, showHeight: number, table: Uint8Array = FRAME_TYPE_ONE_TABLE): CompiledProgram {
-  return compileProgram([frameBorderSegment(table, showWidth, showHeight)], "lzss-safe", showWidth);
+export function compileFrameBorder(
+  showWidth: number,
+  showHeight: number,
+  table: Uint8Array = FRAME_TYPE_ONE_TABLE,
+): CompiledProgram {
+  return compileProgram(
+    [frameBorderSegment(table, showWidth, showHeight)],
+    "lzss-safe",
+    showWidth,
+  );
 }
 
 function hexToBytes(hex: string): Uint8Array {
-  if (hex.length % 2 !== 0) throw new RangeError("Hex string must have an even length.");
-  return Uint8Array.from(hex.match(/../g) ?? [], (pair) => Number.parseInt(pair, 16));
+  if (hex.length % 2 !== 0)
+    throw new RangeError("Hex string must have an even length.");
+  return Uint8Array.from(hex.match(/../g) ?? [], (pair) =>
+    Number.parseInt(pair, 16),
+  );
 }

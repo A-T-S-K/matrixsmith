@@ -1,19 +1,28 @@
+import { createPresentationStore } from "../helpers/presentation-fixture";
 import { describe, expect, it } from "vitest";
-import { MatrixController } from "../../src/app/controller";
+import { ApplicationRuntime } from "../../src/application/runtime";
 import { TraceRecorder } from "../../src/diagnostics/trace";
-import { MatrixStore } from "../../src/ui/store";
+import { PresentationStore } from "../../src/presentation/store";
 import { knownIledHatFingerprint } from "../helpers/fixtures";
 import { ScriptedCoolLedUxDevice } from "../helpers/scripted-device";
-import { aggregateAttemptDurations, approximateSeconds, describeAttempt, type ObservationAttempt } from "../../src/investigation/timing";
+import {
+  aggregateAttemptDurations,
+  approximateSeconds,
+  describeAttempt,
+  type ObservationAttempt,
+} from "../../src/investigation/timing";
 
 /**
  * Human-timed observation is forgiving by design: a person watching a physical
  * panel will sometimes tap late, tap early, or miss the event entirely. None
  * of that may become evidence about the hardware.
  */
-async function timingStore(): Promise<MatrixStore> {
+async function timingStore(): Promise<PresentationStore> {
   const transport = new ScriptedCoolLedUxDevice(knownIledHatFingerprint());
-  const store = new MatrixStore(new MatrixController(transport, new TraceRecorder()), transport);
+  const store = createPresentationStore(
+    new ApplicationRuntime(transport, new TraceRecorder()),
+    transport,
+  );
   await store.connect();
   await store.identify();
   store.startGuidedTest("coolledux-graffiti-timing");
@@ -21,7 +30,7 @@ async function timingStore(): Promise<MatrixStore> {
   return store;
 }
 
-const flow = (store: MatrixStore) => store.getSnapshot().guidedFlow!;
+const flow = (store: PresentationStore) => store.getSnapshot().guidedFlow!;
 
 describe("observation attempts", () => {
   it("opens an attempt at transfer, carrying the exact experiment parameters", async () => {
@@ -35,7 +44,9 @@ describe("observation attempts", () => {
   it("records a human mark and lets it be taken back before the next event", async () => {
     const store = await timingStore();
     store.recordGuidedTimeline("event");
-    expect(flow(store).values["image-visible"]).toMatchObject({ measuredBy: "matrixsmith-timer" });
+    expect(flow(store).values["image-visible"]).toMatchObject({
+      measuredBy: "matrixsmith-timer",
+    });
     expect(flow(store).canUndoMark).toBe(true);
     store.undoLastMark();
     // Undo removes the mark AND the boolean the mark implied.
@@ -44,7 +55,7 @@ describe("observation attempts", () => {
     expect(flow(store).canUndoMark).toBe(false);
   }, 30000);
 
-  it("treats \"I missed it\" as an invalid measurement, never as hardware evidence", async () => {
+  it('treats "I missed it" as an invalid measurement, never as hardware evidence', async () => {
     const store = await timingStore();
     store.recordGuidedTimeline("event");
     store.markObservationMissed("missed-t2");
@@ -68,7 +79,9 @@ describe("observation attempts", () => {
     expect(current.attempts).toHaveLength(2);
     expect(current.attempts[0]?.validity).toBe("missed-t1");
     // A retry repeats a measurement; it must not become a different experiment.
-    expect(current.attempts[1]?.parameters).toEqual(current.attempts[0]?.parameters);
+    expect(current.attempts[1]?.parameters).toEqual(
+      current.attempts[0]?.parameters,
+    );
     expect(current.observeStage).toBe("timing");
     expect(current.timerStopped).toBe(false);
   }, 30000);
@@ -80,13 +93,25 @@ describe("observation attempts", () => {
     store.recordGuidedTimeline("event");
     store.recordGuidedTimeline("event");
     for (const step of flow(store).steps) {
-      if (step.spec.kind === "boolean") store.setGuidedObservation({ kind: "boolean", fieldId: step.spec.id, value: "yes" });
-      if (step.spec.kind === "choice") store.setGuidedObservation({ kind: "choice", fieldId: step.spec.id, optionId: step.spec.options[0]!.id });
+      if (step.spec.kind === "boolean")
+        store.setGuidedObservation({
+          kind: "boolean",
+          fieldId: step.spec.id,
+          value: "yes",
+        });
+      if (step.spec.kind === "choice")
+        store.setGuidedObservation({
+          kind: "choice",
+          fieldId: step.spec.id,
+          optionId: step.spec.options[0]!.id,
+        });
     }
     store.submitGuidedObservations();
     const result = flow(store).result!;
     expect(result.attempts).toHaveLength(2);
-    expect(result.attempts?.filter((attempt) => attempt.validity === "valid")).toHaveLength(1);
+    expect(
+      result.attempts?.filter((attempt) => attempt.validity === "valid"),
+    ).toHaveLength(1);
     // The invalid attempt is retained as investigation metadata but supplied
     // no observations of its own.
     expect(result.attempts?.[0]?.values).toEqual([]);
@@ -104,11 +129,28 @@ describe("observation attempts", () => {
 });
 
 describe("human timing provenance", () => {
-  const attempt = (overrides: Partial<ObservationAttempt> = {}): ObservationAttempt => ({
-    attemptNumber: 1, parameters: { stayTime: 3 }, t0: "2026-08-31T20:31:10.000Z",
-    marks: [{ event: "visible", timestamp: "2026-08-31T20:31:11.400Z", source: "human-observed", elapsedMs: 1400, fieldId: "image-visible" }],
-    values: [], validity: "valid", invalidationReason: null, note: null,
-    startedAt: "2026-08-31T20:31:10.000Z", endedAt: null, ...overrides,
+  const attempt = (
+    overrides: Partial<ObservationAttempt> = {},
+  ): ObservationAttempt => ({
+    attemptNumber: 1,
+    parameters: { stayTime: 3 },
+    t0: "2026-08-31T20:31:10.000Z",
+    marks: [
+      {
+        event: "visible",
+        timestamp: "2026-08-31T20:31:11.400Z",
+        source: "human-observed",
+        elapsedMs: 1400,
+        fieldId: "image-visible",
+      },
+    ],
+    values: [],
+    validity: "valid",
+    invalidationReason: null,
+    note: null,
+    startedAt: "2026-08-31T20:31:10.000Z",
+    endedAt: null,
+    ...overrides,
   });
 
   it("reports human-observed durations approximately, not to the millisecond", () => {
@@ -124,14 +166,22 @@ describe("human timing provenance", () => {
   });
 
   it("states why an invalid attempt is excluded", () => {
-    const lines = describeAttempt(attempt({ validity: "missed-t2", invalidationReason: "The moment movement began was missed" })).join("\n");
+    const lines = describeAttempt(
+      attempt({
+        validity: "missed-t2",
+        invalidationReason: "The moment movement began was missed",
+      }),
+    ).join("\n");
     expect(lines).toContain("INVALID");
     expect(lines).toContain("Excluded from conclusions.");
   });
 
   it("summarises repeated human observations as a range and median, not statistics", () => {
     expect(aggregateAttemptDurations([])).toBeNull();
-    expect(aggregateAttemptDurations([3400])).toMatchObject({ count: 1, representativeMs: 3400 });
+    expect(aggregateAttemptDurations([3400])).toMatchObject({
+      count: 1,
+      representativeMs: 3400,
+    });
     const three = aggregateAttemptDurations([3400, 3100, 3300])!;
     expect(three.minMs).toBe(3100);
     expect(three.maxMs).toBe(3400);

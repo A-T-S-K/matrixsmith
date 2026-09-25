@@ -3,7 +3,8 @@ import type { Persistence, RiskClass } from "../core/risk";
 import type { ValidationStatus } from "../core/evidence";
 import type { DecodedNotification } from "../drivers/types";
 
-export type TransactionSource = "operation" | "probe" | "diagnostic" | "gatt-read" | "external-import";
+export type TransactionSource =
+  "operation" | "probe" | "diagnostic" | "gatt-read" | "external-import";
 
 export interface TransactionPacket {
   /** TX: actual write-start wall-clock time. RX: notification arrival time. */
@@ -11,6 +12,9 @@ export interface TransactionPacket {
   readonly direction: "TX" | "RX";
   readonly hex: string;
   readonly endpoint?: GattEndpoint;
+  /** RX correlation without pretending concurrent notifications belong to the command. */
+  readonly relation?:
+    "matched-response" | "related-receipt" | "unrelated-concurrent";
   /** TX only: when the host accepted the write. */
   readonly hostAcceptedAt?: string;
   /** TX only: the pacing the plan requested after this packet. */
@@ -29,7 +33,11 @@ export interface ProtocolTransaction {
   readonly driverId: string | null;
   readonly profileId: string | null;
   readonly operation: string;
-  readonly safety: { readonly risk: RiskClass; readonly persistence: Persistence; readonly validation: ValidationStatus };
+  readonly safety: {
+    readonly risk: RiskClass;
+    readonly persistence: Persistence;
+    readonly validation: ValidationStatus;
+  };
   readonly endpoint: GattEndpoint | null;
   readonly packets: readonly TransactionPacket[];
   readonly decodedResponse: DecodedNotification | null;
@@ -44,6 +52,8 @@ export interface ProtocolTransaction {
 }
 
 export function transactionId(prefix = "transaction"): string {
-  const value = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  const value =
+    globalThis.crypto?.randomUUID?.() ??
+    `${Date.now()}-${Math.random().toString(16).slice(2)}`;
   return `${prefix}:${value}`;
 }

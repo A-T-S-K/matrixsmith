@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { coolLedUxDriver } from "../../src/drivers/coolledux";
-import { compileAnimationStaticFrame, compileGraffitiFrame } from "../../src/drivers/coolledux/content";
+import {
+  compileAnimationStaticFrame,
+  compileGraffitiFrame,
+} from "../../src/drivers/coolledux/content";
 import { encodeFrameRegion } from "../../src/drivers/coolledux/pixels";
 import { iledHat31aeProfile } from "../../src/profiles/iledhat-31ae-32x16";
 import { COOLLEDUX_DEFAULT_QUIRKS } from "../../src/core/quirks";
@@ -19,8 +22,16 @@ import type { DriverContext } from "../../src/drivers/types";
  * that scrolls away, or a "black" background rendered as dim blue.
  */
 
-function context(profile: DeviceProfile = iledHat31aeProfile, extra: Partial<DriverContext> = {}): DriverContext {
-  return { profile, fingerprint: knownIledHatFingerprint(), source: "live", ...extra };
+function context(
+  profile: DeviceProfile = iledHat31aeProfile,
+  extra: Partial<DriverContext> = {},
+): DriverContext {
+  return {
+    profile,
+    fingerprint: knownIledHatFingerprint(),
+    source: "live",
+    ...extra,
+  };
 }
 
 /** A frame with one lit pixel; everything else is logical black. */
@@ -32,7 +43,10 @@ function frameWithBlackBackground(): Framebuffer {
 
 describe("normal static routing on the characterized profile", () => {
   it("compiles ShowFrame through one-frame Animation with no session evidence", () => {
-    const plan = coolLedUxDriver.plan({ type: "ShowFrame", frame: frameWithBlackBackground() }, context());
+    const plan = coolLedUxDriver.plan(
+      { type: "ShowFrame", frame: frameWithBlackBackground() },
+      context(),
+    );
     expect(plan.metadata.rasterStrategy).toBe("animation-single-frame");
     expect(plan.metadata.contentType).toBe("animation");
     expect(plan.metadata.frameCount).toBe(1);
@@ -43,7 +57,10 @@ describe("normal static routing on the characterized profile", () => {
   });
 
   it("compiles locally rendered ShowText through the same route", () => {
-    const plan = coolLedUxDriver.plan({ type: "ShowText", text: "HI", frame: frameWithBlackBackground() }, context());
+    const plan = coolLedUxDriver.plan(
+      { type: "ShowText", text: "HI", frame: frameWithBlackBackground() },
+      context(),
+    );
     expect(plan.metadata.rasterStrategy).toBe("animation-single-frame");
     expect(plan.metadata.frameCount).toBe(1);
     expect(plan.metadata.tileCount).toBe(4);
@@ -53,25 +70,43 @@ describe("normal static routing on the characterized profile", () => {
     const frame = frameWithBlackBackground();
     const plan = coolLedUxDriver.plan({ type: "ShowFrame", frame }, context());
     const expected = compileAnimationStaticFrame(frame, "single");
-    expect(plan.metadata.crc32).toBe(`0x${expected.crc32.toString(16).padStart(8, "0").toUpperCase()}`);
+    expect(plan.metadata.crc32).toBe(
+      `0x${expected.crc32.toString(16).padStart(8, "0").toUpperCase()}`,
+    );
     expect(plan.metadata.programBytes).toBe(expected.programBytes.length);
     // And emphatically NOT the Graffiti bytes.
-    const graffiti = compileGraffitiFrame(frame, undefined, {}, { state: "true-black", basis: "observed" });
-    expect(plan.metadata.crc32).not.toBe(`0x${graffiti.crc32.toString(16).padStart(8, "0").toUpperCase()}`);
+    const graffiti = compileGraffitiFrame(
+      frame,
+      undefined,
+      {},
+      { state: "true-black", basis: "observed" },
+    );
+    expect(plan.metadata.crc32).not.toBe(
+      `0x${graffiti.crc32.toString(16).padStart(8, "0").toUpperCase()}`,
+    );
   });
 
   it("still lets a session-validated strategy override the profile preference", () => {
     const plan = coolLedUxDriver.plan(
       { type: "ShowFrame", frame: frameWithBlackBackground() },
-      context(iledHat31aeProfile, { rasterStrategy: "animation-identical-frames" }),
+      context(iledHat31aeProfile, {
+        rasterStrategy: "animation-identical-frames",
+      }),
     );
     expect(plan.metadata.rasterStrategy).toBe("animation-identical-frames");
     expect(plan.metadata.frameCount).toBe(2);
   });
 
   it("keeps the conservative Graffiti default for a profile with no resolved preference", () => {
-    const unresolved: DeviceProfile = { ...iledHat31aeProfile, id: "coolledux-unresolved", quirks: COOLLEDUX_DEFAULT_QUIRKS };
-    const plan = coolLedUxDriver.plan({ type: "ShowFrame", frame: frameWithBlackBackground() }, context(unresolved));
+    const unresolved: DeviceProfile = {
+      ...iledHat31aeProfile,
+      id: "coolledux-unresolved",
+      quirks: COOLLEDUX_DEFAULT_QUIRKS,
+    };
+    const plan = coolLedUxDriver.plan(
+      { type: "ShowFrame", frame: frameWithBlackBackground() },
+      context(unresolved),
+    );
     expect(plan.metadata.rasterStrategy).toBe("graffiti");
     expect(plan.metadata.contentType).toBe("graffiti");
   });
@@ -79,10 +114,16 @@ describe("normal static routing on the characterized profile", () => {
 
 describe("black is black on the characterized profile", () => {
   it("never substitutes the inherited 0x0004 workaround on the normal path", () => {
-    const plan = coolLedUxDriver.plan({ type: "ShowFrame", frame: frameWithBlackBackground() }, context());
+    const plan = coolLedUxDriver.plan(
+      { type: "ShowFrame", frame: frameWithBlackBackground() },
+      context(),
+    );
     // The Animation path never used the sentinel, but assert the produced
     // program contains no 0x0004 word rather than trusting that by reputation.
-    const program = compileAnimationStaticFrame(frameWithBlackBackground(), "single").programBytes;
+    const program = compileAnimationStaticFrame(
+      frameWithBlackBackground(),
+      "single",
+    ).programBytes;
     expect(plan.metadata.programBytes).toBe(program.length);
     expect(containsWord(program, 0x0004)).toBe(false);
     expect(containsWord(program, 0x0000)).toBe(true);
@@ -93,9 +134,28 @@ describe("black is black on the characterized profile", () => {
     // it must use the panel's OWN observed black semantics, not the upstream
     // workaround — with no current-session evidence required.
     const frame = frameWithBlackBackground();
-    const fromProfile = compileGraffitiFrame(frame, undefined, {}, iledHat31aeProfile.quirks!.graffitiBlack);
-    const literal = compileGraffitiFrame(frame, undefined, {}, { state: "true-black", basis: "observed" });
-    const workaround = compileGraffitiFrame(frame, undefined, {}, { state: "white-sentinel", basis: "source-derived", workaroundWord: 0x0004 });
+    const fromProfile = compileGraffitiFrame(
+      frame,
+      undefined,
+      {},
+      iledHat31aeProfile.quirks!.graffitiBlack,
+    );
+    const literal = compileGraffitiFrame(
+      frame,
+      undefined,
+      {},
+      { state: "true-black", basis: "observed" },
+    );
+    const workaround = compileGraffitiFrame(
+      frame,
+      undefined,
+      {},
+      {
+        state: "white-sentinel",
+        basis: "source-derived",
+        workaroundWord: 0x0004,
+      },
+    );
     expect(fromProfile.crc32).toBe(literal.crc32);
     expect(fromProfile.crc32).not.toBe(workaround.crc32);
     expect(containsWord(fromProfile.programBytes, 0x0004)).toBe(false);
@@ -103,7 +163,12 @@ describe("black is black on the characterized profile", () => {
 
   it("keeps the workaround for an uncharacterized CoolLEDUX profile", () => {
     const frame = frameWithBlackBackground();
-    const unresolved = compileGraffitiFrame(frame, undefined, {}, COOLLEDUX_DEFAULT_QUIRKS.graffitiBlack);
+    const unresolved = compileGraffitiFrame(
+      frame,
+      undefined,
+      {},
+      COOLLEDUX_DEFAULT_QUIRKS.graffitiBlack,
+    );
     expect(containsWord(unresolved.programBytes, 0x0004)).toBe(true);
   });
 });
@@ -113,8 +178,12 @@ describe("no fourth-channel assumption", () => {
     // The high nibble drives nothing on this panel. A compiler that started
     // using it for a white channel would light nothing and corrupt colour.
     const frame = new Framebuffer(32, 16);
-    for (let x = 0; x < 32; x += 1) for (let y = 0; y < 16; y += 1) frame.setPixel(x, y, 255, 255, 255);
-    expect(coolLedUxDriver.plan({ type: "ShowFrame", frame }, context()).metadata.rasterStrategy).toBe("animation-single-frame");
+    for (let x = 0; x < 32; x += 1)
+      for (let y = 0; y < 16; y += 1) frame.setPixel(x, y, 255, 255, 255);
+    expect(
+      coolLedUxDriver.plan({ type: "ShowFrame", frame }, context()).metadata
+        .rasterStrategy,
+    ).toBe("animation-single-frame");
     // RGB444 full white is 0x0F 0xFF: red in byte0's LOW nibble, green and
     // blue in byte1. The high nibble stays clear for every pixel.
     const stream = encodeFrameRegion(frame, 0, 8, "animation");

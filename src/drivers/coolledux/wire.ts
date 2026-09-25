@@ -62,17 +62,28 @@ export function lzssCompress(data: Uint8Array): Uint8Array {
     matchLength = 0;
     for (;;) {
       if (cmp >= 0) {
-        if (rson[p] === NIL) { rson[p] = r; dad[r] = p; return; }
+        if (rson[p] === NIL) {
+          rson[p] = r;
+          dad[r] = p;
+          return;
+        }
         p = rson[p]!;
       } else {
-        if (lson[p] === NIL) { lson[p] = r; dad[r] = p; return; }
+        if (lson[p] === NIL) {
+          lson[p] = r;
+          dad[r] = p;
+          return;
+        }
         p = lson[p]!;
       }
       let i = 1;
       let broke = false;
       while (i < F) {
         cmp = (textBuf[r + i] ?? 0) - (textBuf[p + i] ?? 0);
-        if (cmp !== 0) { broke = true; break; }
+        if (cmp !== 0) {
+          broke = true;
+          break;
+        }
         i += 1;
       }
       if (!broke) cmp = 0;
@@ -144,7 +155,9 @@ export function lzssCompress(data: Uint8Array): Uint8Array {
     } else {
       codeBuf[codeBufPtr] = matchPosition & 0xff;
       codeBufPtr += 1;
-      codeBuf[codeBufPtr] = (((matchPosition >>> 4) & 0xf0) | (matchLength - (THRESHOLD + 1))) & 0xff;
+      codeBuf[codeBufPtr] =
+        (((matchPosition >>> 4) & 0xf0) | (matchLength - (THRESHOLD + 1))) &
+        0xff;
       codeBufPtr += 1;
     }
     mask = (mask << 1) & 0xff;
@@ -177,7 +190,8 @@ export function lzssCompress(data: Uint8Array): Uint8Array {
     }
     if (textLen <= 0) break;
   }
-  if (codeBufPtr > 1) for (let j = 0; j < codeBufPtr; j += 1) out.push(codeBuf[j]!);
+  if (codeBufPtr > 1)
+    for (let j = 0; j < codeBufPtr; j += 1) out.push(codeBuf[j]!);
   return Uint8Array.from(out);
 }
 
@@ -259,13 +273,34 @@ export function xorAll(data: Uint8Array): number {
   return value & 0xff;
 }
 
-function u16be(value: number): [number, number] { return [(value >>> 8) & 0xff, value & 0xff]; }
-function u32be(value: number): [number, number, number, number] { return [(value >>> 24) & 0xff, (value >>> 16) & 0xff, (value >>> 8) & 0xff, value & 0xff]; }
+function u16be(value: number): [number, number] {
+  return [(value >>> 8) & 0xff, value & 0xff];
+}
+function u32be(value: number): [number, number, number, number] {
+  return [
+    (value >>> 24) & 0xff,
+    (value >>> 16) & 0xff,
+    (value >>> 8) & 0xff,
+    value & 0xff,
+  ];
+}
 
 /** Program announce (cmd 0x02): custom CRC32, uncompressed length, index, count, show count, in the standard envelope. */
-export function buildAnnouncePacket(programBytes: Uint8Array, index: number, count: number, showCount: number): Uint8Array {
+export function buildAnnouncePacket(
+  programBytes: Uint8Array,
+  index: number,
+  count: number,
+  showCount: number,
+): Uint8Array {
   const crc = crc32Custom(programBytes);
-  const payload = Uint8Array.of(0x02, ...u32be(crc), ...u32be(programBytes.length), index & 0xff, count & 0xff, showCount & 0xff);
+  const payload = Uint8Array.of(
+    0x02,
+    ...u32be(crc),
+    ...u32be(programBytes.length),
+    index & 0xff,
+    count & 0xff,
+    showCount & 0xff,
+  );
   return encodeEnvelope(payload);
 }
 
@@ -280,14 +315,32 @@ export interface DataChunk {
  * chunk index (u16), chunk length (u16), data, then an XOR checksum over the
  * preceding sub-payload, all wrapped in the standard envelope.
  */
-export function buildDataChunkPackets(compressed: Uint8Array, chunkSize = UX_PACKAGE_SIZE): readonly DataChunk[] {
-  if (!Number.isInteger(chunkSize) || chunkSize <= 0) throw new RangeError("Chunk size must be a positive integer.");
+export function buildDataChunkPackets(
+  compressed: Uint8Array,
+  chunkSize = UX_PACKAGE_SIZE,
+): readonly DataChunk[] {
+  if (!Number.isInteger(chunkSize) || chunkSize <= 0)
+    throw new RangeError("Chunk size must be a positive integer.");
   const chunks: DataChunk[] = [];
-  for (let offset = 0, index = 0; offset < compressed.length; offset += chunkSize, index += 1) {
+  for (
+    let offset = 0, index = 0;
+    offset < compressed.length;
+    offset += chunkSize, index += 1
+  ) {
     const data = compressed.slice(offset, offset + chunkSize);
-    const sub = Uint8Array.of(0x00, ...u32be(compressed.length), ...u16be(index), ...u16be(data.length), ...data);
+    const sub = Uint8Array.of(
+      0x00,
+      ...u32be(compressed.length),
+      ...u16be(index),
+      ...u16be(data.length),
+      ...data,
+    );
     const payload = Uint8Array.of(0x03, ...sub, xorAll(sub));
-    chunks.push({ index, length: data.length, packet: encodeEnvelope(payload) });
+    chunks.push({
+      index,
+      length: data.length,
+      packet: encodeEnvelope(payload),
+    });
   }
   return chunks;
 }

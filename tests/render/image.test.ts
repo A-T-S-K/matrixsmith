@@ -1,9 +1,22 @@
 import { describe, expect, it } from "vitest";
-import { computeFitPlacement, readGifMetadata, rgbaToFramebuffer } from "../../src/render/image";
+import {
+  computeFitPlacement,
+  readGifMetadata,
+  rgbaToFramebuffer,
+} from "../../src/render/image";
 
 describe("image fit placement", () => {
   it("stretch maps the full source to the full target", () => {
-    expect(computeFitPlacement(100, 50, 32, 16, "stretch")).toEqual({ sx: 0, sy: 0, sw: 100, sh: 50, dx: 0, dy: 0, dw: 32, dh: 16 });
+    expect(computeFitPlacement(100, 50, 32, 16, "stretch")).toEqual({
+      sx: 0,
+      sy: 0,
+      sw: 100,
+      sh: 50,
+      dx: 0,
+      dy: 0,
+      dw: 32,
+      dh: 16,
+    });
   });
 
   it("contain letterboxes a tall source", () => {
@@ -24,7 +37,16 @@ describe("image fit placement", () => {
 
   it("center keeps 1:1 pixels and crops larger sources", () => {
     const small = computeFitPlacement(8, 8, 32, 16, "center");
-    expect(small).toEqual({ sx: 0, sy: 0, sw: 8, sh: 8, dx: 12, dy: 4, dw: 8, dh: 8 });
+    expect(small).toEqual({
+      sx: 0,
+      sy: 0,
+      sw: 8,
+      sh: 8,
+      dx: 12,
+      dy: 4,
+      dw: 8,
+      dh: 8,
+    });
     const large = computeFitPlacement(64, 64, 32, 16, "center");
     expect(large.sw).toBe(32);
     expect(large.sh).toBe(16);
@@ -39,7 +61,9 @@ describe("image fit placement", () => {
 
 describe("RGBA conversion", () => {
   it("composites alpha over black", () => {
-    const rgba = new Uint8ClampedArray([255, 255, 255, 255, 255, 255, 255, 128, 255, 255, 255, 0, 10, 20, 30, 255]);
+    const rgba = new Uint8ClampedArray([
+      255, 255, 255, 255, 255, 255, 255, 128, 255, 255, 255, 0, 10, 20, 30, 255,
+    ]);
     const frame = rgbaToFramebuffer(rgba, 4, 1);
     expect(frame.getPixel(0, 0)).toEqual({ r: 255, g: 255, b: 255 });
     expect(frame.getPixel(1, 0).r).toBe(128);
@@ -54,11 +78,34 @@ describe("RGBA conversion", () => {
 
 describe("GIF metadata", () => {
   it("reads canvas dimensions from a GIF89a header", () => {
-    const header = Uint8Array.of(0x47, 0x49, 0x46, 0x38, 0x39, 0x61, 32, 0, 16, 0, 0, 0);
-    expect(readGifMetadata(header)).toEqual({ byteLength: 12, width: 32, height: 16, isGif: true });
+    const header = Uint8Array.of(
+      0x47,
+      0x49,
+      0x46,
+      0x38,
+      0x39,
+      0x61,
+      32,
+      0,
+      16,
+      0,
+      0,
+      0,
+    );
+    expect(readGifMetadata(header)).toEqual({
+      byteLength: 12,
+      width: 32,
+      height: 16,
+      isGif: true,
+    });
   });
 
   it("flags non-GIF bytes without guessing dimensions", () => {
-    expect(readGifMetadata(new TextEncoder().encode("PNG not gif"))).toEqual({ byteLength: 11, width: null, height: null, isGif: false });
+    expect(readGifMetadata(new TextEncoder().encode("PNG not gif"))).toEqual({
+      byteLength: 11,
+      width: null,
+      height: null,
+      isGif: false,
+    });
   });
 });

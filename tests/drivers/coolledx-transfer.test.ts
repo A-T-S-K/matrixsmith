@@ -1,11 +1,19 @@
 import { describe, expect, it } from "vitest";
-import { createImageTransferPayload, encodeTransferPackets, xorChecksum } from "../../src/drivers/coolledx/transfer";
+import {
+  createImageTransferPayload,
+  encodeTransferPackets,
+  xorChecksum,
+} from "../../src/drivers/coolledx/transfer";
 
 describe("CoolLEDX transfer codec", () => {
   it("computes XOR over exactly the supplied record fields", () => {
     expect(xorChecksum(new Uint8Array())).toBe(0);
-    expect(xorChecksum(Uint8Array.of(0, 0, 3, 0, 0, 3, 0xaa, 0xbb, 0xcc))).toBe(3 ^ 3 ^ 0xaa ^ 0xbb ^ 0xcc);
-    expect(xorChecksum(Uint8Array.of(1, 2, 3))).not.toBe(xorChecksum(Uint8Array.of(1, 2, 4)));
+    expect(xorChecksum(Uint8Array.of(0, 0, 3, 0, 0, 3, 0xaa, 0xbb, 0xcc))).toBe(
+      3 ^ 3 ^ 0xaa ^ 0xbb ^ 0xcc,
+    );
+    expect(xorChecksum(Uint8Array.of(1, 2, 3))).not.toBe(
+      xorChecksum(Uint8Array.of(1, 2, 4)),
+    );
   });
 
   it("uses a 26-byte image header and 128-byte chunks", () => {
@@ -20,6 +28,8 @@ describe("CoolLEDX transfer codec", () => {
   });
 
   it("frames an empty transfer deterministically", () => {
-    expect([...encodeTransferPackets(0x03, new Uint8Array())[0] ?? []]).toEqual([1, 0, 8, 2, 7, 0, 0, 0, 0, 0, 0, 0, 3]);
+    expect([
+      ...(encodeTransferPackets(0x03, new Uint8Array())[0] ?? []),
+    ]).toEqual([1, 0, 8, 2, 7, 0, 0, 0, 0, 0, 0, 0, 3]);
   });
 });

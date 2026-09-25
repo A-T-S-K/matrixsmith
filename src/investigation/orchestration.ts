@@ -41,14 +41,16 @@ export type TransferReason =
   | "controlled-variant"
   | "explicit-reopen";
 
-export const TRANSFER_REASON_LABELS: Readonly<Record<TransferReason, string>> = Object.freeze({
-  "initial-experiment": "initial experiment",
-  "explicit-retry-missed-observation": "explicit retry after a missed observation",
-  "explicit-measure-again": "user asked to measure again",
-  "confirmation-run": "confirmation run",
-  "controlled-variant": "controlled variant",
-  "explicit-reopen": "explicit reopen of a completed experiment",
-});
+export const TRANSFER_REASON_LABELS: Readonly<Record<TransferReason, string>> =
+  Object.freeze({
+    "initial-experiment": "initial experiment",
+    "explicit-retry-missed-observation":
+      "explicit retry after a missed observation",
+    "explicit-measure-again": "user asked to measure again",
+    "confirmation-run": "confirmation run",
+    "controlled-variant": "controlled variant",
+    "explicit-reopen": "explicit reopen of a completed experiment",
+  });
 
 /** Reasons that repeat an experiment rather than starting or varying one. */
 const REPEAT_REASONS: readonly TransferReason[] = Object.freeze([
@@ -69,7 +71,8 @@ export function isRepeatTransfer(reason: TransferReason): boolean {
  * A fingerprint shape identifies a KIND of display — two identical panels
  * share it — and is recorded as exactly that, never promoted.
  */
-export type DeviceIdentityBasis = "browser-authorized-device" | "fingerprint-shape" | "unidentified";
+export type DeviceIdentityBasis =
+  "browser-authorized-device" | "fingerprint-shape" | "unidentified";
 
 /**
  * Identity of one concrete diagnostic execution.
@@ -139,11 +142,20 @@ export function buildExecutionFingerprint(input: {
     parameterKey,
     programCrc32: input.programCrc32 ?? null,
     rasterStrategy: input.rasterStrategy ?? null,
-    key: [deviceSegment, input.testId, input.diagnosticId, parameterKey, input.rasterStrategy ?? "-"].join("|"),
+    key: [
+      deviceSegment,
+      input.testId,
+      input.diagnosticId,
+      parameterKey,
+      input.rasterStrategy ?? "-",
+    ].join("|"),
   };
 }
 
-export function sameExecution(a: DiagnosticExecutionFingerprint, b: DiagnosticExecutionFingerprint): boolean {
+export function sameExecution(
+  a: DiagnosticExecutionFingerprint,
+  b: DiagnosticExecutionFingerprint,
+): boolean {
   return a.key === b.key;
 }
 
@@ -177,11 +189,15 @@ export type AttemptFailureKind =
   | "user-restarted"
   | "observation-incomplete";
 
-export const ATTEMPT_FAILURE_LABELS: Readonly<Record<AttemptFailureKind, string>> = Object.freeze({
-  "transfer-failed": "the diagnostic transfer failed before any physical observation",
+export const ATTEMPT_FAILURE_LABELS: Readonly<
+  Record<AttemptFailureKind, string>
+> = Object.freeze({
+  "transfer-failed":
+    "the diagnostic transfer failed before any physical observation",
   "human-missed": "the moment being measured was missed",
   "user-restarted": "superseded by a later attempt of the same experiment",
-  "observation-incomplete": "the observation ended before the timeline finished",
+  "observation-incomplete":
+    "the observation ended before the timeline finished",
 });
 
 /**
@@ -230,7 +246,9 @@ export type ExperimentResolution =
   /** The user stopped observing. Transmission evidence is kept. */
   | "abandoned";
 
-export const EXPERIMENT_RESOLUTION_LABELS: Readonly<Record<ExperimentResolution, string>> = Object.freeze({
+export const EXPERIMENT_RESOLUTION_LABELS: Readonly<
+  Record<ExperimentResolution, string>
+> = Object.freeze({
   settled: "settled",
   "retryable-incomplete": "not enough observation",
   invalid: "invalid measurement",
@@ -238,7 +256,9 @@ export const EXPERIMENT_RESOLUTION_LABELS: Readonly<Record<ExperimentResolution,
 });
 
 /** Only a settled experiment leaves the automatic recommendation rotation. */
-export function leavesAutomaticRotation(resolution: ExperimentResolution): boolean {
+export function leavesAutomaticRotation(
+  resolution: ExperimentResolution,
+): boolean {
   return resolution === "settled";
 }
 
@@ -283,7 +303,8 @@ export type PanelProgramCertainty =
   /** The panel's contents cannot be established from this session. */
   | "unknown";
 
-export type PanelProgramKind = "guided-diagnostic" | "ordinary-content" | "validation" | "none";
+export type PanelProgramKind =
+  "guided-diagnostic" | "ordinary-content" | "validation" | "none";
 
 export interface PanelProgramState {
   readonly certainty: PanelProgramCertainty;
@@ -322,16 +343,25 @@ export const UNKNOWN_PANEL_PROGRAM: PanelProgramState = Object.freeze({
  * bytes?" is a different — and wrong — question: after any intervening
  * persistent write, resending them is a legitimate initial experiment.
  */
-export function isGuidedProgramActive(state: PanelProgramState, fingerprint: DiagnosticExecutionFingerprint): boolean {
-  return state.certainty === "known-active"
-    && state.kind === "guided-diagnostic"
-    && state.fingerprint !== null
-    && state.fingerprint.key === fingerprint.key;
+export function isGuidedProgramActive(
+  state: PanelProgramState,
+  fingerprint: DiagnosticExecutionFingerprint,
+): boolean {
+  return (
+    state.certainty === "known-active" &&
+    state.kind === "guided-diagnostic" &&
+    state.fingerprint !== null &&
+    state.fingerprint.key === fingerprint.key
+  );
 }
 
 /** Lose certainty about the panel without discarding what was last written. */
-export function invalidatePanelProgram(state: PanelProgramState, reason: string): PanelProgramState {
-  if (state.certainty === "unknown" && state.uncertaintyReason === reason) return state;
+export function invalidatePanelProgram(
+  state: PanelProgramState,
+  reason: string,
+): PanelProgramState {
+  if (state.certainty === "unknown" && state.uncertaintyReason === reason)
+    return state;
   return { ...state, certainty: "unknown", uncertaintyReason: reason };
 }
 
@@ -357,9 +387,11 @@ export interface InvestigationOrchestration {
 
 export function emptyOrchestration(): InvestigationOrchestration {
   return {
-    experiments: [], transfers: [],
+    experiments: [],
+    transfers: [],
     panelProgram: UNKNOWN_PANEL_PROGRAM,
-    reopened: [], recommendationTrail: [],
+    reopened: [],
+    recommendationTrail: [],
     cycleVerdict: { cycling: false, testIds: [], detail: null },
   };
 }
@@ -370,17 +402,27 @@ export function emptyOrchestration(): InvestigationOrchestration {
  * is physically on a panel does not survive a restart, an import, or a device
  * change, because nothing in this session observed it.
  */
-export function demoteOrchestration(orchestration: InvestigationOrchestration, reason: string): InvestigationOrchestration {
-  return { ...orchestration, panelProgram: invalidatePanelProgram(orchestration.panelProgram, reason) };
+export function demoteOrchestration(
+  orchestration: InvestigationOrchestration,
+  reason: string,
+): InvestigationOrchestration {
+  return {
+    ...orchestration,
+    panelProgram: invalidatePanelProgram(orchestration.panelProgram, reason),
+  };
 }
 
 export function newId(prefix: string): string {
-  const value = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  const value =
+    globalThis.crypto?.randomUUID?.() ??
+    `${Date.now()}-${Math.random().toString(16).slice(2)}`;
   return `${prefix}:${value}`;
 }
 
 /** Attempts that produced usable observations. */
-export function validExperimentAttempts(run: ExperimentRun): readonly ExperimentAttempt[] {
+export function validExperimentAttempts(
+  run: ExperimentRun,
+): readonly ExperimentAttempt[] {
   return run.attempts.filter((attempt) => attempt.validity === "valid");
 }
 
@@ -409,15 +451,26 @@ export interface TransferClassification {
   readonly unclassifiedDuplicates: number;
 }
 
-export function classifyTransfers(transfers: readonly TransferRecord[]): TransferClassification {
+export function classifyTransfers(
+  transfers: readonly TransferRecord[],
+): TransferClassification {
   const byReason = Object.fromEntries(
-    (Object.keys(TRANSFER_REASON_LABELS) as TransferReason[]).map((reason) => [reason, 0]),
+    (Object.keys(TRANSFER_REASON_LABELS) as TransferReason[]).map((reason) => [
+      reason,
+      0,
+    ]),
   ) as Record<TransferReason, number>;
-  const groups = new Map<string, { testId: string; crc: string | null; transfers: TransferRecord[] }>();
+  const groups = new Map<
+    string,
+    { testId: string; crc: string | null; transfers: TransferRecord[] }
+  >();
   for (const transfer of transfers) {
     byReason[transfer.reason] += 1;
-    const group = groups.get(transfer.fingerprint.key)
-      ?? { testId: transfer.fingerprint.testId, crc: transfer.fingerprint.programCrc32, transfers: [] };
+    const group = groups.get(transfer.fingerprint.key) ?? {
+      testId: transfer.fingerprint.testId,
+      crc: transfer.fingerprint.programCrc32,
+      transfers: [],
+    };
     group.transfers.push(transfer);
     groups.set(transfer.fingerprint.key, group);
   }
@@ -428,23 +481,30 @@ export function classifyTransfers(transfers: readonly TransferRecord[]): Transfe
       testId: group.testId,
       programCrc32: group.crc,
       transfers: group.transfers.length,
-      byReason: group.transfers.reduce<Record<string, number>>((totals, transfer) => {
-        totals[transfer.reason] = (totals[transfer.reason] ?? 0) + 1;
-        return totals;
-      }, {}),
+      byReason: group.transfers.reduce<Record<string, number>>(
+        (totals, transfer) => {
+          totals[transfer.reason] = (totals[transfer.reason] ?? 0) + 1;
+          return totals;
+        },
+        {},
+      ),
     }));
   // A repeat is only unexplained when it claims to be an initial run or a
   // controlled variant of an execution that already happened — those reasons
   // assert novelty the bytes contradict. A transmission that FAILED asserts
   // nothing: the next initial attempt is genuinely the first that landed.
   const unclassified = [...groups.values()].reduce((total, group) => {
-    const novelClaims = group.transfers.filter((transfer) => !isRepeatTransfer(transfer.reason) && transfer.failureReason === null).length;
+    const novelClaims = group.transfers.filter(
+      (transfer) =>
+        !isRepeatTransfer(transfer.reason) && transfer.failureReason === null,
+    ).length;
     return total + Math.max(0, novelClaims - 1);
   }, 0);
   return {
     total: transfers.length,
     byReason,
-    failed: transfers.filter((transfer) => transfer.failureReason !== null).length,
+    failed: transfers.filter((transfer) => transfer.failureReason !== null)
+      .length,
     repeatedExecutions: repeated,
     unclassifiedDuplicates: unclassified,
   };

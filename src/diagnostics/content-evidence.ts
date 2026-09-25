@@ -8,7 +8,8 @@ export interface ContentCompilationRecord {
   readonly id: string;
   readonly createdAt: string;
   readonly operation: string;
-  readonly contentType: "graffiti" | "animation" | "gif" | "text" | "frame-border";
+  readonly contentType:
+    "graffiti" | "animation" | "gif" | "text" | "frame-border";
   readonly profileId: string;
   readonly width: number;
   readonly height: number;
@@ -30,6 +31,8 @@ export interface ContentCompilationRecord {
 }
 
 export function contentCompilationId(): string {
-  const value = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  const value =
+    globalThis.crypto?.randomUUID?.() ??
+    `${Date.now()}-${Math.random().toString(16).slice(2)}`;
   return `compilation:${value}`;
 }

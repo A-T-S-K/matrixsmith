@@ -77,8 +77,13 @@ export interface CorePlanProgress {
  * "this path does not work" advances the investigation exactly as much as
  * "it does", and treating it as unfinished is what produced the endless loop.
  */
-function stepSatisfied(step: CorePlanStep, evidence: readonly ClaimEvidence[], completedTestIds: ReadonlySet<string>): boolean {
-  if (step.satisfiedBy.length === 0) return step.testIds.some((id) => completedTestIds.has(id));
+function stepSatisfied(
+  step: CorePlanStep,
+  evidence: readonly ClaimEvidence[],
+  completedTestIds: ReadonlySet<string>,
+): boolean {
+  if (step.satisfiedBy.length === 0)
+    return step.testIds.some((id) => completedTestIds.has(id));
   return step.satisfiedBy.every((claimId) => {
     const trust = operationalTrust(claimId, evidence);
     return trust.trusted || trust.trustedStatus === "rejected";
@@ -95,13 +100,25 @@ export function evaluateCorePlan(
   let currentAssigned = false;
   for (const step of plan.steps) {
     const skipReason = step.skipWhen?.(evidence) ?? null;
-    if (skipReason !== null) { statuses.push({ step, state: "skipped", skipReason }); continue; }
-    if (stepSatisfied(step, evidence, completedTestIds)) { statuses.push({ step, state: "complete", skipReason: null }); continue; }
-    if (!currentAssigned) { statuses.push({ step, state: "current", skipReason: null }); currentAssigned = true; continue; }
+    if (skipReason !== null) {
+      statuses.push({ step, state: "skipped", skipReason });
+      continue;
+    }
+    if (stepSatisfied(step, evidence, completedTestIds)) {
+      statuses.push({ step, state: "complete", skipReason: null });
+      continue;
+    }
+    if (!currentAssigned) {
+      statuses.push({ step, state: "current", skipReason: null });
+      currentAssigned = true;
+      continue;
+    }
     statuses.push({ step, state: "pending", skipReason: null });
   }
   const skipped = statuses.filter((entry) => entry.state === "skipped").length;
-  const completed = statuses.filter((entry) => entry.state === "complete").length;
+  const completed = statuses.filter(
+    (entry) => entry.state === "complete",
+  ).length;
   // The denominator is every slot in the plan, always. A skipped milestone
   // keeps its ordinal and is shown as skipped; it does not leave the count.
   // Completion is "every slot resolved", where a skipped slot is resolved —
@@ -109,7 +126,12 @@ export function evaluateCorePlan(
   const total = statuses.length;
   const resolved = completed + skipped;
   return {
-    plan, steps: statuses, total, completed, skipped, resolved,
+    plan,
+    steps: statuses,
+    total,
+    completed,
+    skipped,
+    resolved,
     current: statuses.find((entry) => entry.state === "current") ?? null,
     complete: resolved >= total,
   };
@@ -124,12 +146,19 @@ export function evaluateCorePlan(
  * milestone that merely mentions the test would tell a user they are on
  * "Test 1 of 6" while the plan has already moved past it.
  */
-export function stepForTest(plan: CorePlan | null, testId: string, progress?: CorePlanProgress | null): CorePlanStep | null {
-  const candidates = plan?.steps.filter((step) => step.testIds.includes(testId)) ?? [];
+export function stepForTest(
+  plan: CorePlan | null,
+  testId: string,
+  progress?: CorePlanProgress | null,
+): CorePlanStep | null {
+  const candidates =
+    plan?.steps.filter((step) => step.testIds.includes(testId)) ?? [];
   if (candidates.length === 0) return null;
   if (progress) {
     const outstanding = candidates.find((step) => {
-      const state = progress.steps.find((entry) => entry.step.id === step.id)?.state;
+      const state = progress.steps.find(
+        (entry) => entry.step.id === step.id,
+      )?.state;
       return state === "current" || state === "pending";
     });
     if (outstanding) return outstanding;
@@ -145,6 +174,12 @@ export function stepForTest(plan: CorePlan | null, testId: string, progress?: Co
  * Test 5 mid-investigation, which is precisely what stable numbering exists
  * to prevent.
  */
-export function displayPosition(progress: CorePlanProgress, stepId: string): number | null {
-  return progress.steps.find((entry) => entry.step.id === stepId)?.step.ordinal ?? null;
+export function displayPosition(
+  progress: CorePlanProgress,
+  stepId: string,
+): number | null {
+  return (
+    progress.steps.find((entry) => entry.step.id === stepId)?.step.ordinal ??
+    null
+  );
 }

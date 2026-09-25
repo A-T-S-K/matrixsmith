@@ -1,7 +1,8 @@
+import { createPresentationStore } from "../helpers/presentation-fixture";
 import { describe, expect, it } from "vitest";
-import { MatrixController } from "../../src/app/controller";
+import { ApplicationRuntime } from "../../src/application/runtime";
 import { TraceRecorder } from "../../src/diagnostics/trace";
-import { MatrixStore } from "../../src/ui/store";
+import { PresentationStore } from "../../src/presentation/store";
 import type { DeviceFingerprint } from "../../src/core/device";
 import { knownIledHatFingerprint } from "../helpers/fixtures";
 import { ScriptedCoolLedUxDevice } from "../helpers/scripted-device";
@@ -22,25 +23,40 @@ function secondPhysicalDevice(): DeviceFingerprint {
   return { ...knownIledHatFingerprint(), browserDeviceId: "fixture-device-2" };
 }
 
-async function connectedStore(fingerprint = knownIledHatFingerprint()): Promise<{ store: MatrixStore; transport: ScriptedCoolLedUxDevice }> {
+async function connectedStore(
+  fingerprint = knownIledHatFingerprint(),
+): Promise<{ store: PresentationStore; transport: ScriptedCoolLedUxDevice }> {
   const transport = new ScriptedCoolLedUxDevice(fingerprint);
-  const store = new MatrixStore(new MatrixController(transport, new TraceRecorder()), transport);
+  const store = createPresentationStore(
+    new ApplicationRuntime(transport, new TraceRecorder()),
+    transport,
+  );
   await store.connect();
   await store.identify();
   return { store, transport };
 }
 
-const flow = (store: MatrixStore) => store.getSnapshot().guidedFlow!;
+const flow = (store: PresentationStore) => store.getSnapshot().guidedFlow!;
 
-function answerRemaining(store: MatrixStore): void {
+function answerRemaining(store: PresentationStore): void {
   for (const step of flow(store).steps) {
-    if (step.spec.kind === "boolean") store.setGuidedObservation({ kind: "boolean", fieldId: step.spec.id, value: "yes" });
-    if (step.spec.kind === "choice") store.setGuidedObservation({ kind: "choice", fieldId: step.spec.id, optionId: step.spec.options[0]!.id });
+    if (step.spec.kind === "boolean")
+      store.setGuidedObservation({
+        kind: "boolean",
+        fieldId: step.spec.id,
+        value: "yes",
+      });
+    if (step.spec.kind === "choice")
+      store.setGuidedObservation({
+        kind: "choice",
+        fieldId: step.spec.id,
+        optionId: step.spec.options[0]!.id,
+      });
   }
 }
 
 /** Run the baseline timing test through to a "rendered then moved" result. */
-async function runBaselineMoved(store: MatrixStore): Promise<void> {
+async function runBaselineMoved(store: PresentationStore): Promise<void> {
   store.startGuidedTest("coolledux-graffiti-timing");
   await store.confirmGuidedTransfer();
   store.recordGuidedTimeline("event");
@@ -76,7 +92,8 @@ describe("orchestration belongs to the investigation, not the controller", () =>
   it("keeps the detached investigation's orchestration with that investigation", async () => {
     const { store, transport } = await connectedStore();
     await runBaselineMoved(store);
-    const experimentCount = store.getSnapshot().orchestration.experiments.length;
+    const experimentCount =
+      store.getSnapshot().orchestration.experiments.length;
 
     transport.fingerprint = secondPhysicalDevice();
     store.controller.applyFingerprint(secondPhysicalDevice(), "live");
@@ -102,9 +119,13 @@ describe("orchestration belongs to the investigation, not the controller", () =>
 
     const after = store.getSnapshot().orchestration;
     expect(store.controller.investigation?.id).toBe(investigationId);
-    expect(after.experiments.map((run) => run.experimentRunId)).toEqual(before.experiments.map((run) => run.experimentRunId));
+    expect(after.experiments.map((run) => run.experimentRunId)).toEqual(
+      before.experiments.map((run) => run.experimentRunId),
+    );
     expect(after.transfers).toHaveLength(before.transfers.length);
-    expect(after.recommendationTrail).toHaveLength(before.recommendationTrail.length);
+    expect(after.recommendationTrail).toHaveLength(
+      before.recommendationTrail.length,
+    );
     // Continuity of history is not continuity of the panel: nothing observed
     // the display across the disconnect.
     expect(after.panelProgram.certainty).toBe("unknown");
@@ -113,9 +134,20 @@ describe("orchestration belongs to the investigation, not the controller", () =>
 
 describe("execution fingerprints identify a physical device", () => {
   it("separates two browser device ids that share a profile", () => {
-    const shared = { testId: "t", diagnosticId: "d", parameters: { stayTime: 3 }, profileId: "iledhat-31ae-32x16" };
-    const a = buildExecutionFingerprint({ ...shared, physicalDeviceKey: "device-a" });
-    const b = buildExecutionFingerprint({ ...shared, physicalDeviceKey: "device-b" });
+    const shared = {
+      testId: "t",
+      diagnosticId: "d",
+      parameters: { stayTime: 3 },
+      profileId: "iledhat-31ae-32x16",
+    };
+    const a = buildExecutionFingerprint({
+      ...shared,
+      physicalDeviceKey: "device-a",
+    });
+    const b = buildExecutionFingerprint({
+      ...shared,
+      physicalDeviceKey: "device-b",
+    });
     expect(a.key).not.toBe(b.key);
     expect(a.deviceIdentityBasis).toBe("browser-authorized-device");
     // The profile is recorded, but it is not what makes the identity.
@@ -123,21 +155,31 @@ describe("execution fingerprints identify a physical device", () => {
   });
 
   it("never derives physical identity from the profile alone", () => {
-    const bare = buildExecutionFingerprint({ testId: "t", diagnosticId: "d", profileId: "iledhat-31ae-32x16" });
+    const bare = buildExecutionFingerprint({
+      testId: "t",
+      diagnosticId: "d",
+      profileId: "iledhat-31ae-32x16",
+    });
     expect(bare.physicalDeviceKey).toBeNull();
     expect(bare.deviceIdentityBasis).toBe("unidentified");
     expect(bare.key).not.toContain("iledhat-31ae-32x16");
   });
 
   it("labels a fingerprint-shape identity as the weaker thing it is", () => {
-    const shape = buildExecutionFingerprint({ testId: "t", diagnosticId: "d", fingerprintShapeKey: "shape-key" });
+    const shape = buildExecutionFingerprint({
+      testId: "t",
+      diagnosticId: "d",
+      fingerprintShapeKey: "shape-key",
+    });
     expect(shape.deviceIdentityBasis).toBe("fingerprint-shape");
     expect(shape.physicalDeviceKey).toBeNull();
   });
 
   it("uses the browser-authorized device id in a live session", async () => {
     const { store } = await connectedStore();
-    const fingerprint = store.controller.guidedExecutionFingerprint("coolledux-graffiti-timing");
+    const fingerprint = store.controller.guidedExecutionFingerprint(
+      "coolledux-graffiti-timing",
+    );
     expect(fingerprint.physicalDeviceKey).toBe("fixture-device");
     expect(fingerprint.deviceIdentityBasis).toBe("browser-authorized-device");
   }, 30000);
@@ -145,8 +187,12 @@ describe("execution fingerprints identify a physical device", () => {
   it("gives two identical-model devices different execution identities", async () => {
     const { store: storeA } = await connectedStore();
     const { store: storeB } = await connectedStore(secondPhysicalDevice());
-    const a = storeA.controller.guidedExecutionFingerprint("coolledux-graffiti-timing");
-    const b = storeB.controller.guidedExecutionFingerprint("coolledux-graffiti-timing");
+    const a = storeA.controller.guidedExecutionFingerprint(
+      "coolledux-graffiti-timing",
+    );
+    const b = storeB.controller.guidedExecutionFingerprint(
+      "coolledux-graffiti-timing",
+    );
     expect(a.profileId).toBe(b.profileId);
     expect(a.key).not.toBe(b.key);
   }, 30000);
@@ -168,10 +214,17 @@ describe("panel program identity tracks every persistent write", () => {
     store.startGuidedTest("coolledux-graffiti-timing");
     await store.confirmGuidedTransfer();
     const run = store.controller.experiments.at(-1)!;
-    const attempt = store.controller.beginAttempt(run.experimentRunId, "initial-experiment");
-    await expect(store.controller.runGuidedTestTransfer("coolledux-graffiti-timing", {
-      confirmedConsequence: true, reason: "initial-experiment", attemptId: attempt.attemptId,
-    })).rejects.toThrow(/already showing/u);
+    const attempt = store.controller.beginAttempt(
+      run.experimentRunId,
+      "initial-experiment",
+    );
+    await expect(
+      store.controller.runGuidedTestTransfer("coolledux-graffiti-timing", {
+        confirmedConsequence: true,
+        reason: "initial-experiment",
+        attemptId: attempt.attemptId,
+      }),
+    ).rejects.toThrow(/already showing/u);
   }, 30000);
 
   it("allows the initial transfer again once ordinary content replaced it", async () => {
@@ -182,29 +235,30 @@ describe("panel program identity tracks every persistent write", () => {
 
     // The user sends an image from Create. The diagnostic is gone from the
     // panel, so re-running it is a legitimate initial experiment again.
-    const imagePlan = store.controller.plan({ type: "ShowFrame", frame: framebuffer(store) });
-    await store.controller.sendPersistentContent(imagePlan, { confirmedConsequence: true });
+    const imagePlan = store.controller.plan({
+      type: "ShowFrame",
+      frame: framebuffer(store),
+    });
+    await store.controller.sendPersistentContent(imagePlan, {
+      confirmedConsequence: true,
+    });
     const replaced = store.controller.panelProgram();
     expect(replaced.certainty).toBe("known-replaced");
     expect(replaced.kind).toBe("ordinary-content");
     expect(replaced.fingerprint).toBeNull();
 
     const run = store.controller.experiments.at(-1)!;
-    const attempt = store.controller.beginAttempt(run.experimentRunId, "initial-experiment");
-    await expect(store.controller.runGuidedTestTransfer("coolledux-graffiti-timing", {
-      confirmedConsequence: true, reason: "initial-experiment", attemptId: attempt.attemptId,
-    })).resolves.toBeTruthy();
-  }, 30000);
-
-  it("treats a legacy validation send as replacing the guided diagnostic", async () => {
-    const { store } = await connectedStore();
-    store.startGuidedTest("coolledux-graffiti-timing");
-    await store.confirmGuidedTransfer();
-    await store.controller.runContentValidation("coolledux-validate-static-frame", { confirmedConsequence: true });
-    const panel = store.controller.panelProgram();
-    expect(panel.kind).toBe("validation");
-    expect(panel.certainty).toBe("known-replaced");
-    expect(panel.fingerprint).toBeNull();
+    const attempt = store.controller.beginAttempt(
+      run.experimentRunId,
+      "initial-experiment",
+    );
+    await expect(
+      store.controller.runGuidedTestTransfer("coolledux-graffiti-timing", {
+        confirmedConsequence: true,
+        reason: "initial-experiment",
+        attemptId: attempt.attemptId,
+      }),
+    ).resolves.toBeTruthy();
   }, 30000);
 
   it("loses panel certainty when a persistent write fails part-way", async () => {
@@ -237,7 +291,11 @@ describe("attempt lifecycle", () => {
 
     const run = store.controller.experiments.at(-1)!;
     expect(run.attempts).toHaveLength(1);
-    expect(run.attempts[0]).toMatchObject({ attemptNumber: 1, validity: "invalid", failureKind: "transfer-failed" });
+    expect(run.attempts[0]).toMatchObject({
+      attemptNumber: 1,
+      validity: "invalid",
+      failureKind: "transfer-failed",
+    });
     expect(store.controller.inProgressAttempts()).toHaveLength(0);
     // The failed transmission is preserved with whatever it managed to send,
     // so a report can say the display may have been partly written.
@@ -255,9 +313,13 @@ describe("attempt lifecycle", () => {
     await store.confirmGuidedTransfer();
 
     const run = store.controller.experiments.at(-1)!;
-    expect(run.attempts.map((attempt) => attempt.attemptNumber)).toEqual([1, 2]);
+    expect(run.attempts.map((attempt) => attempt.attemptNumber)).toEqual([
+      1, 2,
+    ]);
     expect(run.attempts[1]!.validity).toBe("in-progress");
-    expect(flow(store).attempts.map((attempt) => attempt.attemptNumber)).toEqual([1, 2]);
+    expect(
+      flow(store).attempts.map((attempt) => attempt.attemptNumber),
+    ).toEqual([1, 2]);
     expect(flow(store).attempts[0]!.validity).toBe("transfer-failed");
   }, 30000);
 
@@ -282,13 +344,25 @@ describe("attempt lifecycle", () => {
     store.submitGuidedObservations();
 
     const run = store.controller.experiments.at(-1)!;
-    expect(run.attempts.map((attempt) => attempt.attemptNumber)).toEqual([1, 2, 3]);
-    expect(run.attempts.map((attempt) => attempt.failureKind)).toEqual(["transfer-failed", "human-missed", null]);
-    expect(run.attempts.map((attempt) => attempt.validity)).toEqual(["invalid", "invalid", "valid"]);
+    expect(run.attempts.map((attempt) => attempt.attemptNumber)).toEqual([
+      1, 2, 3,
+    ]);
+    expect(run.attempts.map((attempt) => attempt.failureKind)).toEqual([
+      "transfer-failed",
+      "human-missed",
+      null,
+    ]);
+    expect(run.attempts.map((attempt) => attempt.validity)).toEqual([
+      "invalid",
+      "invalid",
+      "valid",
+    ]);
 
     const completed = store.controller.investigation!.completedTests.at(-1)!;
     expect(completed.attempts).toHaveLength(3);
-    expect(completed.attempts!.map((attempt) => attempt.attemptNumber)).toEqual([1, 2, 3]);
+    expect(completed.attempts!.map((attempt) => attempt.attemptNumber)).toEqual(
+      [1, 2, 3],
+    );
     expect(completed.attempts![0]!.validity).toBe("transfer-failed");
     expect(completed.attempts![1]!.validity).toBe("missed-t1");
     expect(completed.attempts![2]!.validity).toBe("valid");
@@ -313,17 +387,21 @@ describe("attempt lifecycle", () => {
 
     for (const run of store.controller.experiments) {
       // Monotonic, 1-based, never recycled.
-      expect(run.attempts.map((attempt) => attempt.attemptNumber)).toEqual(run.attempts.map((_, index) => index + 1));
+      expect(run.attempts.map((attempt) => attempt.attemptNumber)).toEqual(
+        run.attempts.map((_, index) => index + 1),
+      );
       for (const attempt of run.attempts) {
         // A nested timing record is the SAME attempt, not a parallel one.
-        if (attempt.timing) expect(attempt.timing.attemptNumber).toBe(attempt.attemptNumber);
+        if (attempt.timing)
+          expect(attempt.timing.attemptNumber).toBe(attempt.attemptNumber);
       }
     }
     // The completed test's timing attempts line up 1:1 with the semantic ones.
     const run = store.controller.experiments.at(-1)!;
     const completed = store.controller.investigation!.completedTests.at(-1)!;
-    expect(completed.attempts!.map((attempt) => attempt.attemptNumber))
-      .toEqual(run.attempts.map((attempt) => attempt.attemptNumber));
+    expect(completed.attempts!.map((attempt) => attempt.attemptNumber)).toEqual(
+      run.attempts.map((attempt) => attempt.attemptNumber),
+    );
   }, 30000);
 
   it("records a stopped observation without leaving an attempt in progress", async () => {
@@ -335,12 +413,15 @@ describe("attempt lifecycle", () => {
     const run = store.controller.experiments.at(-1)!;
     expect(run.resolution).toBe("abandoned");
     // Abandonment preserves the evidence that something WAS transmitted.
-    expect(store.controller.investigation!.completedTests.at(-1)!.transactionIds.length).toBeGreaterThan(0);
+    expect(
+      store.controller.investigation!.completedTests.at(-1)!.transactionIds
+        .length,
+    ).toBeGreaterThan(0);
   }, 30000);
 });
 
 /** A minimal frame for an ordinary persistent content send. */
-function framebuffer(store: MatrixStore): Framebuffer {
+function framebuffer(store: PresentationStore): Framebuffer {
   const profile = store.controller.session.profile!;
   const frame = new Framebuffer(profile.width, profile.height);
   frame.setPixel(0, 0, 255, 255, 255);

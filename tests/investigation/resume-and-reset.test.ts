@@ -1,11 +1,15 @@
+import { createPresentationStore } from "../helpers/presentation-fixture";
 import { describe, expect, it } from "vitest";
-import { MatrixController } from "../../src/app/controller";
+import { ApplicationRuntime } from "../../src/application/runtime";
 import { TraceRecorder } from "../../src/diagnostics/trace";
-import { MatrixStore } from "../../src/ui/store";
+import { PresentationStore } from "../../src/presentation/store";
 import type { DeviceFingerprint } from "../../src/core/device";
 import { knownIledHatFingerprint } from "../helpers/fixtures";
 import { ScriptedCoolLedUxDevice } from "../helpers/scripted-device";
-import { saveInvestigation, toHistoricalInvestigation } from "../../src/storage/investigations";
+import {
+  saveInvestigation,
+  toHistoricalInvestigation,
+} from "../../src/storage/investigations";
 import type { KeyValueStorage } from "../../src/storage/repository";
 import { loadInvestigationHistory } from "../../src/storage/investigations";
 
@@ -22,8 +26,12 @@ function memoryStorage(): KeyValueStorage {
   const map = new Map<string, string>();
   return {
     getItem: (key) => map.get(key) ?? null,
-    setItem: (key, value) => { map.set(key, value); },
-    removeItem: (key) => { map.delete(key); },
+    setItem: (key, value) => {
+      map.set(key, value);
+    },
+    removeItem: (key) => {
+      map.delete(key);
+    },
   };
 }
 
@@ -31,25 +39,43 @@ function secondPhysicalDevice(): DeviceFingerprint {
   return { ...knownIledHatFingerprint(), browserDeviceId: "fixture-device-2" };
 }
 
-async function connectedStore(fingerprint = knownIledHatFingerprint()): Promise<{ store: MatrixStore; transport: ScriptedCoolLedUxDevice }> {
+async function connectedStore(
+  fingerprint = knownIledHatFingerprint(),
+): Promise<{ store: PresentationStore; transport: ScriptedCoolLedUxDevice }> {
   const transport = new ScriptedCoolLedUxDevice(fingerprint);
-  const store = new MatrixStore(new MatrixController(transport, new TraceRecorder()), transport);
+  const store = createPresentationStore(
+    new ApplicationRuntime(transport, new TraceRecorder()),
+    transport,
+  );
   await store.connect();
   await store.identify();
   return { store, transport };
 }
 
-const flow = (store: MatrixStore) => store.getSnapshot().guidedFlow!;
+const flow = (store: PresentationStore) => store.getSnapshot().guidedFlow!;
 
-function answerRemaining(store: MatrixStore): void {
+function answerRemaining(store: PresentationStore): void {
   for (const step of flow(store).steps) {
-    if (step.spec.kind === "boolean") store.setGuidedObservation({ kind: "boolean", fieldId: step.spec.id, value: "yes" });
-    if (step.spec.kind === "choice") store.setGuidedObservation({ kind: "choice", fieldId: step.spec.id, optionId: step.spec.options[0]!.id });
+    if (step.spec.kind === "boolean")
+      store.setGuidedObservation({
+        kind: "boolean",
+        fieldId: step.spec.id,
+        value: "yes",
+      });
+    if (step.spec.kind === "choice")
+      store.setGuidedObservation({
+        kind: "choice",
+        fieldId: step.spec.id,
+        optionId: step.spec.options[0]!.id,
+      });
   }
 }
 
 /** Attempt 1 misses T1; attempt 2 measures the movement onset cleanly. */
-async function runMissedThenValid(store: MatrixStore, testId: string): Promise<void> {
+async function runMissedThenValid(
+  store: PresentationStore,
+  testId: string,
+): Promise<void> {
   store.startGuidedTest(testId);
   await store.confirmGuidedTransfer();
   store.markObservationMissed("missed-t1");
@@ -75,17 +101,28 @@ describe("resuming an investigation after a restart", () => {
 
     const completed = resumed.controller.investigation!.completedTests.at(-1)!;
     expect(completed.attempts).toHaveLength(2);
-    expect(completed.attempts![0]).toMatchObject({ attemptNumber: 1, validity: "missed-t1" });
-    expect(completed.attempts![1]).toMatchObject({ attemptNumber: 2, validity: "valid" });
+    expect(completed.attempts![0]).toMatchObject({
+      attemptNumber: 1,
+      validity: "missed-t1",
+    });
+    expect(completed.attempts![1]).toMatchObject({
+      attemptNumber: 2,
+      validity: "valid",
+    });
     // The invalid attempt still establishes nothing.
     expect(completed.attempts![0]!.values).toEqual([]);
 
     const run = resumed.controller.experiments.at(-1)!;
-    expect(run.attempts.map((attempt) => attempt.attemptNumber)).toEqual([1, 2]);
-    expect(run.attempts.map((attempt) => attempt.reason))
-      .toEqual(["initial-experiment", "explicit-retry-missed-observation"]);
-    expect(resumed.controller.transfers.map((transfer) => transfer.reason))
-      .toEqual(["initial-experiment", "explicit-retry-missed-observation"]);
+    expect(run.attempts.map((attempt) => attempt.attemptNumber)).toEqual([
+      1, 2,
+    ]);
+    expect(run.attempts.map((attempt) => attempt.reason)).toEqual([
+      "initial-experiment",
+      "explicit-retry-missed-observation",
+    ]);
+    expect(
+      resumed.controller.transfers.map((transfer) => transfer.reason),
+    ).toEqual(["initial-experiment", "explicit-retry-missed-observation"]);
   }, 60000);
 
   it("puts the attempts, the transfer reasons and stable numbering in the report", async () => {
@@ -95,7 +132,11 @@ describe("resuming an investigation after a restart", () => {
     saveInvestigation(store.controller.investigation!, storage);
 
     const { store: resumed } = await connectedStore();
-    resumed.controller.adoptInvestigation(toHistoricalInvestigation(loadInvestigationHistory(storage)[0]!.investigation));
+    resumed.controller.adoptInvestigation(
+      toHistoricalInvestigation(
+        loadInvestigationHistory(storage)[0]!.investigation,
+      ),
+    );
     const report = resumed.controller.investigationReportMarkdown();
 
     expect(report).toContain("## Experiments and attempts");
@@ -120,7 +161,11 @@ describe("resuming an investigation after a restart", () => {
     saveInvestigation(store.controller.investigation!, storage);
 
     const { store: resumed } = await connectedStore();
-    resumed.controller.adoptInvestigation(toHistoricalInvestigation(loadInvestigationHistory(storage)[0]!.investigation));
+    resumed.controller.adoptInvestigation(
+      toHistoricalInvestigation(
+        loadInvestigationHistory(storage)[0]!.investigation,
+      ),
+    );
     const report = resumed.controller.investigationReportMarkdown();
 
     expect(report).toContain("## Display program state");
@@ -162,8 +207,13 @@ describe("session reset boundaries", () => {
     expect(store.controller.reopenedTestIds()).toEqual([]);
     expect(store.controller.panelProgram().certainty).toBe("unknown");
     // A fresh investigation on the new device starts genuinely empty.
-    store.controller.startInvestigation({ kind: "develop", description: "second unit" });
-    expect(store.controller.investigation!.orchestration.experiments).toEqual([]);
+    store.controller.startInvestigation({
+      kind: "develop",
+      description: "second unit",
+    });
+    expect(store.controller.investigation!.orchestration.experiments).toEqual(
+      [],
+    );
     expect(store.controller.investigation!.completedTests).toEqual([]);
   }, 60000);
 
@@ -172,7 +222,11 @@ describe("session reset boundaries", () => {
     await runMissedThenValid(store, "coolledux-graffiti-timing");
     const previous = store.controller.investigation!;
     store.controller.stopActiveInvestigation();
-    store.controller.startInvestigation({ kind: "troubleshoot", symptomId: "colors-look-wrong", description: "fresh start" });
+    store.controller.startInvestigation({
+      kind: "troubleshoot",
+      symptomId: "colors-look-wrong",
+      description: "fresh start",
+    });
 
     const current = store.controller.investigation!;
     expect(current.id).not.toBe(previous.id);
@@ -198,7 +252,11 @@ describe("session reset boundaries", () => {
     expect(imported.orchestration.experiments.length).toBeGreaterThan(0);
     // …with no claim about a physical panel and no current-session evidence.
     expect(imported.orchestration.panelProgram.certainty).toBe("unknown");
-    expect(imported.claimEvidence.every((entry) => entry.scope === "imported-external")).toBe(true);
+    expect(
+      imported.claimEvidence.every(
+        (entry) => entry.scope === "imported-external",
+      ),
+    ).toBe(true);
     expect(importer.controller.session.source).toBe("imported");
   }, 60000);
 
@@ -223,7 +281,11 @@ describe("session reset boundaries", () => {
     expect(adopted.deviceBinding?.browserDeviceId).toBe("fixture-device-2");
     // The evidence itself is kept, as demoted history.
     expect(adopted.completedTests.length).toBeGreaterThan(0);
-    expect(adopted.claimEvidence.every((entry) => entry.scope === "previous-local-session")).toBe(true);
+    expect(
+      adopted.claimEvidence.every(
+        (entry) => entry.scope === "previous-local-session",
+      ),
+    ).toBe(true);
     // A new experiment on device B is numbered from scratch and carries B's
     // own execution identity.
     const run = deviceB.controller.beginExperiment("coolledux-graffiti-timing");
@@ -238,11 +300,19 @@ describe("session reset boundaries", () => {
     saveInvestigation(store.controller.investigation!, storage);
 
     const { store: restarted } = await connectedStore();
-    restarted.controller.adoptInvestigation(toHistoricalInvestigation(loadInvestigationHistory(storage)[0]!.investigation));
+    restarted.controller.adoptInvestigation(
+      toHistoricalInvestigation(
+        loadInvestigationHistory(storage)[0]!.investigation,
+      ),
+    );
     expect(restarted.controller.experiments.length).toBeGreaterThan(0);
     expect(restarted.controller.transfers.length).toBeGreaterThan(0);
     expect(restarted.controller.panelProgram().certainty).toBe("unknown");
-    expect(restarted.controller.investigation!.claimEvidence.every((entry) => entry.scope === "previous-local-session")).toBe(true);
+    expect(
+      restarted.controller.investigation!.claimEvidence.every(
+        (entry) => entry.scope === "previous-local-session",
+      ),
+    ).toBe(true);
   }, 60000);
 
   it("F. forgetting local history removes the orchestration record with it", async () => {
@@ -250,8 +320,11 @@ describe("session reset boundaries", () => {
     const { store } = await connectedStore();
     await runMissedThenValid(store, "coolledux-graffiti-timing");
     saveInvestigation(store.controller.investigation!, storage);
-    expect(loadInvestigationHistory(storage)[0]!.investigation.orchestration.experiments.length).toBeGreaterThan(0);
-    storage.removeItem("matrixsmith:v1:investigations");
+    expect(
+      loadInvestigationHistory(storage)[0]!.investigation.orchestration
+        .experiments.length,
+    ).toBeGreaterThan(0);
+    storage.removeItem("matrixsmith:v2:investigations");
     expect(loadInvestigationHistory(storage)).toEqual([]);
   }, 60000);
 });

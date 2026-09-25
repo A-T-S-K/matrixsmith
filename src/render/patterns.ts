@@ -21,26 +21,53 @@ export function orientationPattern(width = 32, height = 16): Framebuffer {
   for (let x = 0; x < width; x += 2) frame.setPixel(x, 0, 96, 0, 0);
   for (let y = 0; y < height; y += 2) frame.setPixel(0, y, 0, 0, 96);
 
-  const corner = Math.max(2, Math.min(3, Math.floor(Math.min(width, height) / 4)));
+  const corner = Math.max(
+    2,
+    Math.min(3, Math.floor(Math.min(width, height) / 4)),
+  );
   paintBlock(frame, 0, 0, corner, corner, 255, 0, 0);
   paintBlock(frame, width - corner, 0, corner, corner, 0, 255, 0);
   paintBlock(frame, 0, height - corner, corner, corner, 0, 0, 255);
-  paintBlock(frame, width - corner, height - corner, corner, corner, 255, 255, 0);
+  paintBlock(
+    frame,
+    width - corner,
+    height - corner,
+    corner,
+    corner,
+    255,
+    255,
+    0,
+  );
 
   const centerW = Math.min(4, width);
   const centerH = Math.min(2, height);
-  paintBlock(frame, Math.floor((width - centerW) / 2), Math.floor((height - centerH) / 2), centerW, centerH, 255, 255, 255);
+  paintBlock(
+    frame,
+    Math.floor((width - centerW) / 2),
+    Math.floor((height - centerH) / 2),
+    centerW,
+    centerH,
+    255,
+    255,
+    255,
+  );
   return frame;
 }
 
 /** Frame 2 of the diagnostic animation: same geometry, inverted/rotated colors. */
-export function orientationPatternInverted(width = 32, height = 16): Framebuffer {
+export function orientationPatternInverted(
+  width = 32,
+  height = 16,
+): Framebuffer {
   const frame = new Framebuffer(width, height);
   frame.clear();
   for (let x = 0; x < width; x += 2) frame.setPixel(x, 0, 0, 96, 0);
   for (let y = 0; y < height; y += 2) frame.setPixel(0, y, 96, 96, 0);
 
-  const corner = Math.max(2, Math.min(3, Math.floor(Math.min(width, height) / 4)));
+  const corner = Math.max(
+    2,
+    Math.min(3, Math.floor(Math.min(width, height) / 4)),
+  );
   paintBlock(frame, 0, 0, corner, corner, 0, 255, 0);
   paintBlock(frame, width - corner, 0, corner, corner, 255, 0, 0);
   paintBlock(frame, 0, height - corner, corner, corner, 255, 255, 0);
@@ -48,7 +75,16 @@ export function orientationPatternInverted(width = 32, height = 16): Framebuffer
 
   const centerW = Math.min(4, width);
   const centerH = Math.min(2, height);
-  paintBlock(frame, Math.floor((width - centerW) / 2), Math.floor((height - centerH) / 2), centerW, centerH, 255, 0, 255);
+  paintBlock(
+    frame,
+    Math.floor((width - centerW) / 2),
+    Math.floor((height - centerH) / 2),
+    centerW,
+    centerH,
+    255,
+    0,
+    255,
+  );
   return frame;
 }
 
@@ -59,13 +95,26 @@ export function orientationPatternInverted(width = 32, height = 16): Framebuffer
  */
 export function diagnosticAnimation(width = 32, height = 16): FrameSequence {
   return new FrameSequence(
-    [orientationPattern(width, height), orientationPatternInverted(width, height)],
+    [
+      orientationPattern(width, height),
+      orientationPatternInverted(width, height),
+    ],
     [{ milliseconds: 1000 }, { milliseconds: 1000 }],
   );
 }
 
-function paintBlock(frame: Framebuffer, startX: number, startY: number, blockWidth: number, blockHeight: number, r: number, g: number, b: number): void {
+function paintBlock(
+  frame: Framebuffer,
+  startX: number,
+  startY: number,
+  blockWidth: number,
+  blockHeight: number,
+  r: number,
+  g: number,
+  b: number,
+): void {
   for (let y = startY; y < startY + blockHeight; y += 1) {
-    for (let x = startX; x < startX + blockWidth; x += 1) frame.setPixel(x, y, r, g, b);
+    for (let x = startX; x < startX + blockWidth; x += 1)
+      frame.setPixel(x, y, r, g, b);
   }
 }

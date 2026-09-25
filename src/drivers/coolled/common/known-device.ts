@@ -15,26 +15,41 @@ import type { DriverMatch } from "../../types";
  * own signature, and the rejection carries the physical reason into the UI
  * rather than reading as an arbitrary downgrade.
  */
-export function applyKnownProfileDisposition(match: DriverMatch, fingerprint: DeviceFingerprint): DriverMatch {
+export function applyKnownProfileDisposition(
+  match: DriverMatch,
+  fingerprint: DeviceFingerprint,
+): DriverMatch {
   const known = identifyKnownProfile(fingerprint);
   // A contradicted signature ("iLedHat" with the wrong geometry, say) grants
   // nothing to anyone: the display falls back to the conservative shared-
   // transport treatment, with the disagreement recorded so it is visible.
   if (!known) return match;
   if (!known.matched) {
-    return { ...match, contradictions: [...match.contradictions, ...known.contradictions] };
+    return {
+      ...match,
+      contradictions: [...match.contradictions, ...known.contradictions],
+    };
   }
   if (known.signature.driverId === match.driverId) {
     return {
       ...match,
       score: 100,
       confidence: "exact",
-      reasons: [...match.reasons, `matches the characterized ${known.signature.profileId} profile (${known.reasons.join("; ")})`],
+      reasons: [
+        ...match.reasons,
+        `matches the characterized ${known.signature.profileId} profile (${known.reasons.join("; ")})`,
+      ],
     };
   }
   const rejection = known.signature.rejectedDrivers[match.driverId];
   if (rejection) {
-    return { ...match, score: 0, confidence: "none", reasons: [], contradictions: [...match.contradictions, rejection] };
+    return {
+      ...match,
+      score: 0,
+      confidence: "none",
+      reasons: [],
+      contradictions: [...match.contradictions, rejection],
+    };
   }
   return match;
 }

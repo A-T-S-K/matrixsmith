@@ -1,5 +1,8 @@
 import { normalizeUuid, type DeviceFingerprint } from "../core/device";
-import { COOLLED_IO_UUID, COOLLED_SERVICE_UUID } from "../drivers/coolled/common/gatt";
+import {
+  COOLLED_IO_UUID,
+  COOLLED_SERVICE_UUID,
+} from "../drivers/coolled/common/gatt";
 import { ILEDHAT_PROFILE_ID } from "./iledhat-31ae-32x16";
 
 /**
@@ -76,13 +79,18 @@ export const ILEDHAT_SIGNATURE: KnownProfileSignature = Object.freeze({
   height: 16,
   driverId: "coolledux",
   rejectedDrivers: Object.freeze({
-    coolledx: "Classic CoolLEDX brightness semantics were physically rejected on this exact profile: 0x08 returned 0x08 0xFE with no visible change, while the CoolLEDUX 0x1F query answered with structured device info.",
+    coolledx:
+      "Classic CoolLEDX brightness semantics were physically rejected on this exact profile: 0x08 returned 0x08 0xFE with no visible change, while the CoolLEDUX 0x1F query answered with structured device info.",
   }),
 });
 
-export const KNOWN_PROFILE_SIGNATURES: readonly KnownProfileSignature[] = Object.freeze([ILEDHAT_SIGNATURE]);
+export const KNOWN_PROFILE_SIGNATURES: readonly KnownProfileSignature[] =
+  Object.freeze([ILEDHAT_SIGNATURE]);
 
-export function evaluateKnownProfile(signature: KnownProfileSignature, fingerprint: DeviceFingerprint): KnownProfileVerdict {
+export function evaluateKnownProfile(
+  signature: KnownProfileSignature,
+  fingerprint: DeviceFingerprint,
+): KnownProfileVerdict {
   const reasons: string[] = [];
   const contradictions: string[] = [];
 
@@ -93,8 +101,12 @@ export function evaluateKnownProfile(signature: KnownProfileSignature, fingerpri
   }
   reasons.push(`exact observed device name "${fingerprint.name}"`);
 
-  const service = fingerprint.services.find(({ uuid }) => normalizeUuid(uuid) === signature.serviceUuid);
-  const characteristic = service?.characteristics.find(({ uuid }) => normalizeUuid(uuid) === signature.characteristicUuid);
+  const service = fingerprint.services.find(
+    ({ uuid }) => normalizeUuid(uuid) === signature.serviceUuid,
+  );
+  const characteristic = service?.characteristics.find(
+    ({ uuid }) => normalizeUuid(uuid) === signature.characteristicUuid,
+  );
   if (!service || !characteristic) {
     // Not a contradiction: the browser may not have granted the service yet.
     // It is simply not enough to recognize the profile.
@@ -102,9 +114,13 @@ export function evaluateKnownProfile(signature: KnownProfileSignature, fingerpri
   }
   const { read, notify, writeWithoutResponse } = characteristic.properties;
   if (!read || !notify || !writeWithoutResponse) {
-    contradictions.push("the FFF1 characteristic does not expose READ + NOTIFY + WRITE WITHOUT RESPONSE as the characterized profile does");
+    contradictions.push(
+      "the FFF1 characteristic does not expose READ + NOTIFY + WRITE WITHOUT RESPONSE as the characterized profile does",
+    );
   } else {
-    reasons.push("exact FFF0/FFF1 GATT shape with READ + NOTIFY + WRITE WITHOUT RESPONSE");
+    reasons.push(
+      "exact FFF0/FFF1 GATT shape with READ + NOTIFY + WRITE WITHOUT RESPONSE",
+    );
   }
 
   // Manufacturer data and geometry are corroborating when present and
@@ -112,24 +128,40 @@ export function evaluateKnownProfile(signature: KnownProfileSignature, fingerpri
   const manufacturer = fingerprint.manufacturerDataHex?.toUpperCase();
   if (manufacturer) {
     if (manufacturer.startsWith(companyPrefix(signature.companyId))) {
-      reasons.push(`observed manufacturer company field 0x${signature.companyId.toString(16).toUpperCase()}`);
+      reasons.push(
+        `observed manufacturer company field 0x${signature.companyId.toString(16).toUpperCase()}`,
+      );
     } else {
-      contradictions.push(`the observed manufacturer company field contradicts 0x${signature.companyId.toString(16).toUpperCase()}`);
+      contradictions.push(
+        `the observed manufacturer company field contradicts 0x${signature.companyId.toString(16).toUpperCase()}`,
+      );
     }
   }
   const geometry = fingerprint.manuallyConfirmedGeometry;
   if (geometry) {
-    if (geometry.width === signature.width && geometry.height === signature.height) {
+    if (
+      geometry.width === signature.width &&
+      geometry.height === signature.height
+    ) {
       reasons.push(`confirmed ${signature.width}×${signature.height} geometry`);
     } else {
-      contradictions.push(`the confirmed ${geometry.width}×${geometry.height} geometry contradicts the characterized ${signature.width}×${signature.height} profile`);
+      contradictions.push(
+        `the confirmed ${geometry.width}×${geometry.height} geometry contradicts the characterized ${signature.width}×${signature.height} profile`,
+      );
     }
   }
-  return { signature, matched: contradictions.length === 0, reasons, contradictions };
+  return {
+    signature,
+    matched: contradictions.length === 0,
+    reasons,
+    contradictions,
+  };
 }
 
 /** The known profile this fingerprint identifies, if any. */
-export function identifyKnownProfile(fingerprint: DeviceFingerprint | null | undefined): KnownProfileVerdict | null {
+export function identifyKnownProfile(
+  fingerprint: DeviceFingerprint | null | undefined,
+): KnownProfileVerdict | null {
   if (!fingerprint) return null;
   for (const signature of KNOWN_PROFILE_SIGNATURES) {
     const verdict = evaluateKnownProfile(signature, fingerprint);
@@ -139,6 +171,12 @@ export function identifyKnownProfile(fingerprint: DeviceFingerprint | null | und
 }
 
 /** Whether a fingerprint is the recognized, physically characterized profile. */
-export function matchesKnownProfile(signature: KnownProfileSignature, fingerprint: DeviceFingerprint | null | undefined): boolean {
-  return Boolean(fingerprint) && evaluateKnownProfile(signature, fingerprint!).matched;
+export function matchesKnownProfile(
+  signature: KnownProfileSignature,
+  fingerprint: DeviceFingerprint | null | undefined,
+): boolean {
+  return (
+    Boolean(fingerprint) &&
+    evaluateKnownProfile(signature, fingerprint!).matched
+  );
 }

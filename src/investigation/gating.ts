@@ -12,11 +12,33 @@ import { claimDefinition, operationalTrust } from "./claims";
 
 export type ContentPathId = "text" | "image" | "animation" | "gif";
 
-const PATH_REQUIREMENTS: Readonly<Record<ContentPathId, { readonly claims: readonly ClaimId[]; readonly label: string }>> = Object.freeze({
-  text: { claims: ["stored-program.upload", "static.strategy"], label: "Text needs a validated static-image strategy" },
-  image: { claims: ["stored-program.upload", "static.strategy"], label: "Images need a validated static-image strategy" },
-  animation: { claims: ["stored-program.upload", "animation.frames", "animation.timing", "animation.tile-sync"], label: "Animations need verified animation playback" },
-  gif: { claims: ["stored-program.upload", "gif.playback"], label: "GIF needs verified GIF playback on this device" },
+const PATH_REQUIREMENTS: Readonly<
+  Record<
+    ContentPathId,
+    { readonly claims: readonly ClaimId[]; readonly label: string }
+  >
+> = Object.freeze({
+  text: {
+    claims: ["stored-program.upload", "static.strategy"],
+    label: "Text needs a validated static-image strategy",
+  },
+  image: {
+    claims: ["stored-program.upload", "static.strategy"],
+    label: "Images need a validated static-image strategy",
+  },
+  animation: {
+    claims: [
+      "stored-program.upload",
+      "animation.frames",
+      "animation.timing",
+      "animation.tile-sync",
+    ],
+    label: "Animations need verified animation playback",
+  },
+  gif: {
+    claims: ["stored-program.upload", "gif.playback"],
+    label: "GIF needs verified GIF playback on this device",
+  },
 });
 
 export interface ContentGate {
@@ -26,18 +48,36 @@ export interface ContentGate {
   readonly missingClaims: readonly ClaimId[];
 }
 
-export function contentPathGate(path: ContentPathId, evidence: readonly ClaimEvidence[]): ContentGate {
+export function contentPathGate(
+  path: ContentPathId,
+  evidence: readonly ClaimEvidence[],
+): ContentGate {
   const requirement = PATH_REQUIREMENTS[path];
-  const missing = requirement.claims.filter((claimId) => !operationalTrust(claimId, evidence).trusted);
-  if (missing.length === 0) return { path, allowed: true, reason: "Required capabilities hold a trusted physical verification.", missingClaims: [] };
-  const labels = missing.map((claimId) => claimDefinition(claimId).label).join(", ");
+  const missing = requirement.claims.filter(
+    (claimId) => !operationalTrust(claimId, evidence).trusted,
+  );
+  if (missing.length === 0)
+    return {
+      path,
+      allowed: true,
+      reason: "Required capabilities hold a trusted physical verification.",
+      missingClaims: [],
+    };
+  const labels = missing
+    .map((claimId) => claimDefinition(claimId).label)
+    .join(", ");
   return {
-    path, allowed: false,
+    path,
+    allowed: false,
     reason: `${requirement.label}. No trusted verification on this device for: ${labels}.`,
     missingClaims: missing,
   };
 }
 
-export function allContentGates(evidence: readonly ClaimEvidence[]): readonly ContentGate[] {
-  return (Object.keys(PATH_REQUIREMENTS) as ContentPathId[]).map((path) => contentPathGate(path, evidence));
+export function allContentGates(
+  evidence: readonly ClaimEvidence[],
+): readonly ContentGate[] {
+  return (Object.keys(PATH_REQUIREMENTS) as ContentPathId[]).map((path) =>
+    contentPathGate(path, evidence),
+  );
 }

@@ -1,20 +1,46 @@
 import { describe, expect, it } from "vitest";
 import { Framebuffer } from "../../src/render/framebuffer";
 import { FrameSequence } from "../../src/render/frame-sequence";
-import { ANIMATION_OFF_COLOR, encodeFrame, offColorFor, PIXEL_OFF_COLOR, rgb444PixelColor, rgb444TextColor, rgb444TransferChannel } from "../../src/drivers/coolledux/pixels";
-import { compileAnimation, compileFrameBorder, compileGif, compileGraffitiFrame, DEFAULT_TILE_WIDTH, tileColumns } from "../../src/drivers/coolledux/content";
+import {
+  ANIMATION_OFF_COLOR,
+  encodeFrame,
+  offColorFor,
+  PIXEL_OFF_COLOR,
+  rgb444PixelColor,
+  rgb444TextColor,
+  rgb444TransferChannel,
+} from "../../src/drivers/coolledux/pixels";
+import {
+  compileAnimation,
+  compileFrameBorder,
+  compileGif,
+  compileGraffitiFrame,
+  DEFAULT_TILE_WIDTH,
+  tileColumns,
+} from "../../src/drivers/coolledux/content";
 import { crc32Custom, lzssDecompress } from "../../src/drivers/coolledux/wire";
 import conformance from "../fixtures/coolledux/conformance.json";
 
-const fromHex = (hex: string): Uint8Array => Uint8Array.from(hex.match(/../g) ?? [], (pair) => Number.parseInt(pair, 16));
-const toHex = (bytes: Uint8Array): string => [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("");
+const fromHex = (hex: string): Uint8Array =>
+  Uint8Array.from(hex.match(/../g) ?? [], (pair) => Number.parseInt(pair, 16));
+const toHex = (bytes: Uint8Array): string =>
+  [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("");
 
 function rgb(hex: string): [number, number, number] {
-  return [Number.parseInt(hex.slice(1, 3), 16), Number.parseInt(hex.slice(3, 5), 16), Number.parseInt(hex.slice(5, 7), 16)];
+  return [
+    Number.parseInt(hex.slice(1, 3), 16),
+    Number.parseInt(hex.slice(3, 5), 16),
+    Number.parseInt(hex.slice(5, 7), 16),
+  ];
 }
 
 /** The deterministic 32x16 quadrant test image shared with the reference fixture generator. */
-function quadrantColor(x: number, y: number, width = 32, height = 16): string | null {
+function quadrantColor(
+  x: number,
+  y: number,
+  width = 32,
+  height = 16,
+): string | null {
   if (x >= 14 && x < 18 && y >= 7 && y < 9) return "#FFFFFF";
   if (x < 4 && y < 4) return "#FF0000";
   if (x >= width - 4 && y < 4) return "#00FF00";
@@ -25,29 +51,40 @@ function quadrantColor(x: number, y: number, width = 32, height = 16): string | 
 
 function quadrantFrame(): Framebuffer {
   const frame = new Framebuffer(32, 16);
-  for (let x = 0; x < 32; x += 1) for (let y = 0; y < 16; y += 1) {
-    const color = quadrantColor(x, y);
-    if (color) frame.setPixel(x, y, ...rgb(color));
-  }
+  for (let x = 0; x < 32; x += 1)
+    for (let y = 0; y < 16; y += 1) {
+      const color = quadrantColor(x, y);
+      if (color) frame.setPixel(x, y, ...rgb(color));
+    }
   return frame;
 }
 
 function invertedQuadrantFrame(): Framebuffer {
-  const inversion: Record<string, string> = { "#FF0000": "#00FF00", "#00FF00": "#FF0000", "#0000FF": "#FFFF00", "#FFFF00": "#0000FF", "#FFFFFF": "#FF0000" };
+  const inversion: Record<string, string> = {
+    "#FF0000": "#00FF00",
+    "#00FF00": "#FF0000",
+    "#0000FF": "#FFFF00",
+    "#FFFF00": "#0000FF",
+    "#FFFFFF": "#FF0000",
+  };
   const frame = new Framebuffer(32, 16);
-  for (let x = 0; x < 32; x += 1) for (let y = 0; y < 16; y += 1) {
-    const color = quadrantColor(x, y);
-    if (color) frame.setPixel(x, y, ...rgb(inversion[color] ?? color));
-  }
+  for (let x = 0; x < 32; x += 1)
+    for (let y = 0; y < 16; y += 1) {
+      const color = quadrantColor(x, y);
+      if (color) frame.setPixel(x, y, ...rgb(inversion[color] ?? color));
+    }
   return frame;
 }
 
 describe("RGB444 encodings", () => {
-  it.each(Object.entries(conformance.rgb444))("matches the reference text and pixel encodings for %s", (hex, vector) => {
-    const [r, g, b] = rgb(hex);
-    expect(toHex(rgb444TextColor(r, g, b))).toBe(vector.text);
-    expect(toHex(rgb444PixelColor(r, g, b))).toBe(vector.pixel);
-  });
+  it.each(Object.entries(conformance.rgb444))(
+    "matches the reference text and pixel encodings for %s",
+    (hex, vector) => {
+      const [r, g, b] = rgb(hex);
+      expect(toHex(rgb444TextColor(r, g, b))).toBe(vector.text);
+      expect(toHex(rgb444PixelColor(r, g, b))).toBe(vector.pixel);
+    },
+  );
 
   it("keeps the two encodings distinct where the curves diverge", () => {
     // 0x2F = 47: pixel curve collapses to 0, plain divide gives 2.
@@ -80,7 +117,9 @@ describe("RGB444 encodings", () => {
   });
 
   it("encodes the reference quadrant frame stream exactly (graffiti path)", () => {
-    expect(toHex(encodeFrame(quadrantFrame(), "graffiti"))).toBe(conformance.pixelGrid.frameHex);
+    expect(toHex(encodeFrame(quadrantFrame(), "graffiti"))).toBe(
+      conformance.pixelGrid.frameHex,
+    );
   });
 });
 
@@ -89,15 +128,23 @@ describe("tiling", () => {
     expect(tileColumns(8)).toEqual([{ startColumn: 0, width: 8 }]);
   });
   it("tiles 16x16 into two tiles", () => {
-    expect(tileColumns(16)).toEqual([{ startColumn: 0, width: 8 }, { startColumn: 8, width: 8 }]);
+    expect(tileColumns(16)).toEqual([
+      { startColumn: 0, width: 8 },
+      { startColumn: 8, width: 8 },
+    ]);
   });
   it("tiles 32x16 into four tiles at columns 0/8/16/24", () => {
-    expect(tileColumns(32).map((tile) => tile.startColumn)).toEqual([0, 8, 16, 24]);
+    expect(tileColumns(32).map((tile) => tile.startColumn)).toEqual([
+      0, 8, 16, 24,
+    ]);
     expect(tileColumns(32).every((tile) => tile.width === 8)).toBe(true);
   });
   it("keeps a narrower final tile for non-multiple widths instead of cropping", () => {
     expect(tileColumns(30)).toEqual([
-      { startColumn: 0, width: 8 }, { startColumn: 8, width: 8 }, { startColumn: 16, width: 8 }, { startColumn: 24, width: 6 },
+      { startColumn: 0, width: 8 },
+      { startColumn: 8, width: 8 },
+      { startColumn: 16, width: 8 },
+      { startColumn: 24, width: 6 },
     ]);
   });
   it("rejects invalid dimensions", () => {
@@ -133,20 +180,25 @@ describe("tiled Graffiti compilation", () => {
 
   it("round-trips the compressed stream back to the program bytes", () => {
     const compiled = compileGraffitiFrame(quadrantFrame());
-    expect(toHex(lzssDecompress(compiled.compressedBytes))).toBe(toHex(compiled.programBytes));
+    expect(toHex(lzssDecompress(compiled.compressedBytes))).toBe(
+      toHex(compiled.programBytes),
+    );
   });
 
   it("is deterministic", () => {
-    expect(toHex(compileGraffitiFrame(quadrantFrame()).programBytes)).toBe(toHex(compileGraffitiFrame(quadrantFrame()).programBytes));
+    expect(toHex(compileGraffitiFrame(quadrantFrame()).programBytes)).toBe(
+      toHex(compileGraffitiFrame(quadrantFrame()).programBytes),
+    );
   });
 });
 
 describe("tiled Animation compilation", () => {
   const vector = conformance.tiledAnimation;
-  const sequence = (): FrameSequence => new FrameSequence(
-    [quadrantFrame(), invertedQuadrantFrame()],
-    [{ milliseconds: 1000 }, { milliseconds: 1000 }],
-  );
+  const sequence = (): FrameSequence =>
+    new FrameSequence(
+      [quadrantFrame(), invertedQuadrantFrame()],
+      [{ milliseconds: 1000 }, { milliseconds: 1000 }],
+    );
 
   it("produces the exact reference program bytes and packets", () => {
     const compiled = compileAnimation(sequence());
@@ -163,20 +215,35 @@ describe("tiled Animation compilation", () => {
 
   it("rejects invalid frame delays conservatively", () => {
     const frames = [new Framebuffer(8, 16), new Framebuffer(8, 16)];
-    expect(() => compileAnimation(new FrameSequence(frames, [{ milliseconds: 70000 }, { milliseconds: 100 }]))).toThrow(/65535/);
+    expect(() =>
+      compileAnimation(
+        new FrameSequence(frames, [
+          { milliseconds: 70000 },
+          { milliseconds: 100 },
+        ]),
+      ),
+    ).toThrow(/65535/);
   });
 });
 
 describe("GIF and frame border compilation", () => {
   it("wraps raw GIF bytes unmodified into the reference packet list", () => {
-    const compiled = compileGif(fromHex(conformance.gif.gifHex), conformance.gif.width, conformance.gif.height);
+    const compiled = compileGif(
+      fromHex(conformance.gif.gifHex),
+      conformance.gif.width,
+      conformance.gif.height,
+    );
     expect(compiled.packets.map(toHex)).toEqual(conformance.gif.packetsHex);
-    expect(toHex(lzssDecompress(compiled.compressedBytes))).toContain(conformance.gif.gifHex);
+    expect(toHex(lzssDecompress(compiled.compressedBytes))).toContain(
+      conformance.gif.gifHex,
+    );
   });
 
   it("builds the reference decorative border packets", () => {
     const compiled = compileFrameBorder(32, 16);
-    expect(compiled.packets.map(toHex)).toEqual(conformance.frameBorder.packetsHex);
+    expect(compiled.packets.map(toHex)).toEqual(
+      conformance.frameBorder.packetsHex,
+    );
   });
 });
 

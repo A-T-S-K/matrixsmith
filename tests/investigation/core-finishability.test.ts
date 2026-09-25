@@ -1,7 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MatrixController } from "../../src/app/controller";
-import { TraceRecorder } from "../../src/diagnostics/trace";
-import { knownIledHatFingerprint } from "../helpers/fixtures";
+import { ApplicationRuntime } from "../../src/application/runtime";
 import { uncharacterizedController } from "../helpers/uncharacterized-device";
 import type { ObservationValue } from "../../src/investigation/observations";
 import { MINIMUM_STATIC_HOLD_MS } from "../../src/investigation/static-viability";
@@ -19,7 +17,7 @@ import { MINIMUM_STATIC_HOLD_MS } from "../../src/investigation/static-viability
  */
 const MAX_DISTINCT_CORE_EXPERIMENTS = 7;
 
-async function controller(): Promise<MatrixController> {
+async function controller(): Promise<ApplicationRuntime> {
   // Finishability is a property of characterizing an UNKNOWN device. Run
   // against the productionized iLedHat these would pass without walking
   // anywhere, because its plan is already complete on connect.
@@ -29,8 +27,12 @@ async function controller(): Promise<MatrixController> {
   return instance;
 }
 
-const timer = (fieldId: string, milliseconds: number): ObservationValue =>
-  ({ kind: "duration", fieldId, milliseconds, measuredBy: "matrixsmith-timer" });
+const timer = (fieldId: string, milliseconds: number): ObservationValue => ({
+  kind: "duration",
+  fieldId,
+  milliseconds,
+  measuredBy: "matrixsmith-timer",
+});
 
 /** A timing run that stayed still past the stability threshold. */
 function heldStill(): ObservationValue[] {
@@ -67,8 +69,17 @@ function moved(): ObservationValue[] {
 
 function channelsMapped(): ObservationValue[] {
   const answers: Record<number, string> = {
-    0x0000: "off", 0x0f00: "red", 0x00f0: "green", 0x000f: "blue", 0x0fff: "neutral-white",
-    0x1000: "off", 0x2000: "off", 0x4000: "off", 0x8000: "off", 0xf000: "off", 0xffff: "neutral-white",
+    0x0000: "off",
+    0x0f00: "red",
+    0x00f0: "green",
+    0x000f: "blue",
+    0x0fff: "neutral-white",
+    0x1000: "off",
+    0x2000: "off",
+    0x4000: "off",
+    0x8000: "off",
+    0xf000: "off",
+    0xffff: "neutral-white",
   };
   return Object.entries(answers).map(([word, optionId]) => ({
     kind: "choice" as const,
@@ -86,7 +97,9 @@ const animationStatic = (still: boolean): ObservationValue[] => [
   { kind: "boolean", fieldId: "initial-correct", value: "yes" },
   timer("image-visible", 1100),
   { kind: "boolean", fieldId: "moved", value: still ? "no" : "yes" },
-  ...(still ? [timer("observation-end", 1100 + MINIMUM_STATIC_HOLD_MS + 400)] : [timer("movement-start", 3000)]),
+  ...(still
+    ? [timer("observation-end", 1100 + MINIMUM_STATIC_HOLD_MS + 400)]
+    : [timer("movement-start", 3000)]),
   { kind: "boolean", fieldId: "background-off", value: "yes" },
   { kind: "boolean", fieldId: "tiles-aligned", value: "yes" },
 ];
@@ -96,7 +109,9 @@ const animationStatic = (still: boolean): ObservationValue[] => [
  * the scripted outcome, and counting distinct experiments until the core plan
  * says it is done.
  */
-async function walk(outcomes: Readonly<Record<string, () => ObservationValue[]>>): Promise<{ distinct: string[]; complete: boolean }> {
+async function walk(
+  outcomes: Readonly<Record<string, () => ObservationValue[]>>,
+): Promise<{ distinct: string[]; complete: boolean }> {
   const instance = await controller();
   const distinct: string[] = [];
   for (let guard = 0; guard < 20; guard += 1) {
@@ -108,7 +123,11 @@ async function walk(outcomes: Readonly<Record<string, () => ObservationValue[]>>
     // An unscripted branch means the walk left the modelled paths.
     if (!outcome) break;
     distinct.push(next.testId);
-    await instance.runGuidedTestTransfer(next.testId, { confirmedConsequence: true, reason: "initial-experiment", attemptId: `attempt:${guard}` });
+    await instance.runGuidedTestTransfer(next.testId, {
+      confirmedConsequence: true,
+      reason: "initial-experiment",
+      attemptId: `attempt:${guard}`,
+    });
     instance.recordGuidedTestObservations(next.testId, outcome(), []);
   }
   const progress = instance.corePlanProgress();
@@ -183,36 +202,76 @@ describe("core plan finishability", () => {
     const before = instance.corePlanProgress()!;
 
     // The user watches for seven seconds and stops. Nothing is concluded.
-    await instance.runGuidedTestTransfer("coolledux-graffiti-timing", { confirmedConsequence: true, reason: "initial-experiment", attemptId: "attempt:1" });
-    instance.recordGuidedTestObservations("coolledux-graffiti-timing", heldStillTooBriefly(), []);
+    await instance.runGuidedTestTransfer("coolledux-graffiti-timing", {
+      confirmedConsequence: true,
+      reason: "initial-experiment",
+      attemptId: "attempt:1",
+    });
+    instance.recordGuidedTestObservations(
+      "coolledux-graffiti-timing",
+      heldStillTooBriefly(),
+      [],
+    );
 
-    expect(instance.retryableExperimentIds()).toContain("coolledux-graffiti-timing");
-    const stability = instance.claims().find((claim) => claim.id === "graffiti.playback-stability");
+    expect(instance.retryableExperimentIds()).toContain(
+      "coolledux-graffiti-timing",
+    );
+    const stability = instance
+      .claims()
+      .find((claim) => claim.id === "graffiti.playback-stability");
     expect(stability?.status).not.toBe("verified");
     expect(stability?.status).not.toBe("rejected");
     // The stability milestone has NOT advanced past its question.
     const after = instance.corePlanProgress()!;
     expect(after.total).toBe(before.total);
-    expect(after.steps.find((entry) => entry.step.id === "playback-discriminator")!.state).not.toBe("complete");
+    expect(
+      after.steps.find((entry) => entry.step.id === "playback-discriminator")!
+        .state,
+    ).not.toBe("complete");
     expect(after.complete).toBe(false);
 
     // Measuring the same experiment again, properly, continues the plan.
-    await instance.runGuidedTestTransfer("coolledux-graffiti-timing", { confirmedConsequence: true, reason: "explicit-measure-again", attemptId: "attempt:2" });
-    instance.recordGuidedTestObservations("coolledux-graffiti-timing", heldStill(), []);
-    expect(instance.retryableExperimentIds()).not.toContain("coolledux-graffiti-timing");
-    expect(instance.corePlanProgress()!.steps.find((entry) => entry.step.id === "playback-discriminator")!.state).toBe("complete");
+    await instance.runGuidedTestTransfer("coolledux-graffiti-timing", {
+      confirmedConsequence: true,
+      reason: "explicit-measure-again",
+      attemptId: "attempt:2",
+    });
+    instance.recordGuidedTestObservations(
+      "coolledux-graffiti-timing",
+      heldStill(),
+      [],
+    );
+    expect(instance.retryableExperimentIds()).not.toContain(
+      "coolledux-graffiti-timing",
+    );
+    expect(
+      instance
+        .corePlanProgress()!
+        .steps.find((entry) => entry.step.id === "playback-discriminator")!
+        .state,
+    ).toBe("complete");
 
     // And from there the plan still terminates in the bounded number of
     // distinct experiments — the incomplete measurement cost nothing but time.
-    for (let guard = 0; guard < 10 && !instance.corePlanProgress()!.complete; guard += 1) {
+    for (
+      let guard = 0;
+      guard < 10 && !instance.corePlanProgress()!.complete;
+      guard += 1
+    ) {
       const next = instance.recommendations()[0];
       if (!next) break;
-      const outcome = ({
-        "coolledux-graffiti-black": blackIsOff,
-        "coolledux-pixel-channels": channelsMapped,
-      } as Record<string, () => ObservationValue[]>)[next.testId];
+      const outcome = (
+        {
+          "coolledux-graffiti-black": blackIsOff,
+          "coolledux-pixel-channels": channelsMapped,
+        } as Record<string, () => ObservationValue[]>
+      )[next.testId];
       if (!outcome) break;
-      await instance.runGuidedTestTransfer(next.testId, { confirmedConsequence: true, reason: "initial-experiment", attemptId: `attempt:e${guard}` });
+      await instance.runGuidedTestTransfer(next.testId, {
+        confirmedConsequence: true,
+        reason: "initial-experiment",
+        attemptId: `attempt:e${guard}`,
+      });
       instance.recordGuidedTestObservations(next.testId, outcome(), []);
     }
     const final = instance.corePlanProgress()!;
@@ -223,9 +282,24 @@ describe("core plan finishability", () => {
 
   it("keeps the denominator at six on every modelled path", async () => {
     const paths: Readonly<Record<string, () => ObservationValue[]>>[] = [
-      { "coolledux-graffiti-timing": heldStill, "coolledux-graffiti-black": blackIsOff, "coolledux-pixel-channels": channelsMapped },
-      { "coolledux-graffiti-timing": moved, "coolledux-graffiti-staytime": heldStill, "coolledux-graffiti-black": blackIsOff, "coolledux-pixel-channels": channelsMapped },
-      { "coolledux-graffiti-timing": moved, "coolledux-graffiti-staytime": moved, "coolledux-animation-static": () => animationStatic(true), "coolledux-graffiti-black": blackIsOff, "coolledux-pixel-channels": channelsMapped },
+      {
+        "coolledux-graffiti-timing": heldStill,
+        "coolledux-graffiti-black": blackIsOff,
+        "coolledux-pixel-channels": channelsMapped,
+      },
+      {
+        "coolledux-graffiti-timing": moved,
+        "coolledux-graffiti-staytime": heldStill,
+        "coolledux-graffiti-black": blackIsOff,
+        "coolledux-pixel-channels": channelsMapped,
+      },
+      {
+        "coolledux-graffiti-timing": moved,
+        "coolledux-graffiti-staytime": moved,
+        "coolledux-animation-static": () => animationStatic(true),
+        "coolledux-graffiti-black": blackIsOff,
+        "coolledux-pixel-channels": channelsMapped,
+      },
     ];
     for (const outcomes of paths) {
       const instance = await controller();
@@ -241,7 +315,11 @@ describe("core plan finishability", () => {
         const next = instance.recommendations()[0];
         const outcome = next ? outcomes[next.testId] : undefined;
         if (!next || !outcome) break;
-        await instance.runGuidedTestTransfer(next.testId, { confirmedConsequence: true, reason: "initial-experiment", attemptId: `attempt:${guard}` });
+        await instance.runGuidedTestTransfer(next.testId, {
+          confirmedConsequence: true,
+          reason: "initial-experiment",
+          attemptId: `attempt:${guard}`,
+        });
         instance.recordGuidedTestObservations(next.testId, outcome(), []);
       }
       expect(instance.corePlanProgress()!.total).toBe(6);
@@ -250,12 +328,23 @@ describe("core plan finishability", () => {
 
   it("never repeats an experiment on any modelled path", async () => {
     const paths: Readonly<Record<string, () => ObservationValue[]>>[] = [
-      { "coolledux-graffiti-timing": heldStill, "coolledux-graffiti-black": blackIsOff, "coolledux-pixel-channels": channelsMapped },
-      { "coolledux-graffiti-timing": moved, "coolledux-graffiti-staytime": heldStill, "coolledux-graffiti-black": blackIsOff, "coolledux-pixel-channels": channelsMapped },
+      {
+        "coolledux-graffiti-timing": heldStill,
+        "coolledux-graffiti-black": blackIsOff,
+        "coolledux-pixel-channels": channelsMapped,
+      },
+      {
+        "coolledux-graffiti-timing": moved,
+        "coolledux-graffiti-staytime": heldStill,
+        "coolledux-graffiti-black": blackIsOff,
+        "coolledux-pixel-channels": channelsMapped,
+      },
     ];
     for (const outcomes of paths) {
       const { distinct } = await walk(outcomes);
-      expect(new Set(distinct).size, distinct.join(" → ")).toBe(distinct.length);
+      expect(new Set(distinct).size, distinct.join(" → ")).toBe(
+        distinct.length,
+      );
     }
   }, 60000);
 });
@@ -263,7 +352,10 @@ describe("core plan finishability", () => {
 describe("core ordering establishes a substrate before characterizing pixels", () => {
   it("goes straight to the animation fallback when both native settings move", async () => {
     const instance = await controller();
-    for (const [testId, outcome] of [["coolledux-graffiti-timing", moved], ["coolledux-graffiti-staytime", moved]] as const) {
+    for (const [testId, outcome] of [
+      ["coolledux-graffiti-timing", moved],
+      ["coolledux-graffiti-staytime", moved],
+    ] as const) {
       instance.recordGuidedTestObservations(testId, outcome(), []);
     }
     const progress = instance.corePlanProgress()!;
@@ -271,17 +363,27 @@ describe("core ordering establishes a substrate before characterizing pixels", (
     // fallback — not the colour/channel test — is the work in front of the
     // user. Characterizing pixels for a substrate that may not exist is
     // exactly what the real session was made to do.
-    expect(progress.steps.find((entry) => entry.step.id === "native-black")!.state).toBe("skipped");
+    expect(
+      progress.steps.find((entry) => entry.step.id === "native-black")!.state,
+    ).toBe("skipped");
     expect(progress.current?.step.id).toBe("fallback-viability");
     expect(progress.current?.step.ordinal).toBe(4);
-    expect(instance.recommendations()[0]?.testId).toBe("coolledux-animation-static");
+    expect(instance.recommendations()[0]?.testId).toBe(
+      "coolledux-animation-static",
+    );
   }, 60000);
 
   it("stands the fallback down while the native path is still undecided", async () => {
     const instance = await controller();
-    instance.recordGuidedTestObservations("coolledux-graffiti-timing", heldStill(), []);
+    instance.recordGuidedTestObservations(
+      "coolledux-graffiti-timing",
+      heldStill(),
+      [],
+    );
     const progress = instance.corePlanProgress()!;
-    const fallback = progress.steps.find((entry) => entry.step.id === "fallback-viability")!;
+    const fallback = progress.steps.find(
+      (entry) => entry.step.id === "fallback-viability",
+    )!;
     expect(fallback.state).toBe("skipped");
     expect(fallback.skipReason).toMatch(/not been ruled out/);
     // The plan is not finished — the native path still has open requirements.
@@ -291,9 +393,21 @@ describe("core ordering establishes a substrate before characterizing pixels", (
 
   it("characterizes channels only after a substrate holds a still image", async () => {
     const instance = await controller();
-    instance.recordGuidedTestObservations("coolledux-graffiti-timing", moved(), []);
-    instance.recordGuidedTestObservations("coolledux-graffiti-staytime", moved(), []);
-    instance.recordGuidedTestObservations("coolledux-animation-static", animationStatic(true), []);
+    instance.recordGuidedTestObservations(
+      "coolledux-graffiti-timing",
+      moved(),
+      [],
+    );
+    instance.recordGuidedTestObservations(
+      "coolledux-graffiti-staytime",
+      moved(),
+      [],
+    );
+    instance.recordGuidedTestObservations(
+      "coolledux-animation-static",
+      animationStatic(true),
+      [],
+    );
     const progress = instance.corePlanProgress()!;
     expect(progress.current?.step.id).toBe("pixel-mapping");
     expect(progress.current?.step.ordinal).toBe(5);

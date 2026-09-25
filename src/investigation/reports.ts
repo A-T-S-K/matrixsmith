@@ -1,20 +1,47 @@
 import type { DeviceFingerprint, DeviceProfile } from "../core/device";
 import type { ProtocolTransaction } from "../diagnostics/transactions";
 import type { ContentCompilationRecord } from "../diagnostics/content-evidence";
-import { analyzeStoredProgramUpload, describeUploadAnalysis, type NotificationDecoder } from "../diagnostics/upload-analysis";
-import { CLAIM_DEFINITIONS, operationalTrust, resolveClaims, type ClaimEvidence, type ClaimId, type ClaimState } from "./claims";
+import {
+  analyzeStoredProgramUpload,
+  describeUploadAnalysis,
+  type NotificationDecoder,
+} from "../diagnostics/upload-analysis";
+import {
+  CLAIM_DEFINITIONS,
+  operationalTrust,
+  resolveClaims,
+  type ClaimEvidence,
+  type ClaimId,
+  type ClaimState,
+} from "./claims";
 import type { CompletedGuidedTest, Investigation } from "./investigation";
 import type { GuidedTestDefinition } from "./tests";
-import { formatDuration, observationValueSummary, type ObservationValue } from "./observations";
+import {
+  formatDuration,
+  observationValueSummary,
+  type ObservationValue,
+} from "./observations";
 import { approximateSeconds, describeAttempt } from "./timing";
-import { RECOMMENDATION_ORIGIN_LABELS, type Recommendation, type RecommendationTrailEntry } from "./recommendations";
+import {
+  RECOMMENDATION_ORIGIN_LABELS,
+  type Recommendation,
+  type RecommendationTrailEntry,
+} from "./recommendations";
 import type { DiagnosticRegion } from "./regions";
 import type { CorePlanProgress } from "./core-plan";
 import {
-  ATTEMPT_FAILURE_LABELS, classifyTransfers, EXPERIMENT_RESOLUTION_LABELS, TRANSFER_REASON_LABELS,
-  type ExperimentRun, type PanelProgramState, type TransferRecord,
+  ATTEMPT_FAILURE_LABELS,
+  classifyTransfers,
+  EXPERIMENT_RESOLUTION_LABELS,
+  TRANSFER_REASON_LABELS,
+  type ExperimentRun,
+  type PanelProgramState,
+  type TransferRecord,
 } from "./orchestration";
-import { evaluateStaticViability, MINIMUM_STATIC_HOLD_MS } from "./static-viability";
+import {
+  evaluateStaticViability,
+  MINIMUM_STATIC_HOLD_MS,
+} from "./static-viability";
 
 /**
  * AI/human-ready report generation. Test reports are scoped to one guided
@@ -57,41 +84,99 @@ const SCOPE_LABEL: Readonly<Record<ClaimEvidence["scope"], string>> = {
 export function generateTestReport(input: TestReportInput): string {
   const { device, test, completed } = input;
   const lines: string[] = ["# MatrixSmith Hardware Test Report", ""];
-  const section = (title: string, body: string): void => { lines.push(`## ${title}`, "", body, ""); };
+  const section = (title: string, body: string): void => {
+    lines.push(`## ${title}`, "", body, "");
+  };
 
   section("Question", test.about.question);
   section("Device", deviceText(device));
-  const relevantEvidence = input.priorEvidence.filter((entry) => test.targetClaims.includes(entry.claimId) || test.prerequisites.some((requirement) => requirement.claimId === entry.claimId));
-  section("Existing relevant evidence", listOrNone(relevantEvidence.map((entry) => `${claimLabel(entry.claimId)} — ${entry.status} (${SCOPE_LABEL[entry.scope]}): ${entry.summary}`)));
+  const relevantEvidence = input.priorEvidence.filter(
+    (entry) =>
+      test.targetClaims.includes(entry.claimId) ||
+      test.prerequisites.some(
+        (requirement) => requirement.claimId === entry.claimId,
+      ),
+  );
+  section(
+    "Existing relevant evidence",
+    listOrNone(
+      relevantEvidence.map(
+        (entry) =>
+          `${claimLabel(entry.claimId)} — ${entry.status} (${SCOPE_LABEL[entry.scope]}): ${entry.summary}`,
+      ),
+    ),
+  );
   section("Why this test was run", input.why);
-  section("Test performed", [
-    `- Test: ${test.title} (\`${test.id}\`)`,
-    `- Ran: ${completed.startedAt} → ${completed.completedAt}`,
-    `- What MatrixSmith did: ${test.about.whatMatrixSmithDoes}`,
-    ...(completed.parameters ? [`- Parameters: ${Object.entries(completed.parameters).map(([key, value]) => `${key}=${String(value)}`).join(", ")}`] : []),
-  ].join("\n"));
-  section("Safety / side effects", `- Risk: ${test.risk}; persistence: ${test.persistence}\n- ${test.consequence}`);
-  section("Protocol operation", test.about.technicalDetails.map((detail) => `- ${detail}`).join("\n"));
-  section("Compiler / transmission summary", compilationText(input.compilation));
+  section(
+    "Test performed",
+    [
+      `- Test: ${test.title} (\`${test.id}\`)`,
+      `- Ran: ${completed.startedAt} → ${completed.completedAt}`,
+      `- What MatrixSmith did: ${test.about.whatMatrixSmithDoes}`,
+      ...(completed.parameters
+        ? [
+            `- Parameters: ${Object.entries(completed.parameters)
+              .map(([key, value]) => `${key}=${String(value)}`)
+              .join(", ")}`,
+          ]
+        : []),
+    ].join("\n"),
+  );
+  section(
+    "Safety / side effects",
+    `- Risk: ${test.risk}; persistence: ${test.persistence}\n- ${test.consequence}`,
+  );
+  section(
+    "Protocol operation",
+    test.about.technicalDetails.map((detail) => `- ${detail}`).join("\n"),
+  );
+  section(
+    "Compiler / transmission summary",
+    compilationText(input.compilation),
+  );
   section("Automatic observations", automaticObservationsText(input));
   const timing = physicalTimingText(completed, input.transactions);
   if (timing) section("Physical timing", timing);
-  section("Physical observations", listOrNone(completed.observations.map((value) => {
-    const spec = test.observation.find((candidate) => candidate.id === value.fieldId);
-    const region = spec?.regionId ? input.regions?.find((candidate) => candidate.id === spec.regionId) : undefined;
-    return observationValueSummary(spec, value, region?.displayLabel);
-  })));
-  section("Result", `**${completed.status.toUpperCase()}** — ${completed.summary}`);
+  section(
+    "Physical observations",
+    listOrNone(
+      completed.observations.map((value) => {
+        const spec = test.observation.find(
+          (candidate) => candidate.id === value.fieldId,
+        );
+        const region = spec?.regionId
+          ? input.regions?.find((candidate) => candidate.id === spec.regionId)
+          : undefined;
+        return observationValueSummary(spec, value, region?.displayLabel);
+      }),
+    ),
+  );
+  section(
+    "Result",
+    `**${completed.status.toUpperCase()}** — ${completed.summary}`,
+  );
   section("What this establishes", listOrNone(completed.established));
   section("What this rejects", listOrNone(completed.rejected));
   section("What remains unknown", listOrNone(completed.unknowns));
-  section("Recommended next discriminator", input.nextRecommendation
-    ? `${input.nextRecommendation.title} — ${input.nextRecommendation.why} (~${input.nextRecommendation.estimatedObservationTime})`
-    : "No further discriminator is currently recommended.");
-  section("Relevant transactions", transactionSummaryText(input.transactions, completed.transactionIds));
-  section("Relevant packet exemplars", packetExemplarText(input.transactions, completed.transactionIds));
+  section(
+    "Recommended next discriminator",
+    input.nextRecommendation
+      ? `${input.nextRecommendation.title} — ${input.nextRecommendation.why} (~${input.nextRecommendation.estimatedObservationTime})`
+      : "No further discriminator is currently recommended.",
+  );
+  section(
+    "Relevant transactions",
+    transactionSummaryText(input.transactions, completed.transactionIds),
+  );
+  section(
+    "Relevant packet exemplars",
+    packetExemplarText(input.transactions, completed.transactionIds),
+  );
   section("Reproduction information", reproductionText(device, completed));
-  section("Requested AI task", `Interpret this single test result in the context of the existing evidence, update the claim model for \`${test.targetClaims.join("`, `")}\`, and propose the highest-information safe next test. Distinguish facts observed on this exact device from source-derived behavior.`);
+  section(
+    "Requested AI task",
+    `Interpret this single test result in the context of the existing evidence, update the claim model for \`${test.targetClaims.join("`, `")}\`, and propose the highest-information safe next test. Distinguish facts observed on this exact device from source-derived behavior.`,
+  );
   return `${lines.join("\n").trimEnd()}\n`;
 }
 
@@ -103,7 +188,12 @@ export interface InvestigationReportInput {
   readonly transactions: readonly ProtocolTransaction[];
   readonly compilations: readonly ContentCompilationRecord[];
   readonly nextRecommendation: Recommendation | null;
-  readonly driverCandidates: readonly { readonly driverId: string; readonly score: number; readonly reasons: readonly string[]; readonly contradictions: readonly string[] }[];
+  readonly driverCandidates: readonly {
+    readonly driverId: string;
+    readonly score: number;
+    readonly reasons: readonly string[];
+    readonly contradictions: readonly string[];
+  }[];
   /** Labelled zones per test id, so observations name a place rather than repeat a prompt. */
   readonly regionsByTest?: ReadonlyMap<string, readonly DiagnosticRegion[]>;
   /** Where the bounded core plan stands, so progress and loops are visible. */
@@ -122,63 +212,218 @@ export interface InvestigationReportInput {
   readonly recommendationTrail?: readonly RecommendationTrailEntry[];
 }
 
-export function generateInvestigationReport(input: InvestigationReportInput): string {
+export function generateInvestigationReport(
+  input: InvestigationReportInput,
+): string {
   const { device, investigation } = input;
-  const allEvidence = [...input.baselineEvidence, ...(investigation?.claimEvidence ?? [])];
+  const allEvidence = [
+    ...input.baselineEvidence,
+    ...(investigation?.claimEvidence ?? []),
+  ];
   const claims = resolveClaims(allEvidence);
   const byId = new Map(claims.map((claim) => [claim.id, claim]));
   const lines: string[] = ["# MatrixSmith Hardware Investigation Report", ""];
-  const section = (title: string, body: string): void => { lines.push(`## ${title}`, "", body, ""); };
-  const claimText = (ids: readonly ClaimId[]): string => listOrNone(ids.map((id) => formatClaim(byId.get(id))));
+  const section = (title: string, body: string): void => {
+    lines.push(`## ${title}`, "", body, "");
+  };
+  const claimText = (ids: readonly ClaimId[]): string =>
+    listOrNone(ids.map((id) => formatClaim(byId.get(id))));
 
-  section("Objective", investigation
-    ? `${investigation.goal.kind === "troubleshoot" ? "Troubleshooting" : "Guided development"}: ${investigation.goal.description}${investigation.goal.symptomId ? ` (symptom: ${investigation.goal.symptomId})` : ""}`
-    : "Characterize and develop support for this display.");
-  if (input.coreProgress) section("Investigation progress", coreProgressText(input.coreProgress));
-  if (input.panelProgram) section("Display program state", panelProgramText(input.panelProgram, input.liveSession ?? false));
-  if (input.cycleDetail) section("Workflow warning", `MatrixSmith detected a recommendation loop: ${input.cycleDetail}`);
+  section(
+    "Objective",
+    investigation
+      ? `${investigation.goal.kind === "troubleshoot" ? "Troubleshooting" : "Guided development"}: ${investigation.goal.description}${investigation.goal.symptomId ? ` (symptom: ${investigation.goal.symptomId})` : ""}`
+      : "Characterize and develop support for this display.",
+  );
+  if (input.coreProgress)
+    section("Investigation progress", coreProgressText(input.coreProgress));
+  if (input.panelProgram)
+    section(
+      "Display program state",
+      panelProgramText(input.panelProgram, input.liveSession ?? false),
+    );
+  if (input.cycleDetail)
+    section(
+      "Workflow warning",
+      `MatrixSmith detected a recommendation loop: ${input.cycleDetail}`,
+    );
   // Completeness wins. A report that says "6 of 6 resolved — COMPLETE" and
   // then hands over a next test contradicts itself, and reads as though the
   // work were not finished after all.
-  section("Next step", input.coreProgress?.complete
-    ? `Core characterization is complete. Remaining work is optional.${input.nextRecommendation ? ` The highest-ranked optional test is "${input.nextRecommendation.title}"; it is offered, never automatic.` : ""}`
-    : input.nextRecommendation
-      ? `${input.nextRecommendation.title} — ${input.nextRecommendation.why} (~${input.nextRecommendation.estimatedObservationTime})`
-      : "No further test is currently recommended.");
+  section(
+    "Next step",
+    input.coreProgress?.complete
+      ? `Core characterization is complete. Remaining work is optional.${input.nextRecommendation ? ` The highest-ranked optional test is "${input.nextRecommendation.title}"; it is offered, never automatic.` : ""}`
+      : input.nextRecommendation
+        ? `${input.nextRecommendation.title} — ${input.nextRecommendation.why} (~${input.nextRecommendation.estimatedObservationTime})`
+        : "No further test is currently recommended.",
+  );
   if (input.experiments && input.experiments.length > 0) {
-    section("Experiments and attempts", experimentsText(input.experiments, input.coreProgress ?? null));
+    section(
+      "Experiments and attempts",
+      experimentsText(input.experiments, input.coreProgress ?? null),
+    );
   }
-  if (input.transfers && input.transfers.length > 0) section("Diagnostic transfer summary", transferSummaryText(input.transfers));
+  if (input.transfers && input.transfers.length > 0)
+    section(
+      "Diagnostic transfer summary",
+      transferSummaryText(input.transfers),
+    );
   if (input.recommendationTrail && input.recommendationTrail.length > 0) {
-    section("Guided workflow trail", recommendationTrailText(input.recommendationTrail, input.tests));
+    section(
+      "Guided workflow trail",
+      recommendationTrailText(input.recommendationTrail, input.tests),
+    );
   }
   section("Device identity", deviceText(device));
   section("Advertisement / manufacturer evidence", advertisementText(device));
   section("Transport / GATT", gattText(device.fingerprint));
-  section("Protocol candidates", listOrNone(input.driverCandidates.map((candidate) => `${candidate.driverId}: score ${candidate.score}; evidence: ${candidate.reasons.join("; ") || "none"}; contradictions: ${candidate.contradictions.join("; ") || "none"}`)));
-  section("Verified operations", claimText(["protocol.coolledux", "device-info.query", "brightness.control", "power.control"]));
-  section("Stored-program behavior", claimText(["stored-program.upload", "stored-program.receipts"]));
-  section("Geometry / orientation / tiling", claimText(["raster.tiling", "raster.orientation"]));
-  section("Black / off behavior by content path", claimText(["graffiti.black-semantics", "animation.black-semantics"]));
-  section("Pixel / channel mapping", claimText(["pixel.channel-map", "pixel.encoder-correctness", "pixel.fourth-channel", "pixel.white-channel"]));
-  section("Color observations", claimText(["graffiti.color-mapping", "pixel.color-calibration"]));
-  section("Animation behavior", claimText(["animation.frames", "animation.timing", "animation.tile-sync", "animation.autonomous-loop", "animation.static-single-frame", "animation.static-identical-pair"]));
-  section("Static behavior", claimText(["graffiti.initial-render", "graffiti.playback-stability", "static.strategy"]));
-  section("Static image strategy assessment", staticStrategyAssessmentText(allEvidence, investigation));
-  section("Text / image / GIF support", claimText(["text.rendering", "image.rendering", "gif.playback"]));
+  section(
+    "Protocol candidates",
+    listOrNone(
+      input.driverCandidates.map(
+        (candidate) =>
+          `${candidate.driverId}: score ${candidate.score}; evidence: ${candidate.reasons.join("; ") || "none"}; contradictions: ${candidate.contradictions.join("; ") || "none"}`,
+      ),
+    ),
+  );
+  section(
+    "Verified operations",
+    claimText([
+      "protocol.coolledux",
+      "device-info.query",
+      "brightness.control",
+      "power.control",
+    ]),
+  );
+  section(
+    "Stored-program behavior",
+    claimText(["stored-program.upload", "stored-program.receipts"]),
+  );
+  section(
+    "Geometry / orientation / tiling",
+    claimText(["raster.tiling", "raster.orientation"]),
+  );
+  section(
+    "Black / off behavior by content path",
+    claimText(["graffiti.black-semantics", "animation.black-semantics"]),
+  );
+  section(
+    "Pixel / channel mapping",
+    claimText([
+      "pixel.channel-map",
+      "pixel.encoder-correctness",
+      "pixel.fourth-channel",
+      "pixel.white-channel",
+    ]),
+  );
+  section(
+    "Color observations",
+    claimText(["graffiti.color-mapping", "pixel.color-calibration"]),
+  );
+  section(
+    "Animation behavior",
+    claimText([
+      "animation.frames",
+      "animation.timing",
+      "animation.tile-sync",
+      "animation.autonomous-loop",
+      "animation.static-single-frame",
+      "animation.static-identical-pair",
+    ]),
+  );
+  section(
+    "Static behavior",
+    claimText([
+      "graffiti.initial-render",
+      "graffiti.playback-stability",
+      "static.strategy",
+    ]),
+  );
+  section(
+    "Static image strategy assessment",
+    staticStrategyAssessmentText(allEvidence, investigation),
+  );
+  section(
+    "Text / image / GIF support",
+    claimText(["text.rendering", "image.rendering", "gif.playback"]),
+  );
   section("Controls", claimText(["brightness.control", "power.control"]));
-  section("Persistence / recovery", claimText(["power-cycle.persistence", "recovery.manual-reset"]));
-  section("Tests performed", listOrNone((investigation?.completedTests ?? []).map((test) => `${test.completedAt} — ${test.title} (\`${test.testId}\`): ${test.status.toUpperCase()} — ${test.summary}${test.parameters ? ` [${Object.entries(test.parameters).map(([key, value]) => `${key}=${String(value)}`).join(", ")}]` : ""}`)));
-  section("Structured physical observations", structuredObservationsText(investigation, input.tests, input.regionsByTest ?? new Map()));
+  section(
+    "Persistence / recovery",
+    claimText(["power-cycle.persistence", "recovery.manual-reset"]),
+  );
+  section(
+    "Tests performed",
+    listOrNone(
+      (investigation?.completedTests ?? []).map(
+        (test) =>
+          `${test.completedAt} — ${test.title} (\`${test.testId}\`): ${test.status.toUpperCase()} — ${test.summary}${
+            test.parameters
+              ? ` [${Object.entries(test.parameters)
+                  .map(([key, value]) => `${key}=${String(value)}`)
+                  .join(", ")}]`
+              : ""
+          }`,
+      ),
+    ),
+  );
+  section(
+    "Structured physical observations",
+    structuredObservationsText(
+      investigation,
+      input.tests,
+      input.regionsByTest ?? new Map(),
+    ),
+  );
   section("Claims and confidence", claimsTable(claims, allEvidence));
   section("Evidence trust and conflicts", trustAndConflictsText(allEvidence));
-  section("Rejected hypotheses", listOrNone(claims.filter((claim) => claim.status === "rejected").map((claim) => formatClaim(claim))));
-  section("Open hypotheses", listOrNone(claims.filter((claim) => claim.status === "unresolved" || claim.status === "unknown" || claim.status === "source-supported").map((claim) => formatClaim(claim))));
-  section("Known limitations", listOrNone([...(device.profile?.quirks?.contentLimits ?? []), ...(device.profile?.quirks?.graffitiPlaybackNotes ?? [])]));
-  section("Driver / profile recommendations", driverRecommendationsText(claims, device));
-  section("Relevant transactions", transactionSummaryText(input.transactions, (investigation?.completedTests ?? []).flatMap((test) => test.transactionIds)));
+  section(
+    "Rejected hypotheses",
+    listOrNone(
+      claims
+        .filter((claim) => claim.status === "rejected")
+        .map((claim) => formatClaim(claim)),
+    ),
+  );
+  section(
+    "Open hypotheses",
+    listOrNone(
+      claims
+        .filter(
+          (claim) =>
+            claim.status === "unresolved" ||
+            claim.status === "unknown" ||
+            claim.status === "source-supported",
+        )
+        .map((claim) => formatClaim(claim)),
+    ),
+  );
+  section(
+    "Known limitations",
+    listOrNone([
+      ...(device.profile?.quirks?.contentLimits ?? []),
+      ...(device.profile?.quirks?.graffitiPlaybackNotes ?? []),
+    ]),
+  );
+  section(
+    "Driver / profile recommendations",
+    driverRecommendationsText(claims, device),
+  );
+  section(
+    "Relevant transactions",
+    transactionSummaryText(
+      input.transactions,
+      (investigation?.completedTests ?? []).flatMap(
+        (test) => test.transactionIds,
+      ),
+    ),
+  );
   section("Reproduction environment", reproductionText(device, null));
-  section("Requested AI task", "Implement or fix MatrixSmith support for this device using the claims above. Treat only claims marked verified on the current physical session or built-in profile as device facts; treat source-reference claims as behavior of OTHER hardware. Propose driver/profile changes, and list the discriminating physical tests still needed for anything unresolved. This report is designed to be sufficient without the original conversation history.");
+  section(
+    "Requested AI task",
+    "Implement or fix MatrixSmith support for this device using the claims above. Treat only claims marked verified on the current physical session or built-in profile as device facts; treat source-reference claims as behavior of OTHER hardware. Propose driver/profile changes, and list the discriminating physical tests still needed for anything unresolved. This report is designed to be sufficient without the original conversation history.",
+  );
   return `${lines.join("\n").trimEnd()}\n`;
 }
 
@@ -191,18 +436,39 @@ export interface ForensicReportInput {
 
 /** Full-detail appendix: every packet with real timestamps and timing analysis. */
 export function generateForensicAppendix(input: ForensicReportInput): string {
-  const lines: string[] = ["# MatrixSmith Forensic Appendix", "", "All packets, receipts, and measured timing. Timestamps are actual per-write times, never planned pacing.", ""];
+  const lines: string[] = [
+    "# MatrixSmith Forensic Appendix",
+    "",
+    "All packets, receipts, and measured timing. Timestamps are actual per-write times, never planned pacing.",
+    "",
+  ];
   for (const transaction of input.transactions) {
     lines.push(`## ${transaction.operation} (${transaction.id})`, "");
-    lines.push(`- ${transaction.startedAt} → ${transaction.completedAt} (${transaction.durationMs} ms); host=${transaction.hostAccepted}; protocol=${String(transaction.protocolAcknowledged)}; error=${transaction.error ?? "none"}`);
-    const chunkCount = compilationChunkCount(input.compilations, transaction.id);
+    lines.push(
+      `- ${transaction.startedAt} → ${transaction.completedAt} (${transaction.durationMs} ms); host=${transaction.hostAccepted}; protocol=${String(transaction.protocolAcknowledged)}; error=${transaction.error ?? "none"}`,
+    );
+    const chunkCount = compilationChunkCount(
+      input.compilations,
+      transaction.id,
+    );
     if (chunkCount !== null && input.decoder) {
-      const analysis = analyzeStoredProgramUpload(transaction, chunkCount, input.decoder);
-      for (const line of describeUploadAnalysis(analysis)) lines.push(`- ${line}`);
+      const analysis = analyzeStoredProgramUpload(
+        transaction,
+        chunkCount,
+        input.decoder,
+      );
+      for (const line of describeUploadAnalysis(analysis))
+        lines.push(`- ${line}`);
     }
-    lines.push("", "| Time | Dir | Gap ms | Host accepted | Bytes |", "| --- | --- | --- | --- | --- |");
+    lines.push(
+      "",
+      "| Time | Dir | Gap ms | Host accepted | Bytes |",
+      "| --- | --- | --- | --- | --- |",
+    );
     for (const packet of transaction.packets) {
-      lines.push(`| ${packet.timestamp} | ${packet.direction} | ${packet.gapSincePreviousTxMs ?? ""} | ${packet.hostAcceptedAt ?? ""} | \`${packet.hex}\` |`);
+      lines.push(
+        `| ${packet.timestamp} | ${packet.direction} | ${packet.gapSincePreviousTxMs ?? ""} | ${packet.hostAcceptedAt ?? ""} | \`${packet.hex}\` |`,
+      );
     }
     lines.push("");
   }
@@ -212,7 +478,9 @@ export function generateForensicAppendix(input: ForensicReportInput): string {
 // ---------------------------------------------------------------------------
 
 function claimLabel(id: ClaimId): string {
-  return CLAIM_DEFINITIONS.find((definition) => definition.id === id)?.label ?? id;
+  return (
+    CLAIM_DEFINITIONS.find((definition) => definition.id === id)?.label ?? id
+  );
 }
 
 function formatClaim(claim: ClaimState | undefined): string {
@@ -225,7 +493,9 @@ function formatClaim(claim: ClaimState | undefined): string {
     : claim.derivedSummary
       ? ` — ${claim.derivedSummary}`
       : " — no evidence recorded";
-  const blocked = claim.blockedByPrerequisite ? ` [prerequisite ${claim.blockedByPrerequisite} rejected]` : "";
+  const blocked = claim.blockedByPrerequisite
+    ? ` [prerequisite ${claim.blockedByPrerequisite} rejected]`
+    : "";
   return `\`${claim.id}\` (${claim.label}): **${claim.status}**${blocked}${basis}`;
 }
 
@@ -235,16 +505,27 @@ function formatClaim(claim: ClaimState | undefined): string {
  * says whether a normal operation currently has a trusted authorization and
  * from which scope it comes.
  */
-function claimsTable(claims: readonly ClaimState[], evidence: readonly ClaimEvidence[]): string {
-  return ["| Claim | Investigative status | Operational basis | Evidence |", "| --- | --- | --- | --- |",
+function claimsTable(
+  claims: readonly ClaimState[],
+  evidence: readonly ClaimEvidence[],
+): string {
+  return [
+    "| Claim | Investigative status | Operational basis | Evidence |",
+    "| --- | --- | --- | --- |",
     ...claims.map((claim) => {
       const trust = operationalTrust(claim.id, evidence);
-      const basis = claim.id === "static.strategy"
-        ? (trust.trusted ? "derived (viable strategy)" : "derived (no viable strategy)")
-        : trust.trusted
-          ? `trusted (${SCOPE_LABEL[trust.basis!.scope]})${trust.historicalConflict ? " · CONFLICT with historical evidence" : ""}`
-          : trust.trustedStatus === "rejected" ? "revoked (trusted rejection)" : "none";
-      const summary = claim.decidedBy?.summary ?? claim.derivedSummary ?? "No evidence.";
+      const basis =
+        claim.id === "static.strategy"
+          ? trust.trusted
+            ? "derived (viable strategy)"
+            : "derived (no viable strategy)"
+          : trust.trusted
+            ? `trusted (${SCOPE_LABEL[trust.basis!.scope]})${trust.historicalConflict ? " · CONFLICT with historical evidence" : ""}`
+            : trust.trustedStatus === "rejected"
+              ? "revoked (trusted rejection)"
+              : "none";
+      const summary =
+        claim.decidedBy?.summary ?? claim.derivedSummary ?? "No evidence.";
       return `| \`${claim.id}\` | ${claim.status} | ${basis} | ${summary.replaceAll("|", "\\|")} |`;
     }),
   ].join("\n");
@@ -263,12 +544,22 @@ function trustAndConflictsText(evidence: readonly ClaimEvidence[]): string {
     const trust = operationalTrust(definition.id, evidence);
     if (scopes.size <= 1 && !trust.historicalConflict) continue;
     lines.push(`### \`${definition.id}\` (${definition.label})`, "");
-    for (const entry of entries) lines.push(`- ${SCOPE_LABEL[entry.scope]}: ${entry.status.toUpperCase()} — ${entry.summary}`);
-    lines.push(`- Operational basis: ${trust.trusted ? `${SCOPE_LABEL[trust.basis!.scope]} (trusted)` : trust.trustedStatus === "rejected" ? "revoked by trusted rejection" : "none"}`);
-    if (trust.historicalConflict) lines.push("- Effective investigative state: CONFLICT — historical/imported evidence contradicts the trusted basis; revalidation on the current physical session is recommended.");
+    for (const entry of entries)
+      lines.push(
+        `- ${SCOPE_LABEL[entry.scope]}: ${entry.status.toUpperCase()} — ${entry.summary}`,
+      );
+    lines.push(
+      `- Operational basis: ${trust.trusted ? `${SCOPE_LABEL[trust.basis!.scope]} (trusted)` : trust.trustedStatus === "rejected" ? "revoked by trusted rejection" : "none"}`,
+    );
+    if (trust.historicalConflict)
+      lines.push(
+        "- Effective investigative state: CONFLICT — historical/imported evidence contradicts the trusted basis; revalidation on the current physical session is recommended.",
+      );
     lines.push("");
   }
-  return lines.length ? lines.join("\n").trimEnd() : "No cross-scope evidence or conflicts.";
+  return lines.length
+    ? lines.join("\n").trimEnd()
+    : "No cross-scope evidence or conflicts.";
 }
 
 /**
@@ -276,48 +567,95 @@ function trustAndConflictsText(evidence: readonly ClaimEvidence[]): string {
  * normal-operation gating and session strategy selection — no duplicated
  * logic. Includes the measured timing comparison across Graffiti runs.
  */
-function staticStrategyAssessmentText(evidence: readonly ClaimEvidence[], investigation: Investigation | null): string {
+function staticStrategyAssessmentText(
+  evidence: readonly ClaimEvidence[],
+  investigation: Investigation | null,
+): string {
   const assessment = evaluateStaticViability(evidence);
   const lines: string[] = [];
   for (const strategy of assessment.strategies) {
     lines.push(`### ${strategy.strategy}`, "");
     for (const requirement of strategy.requirements) {
-      const marker = requirement.state === "met" ? "✓" : requirement.state === "failed" ? "✕" : "?";
-      lines.push(`- ${marker} ${requirement.label} (\`${requirement.claimId}\`): ${requirement.trustedStatus} — ${requirement.detail}`);
+      const marker =
+        requirement.state === "met"
+          ? "✓"
+          : requirement.state === "failed"
+            ? "✕"
+            : "?";
+      lines.push(
+        `- ${marker} ${requirement.label} (\`${requirement.claimId}\`): ${requirement.trustedStatus} — ${requirement.detail}`,
+      );
     }
-    lines.push(`- **Overall: ${strategy.verdict === "viable" ? "VIABLE" : strategy.verdict === "not-viable" ? "NOT VIABLE" : "NOT YET DECIDED"}** — ${strategy.summary}`, "");
+    lines.push(
+      `- **Overall: ${strategy.verdict === "viable" ? "VIABLE" : strategy.verdict === "not-viable" ? "NOT VIABLE" : "NOT YET DECIDED"}** — ${strategy.summary}`,
+      "",
+    );
   }
-  lines.push(`Selected usable strategy: ${assessment.selected ?? "none"}. Characterization currently pursues: ${assessment.pursued ?? "none"}${assessment.nextOpenRequirement ? ` (next open requirement: \`${assessment.nextOpenRequirement}\`)` : ""}. Stability verification requires a MatrixSmith-measured visibly-static hold of at least ${MINIMUM_STATIC_HOLD_MS / 1000}s from full-raster-visible (T1).`);
-  const timingRuns = (investigation?.completedTests ?? []).filter((test) => test.testId === "coolledux-graffiti-timing" || test.testId === "coolledux-graffiti-staytime");
+  lines.push(
+    `Selected usable strategy: ${assessment.selected ?? "none"}. Characterization currently pursues: ${assessment.pursued ?? "none"}${assessment.nextOpenRequirement ? ` (next open requirement: \`${assessment.nextOpenRequirement}\`)` : ""}. Stability verification requires a MatrixSmith-measured visibly-static hold of at least ${MINIMUM_STATIC_HOLD_MS / 1000}s from full-raster-visible (T1).`,
+  );
+  const timingRuns = (investigation?.completedTests ?? []).filter(
+    (test) =>
+      test.testId === "coolledux-graffiti-timing" ||
+      test.testId === "coolledux-graffiti-staytime",
+  );
   if (timingRuns.length > 0) {
     lines.push("", "#### Measured Graffiti timing runs", "");
     for (const run of timingRuns) {
       const t1 = measuredObservationMs(run.observations, "image-visible");
       const t2 = measuredObservationMs(run.observations, "movement-start");
       const end = measuredObservationMs(run.observations, "observation-end");
-      const hold = t1 !== null && t2 !== null ? t2 - t1 : t1 !== null && end !== null ? end - t1 : null;
+      const hold =
+        t1 !== null && t2 !== null
+          ? t2 - t1
+          : t1 !== null && end !== null
+            ? end - t1
+            : null;
       // The comparison is between VALID attempts only; a discarded human
       // measurement must never dilute or contradict what a good one showed.
       const attempts = run.attempts ?? [];
-      const discarded = attempts.filter((attempt) => attempt.validity !== "valid").length;
-      lines.push(`- stayTime=${run.parameters?.stayTime ?? "?"} (${run.status}): render latency ${t1 !== null ? approximateSeconds(t1) : "not measured"}; visible static hold ${hold !== null ? approximateSeconds(Math.max(0, hold)) : "not measured"}; movement ${t2 !== null ? `began at +${approximateSeconds(t2)}` : end !== null ? "not observed within the window" : "not measured"}.${discarded > 0 ? ` ${discarded} invalid attempt(s) excluded from this conclusion.` : ""}`);
+      const discarded = attempts.filter(
+        (attempt) => attempt.validity !== "valid",
+      ).length;
+      lines.push(
+        `- stayTime=${run.parameters?.stayTime ?? "?"} (${run.status}): render latency ${t1 !== null ? approximateSeconds(t1) : "not measured"}; visible static hold ${hold !== null ? approximateSeconds(Math.max(0, hold)) : "not measured"}; movement ${t2 !== null ? `began at +${approximateSeconds(t2)}` : end !== null ? "not observed within the window" : "not measured"}.${discarded > 0 ? ` ${discarded} invalid attempt(s) excluded from this conclusion.` : ""}`,
+      );
     }
   }
   return lines.join("\n").trimEnd();
 }
 
-function measuredObservationMs(observations: readonly ObservationValue[], fieldId: string): number | null {
-  const value = observations.find((observation) => observation.fieldId === fieldId);
-  return value?.kind === "duration" && value.measuredBy === "matrixsmith-timer" ? value.milliseconds : null;
+function measuredObservationMs(
+  observations: readonly ObservationValue[],
+  fieldId: string,
+): number | null {
+  const value = observations.find(
+    (observation) => observation.fieldId === fieldId,
+  );
+  return value?.kind === "duration" && value.measuredBy === "matrixsmith-timer"
+    ? value.milliseconds
+    : null;
 }
 
-function physicalTimingText(completed: CompletedGuidedTest, transactions: readonly ProtocolTransaction[]): string | null {
+function physicalTimingText(
+  completed: CompletedGuidedTest,
+  transactions: readonly ProtocolTransaction[],
+): string | null {
   const t1 = measuredObservationMs(completed.observations, "image-visible");
   const t2 = measuredObservationMs(completed.observations, "movement-start");
   const end = measuredObservationMs(completed.observations, "observation-end");
   if (t1 === null && t2 === null && end === null) return null;
-  const relevant = transactions.filter((transaction) => completed.transactionIds.includes(transaction.id));
-  const finalWrite = relevant.flatMap((transaction) => transaction.packets.filter((packet) => packet.direction === "TX")).map((packet) => packet.hostAcceptedAt ?? packet.timestamp).sort().at(-1) ?? null;
+  const relevant = transactions.filter((transaction) =>
+    completed.transactionIds.includes(transaction.id),
+  );
+  const finalWrite =
+    relevant
+      .flatMap((transaction) =>
+        transaction.packets.filter((packet) => packet.direction === "TX"),
+      )
+      .map((packet) => packet.hostAcceptedAt ?? packet.timestamp)
+      .sort()
+      .at(-1) ?? null;
   const attempts = completed.attempts ?? [];
   const invalid = attempts.filter((attempt) => attempt.validity !== "valid");
   return [
@@ -325,22 +663,59 @@ function physicalTimingText(completed: CompletedGuidedTest, transactions: readon
     `- Upload final write accepted (T0): ${finalWrite ?? "not captured"}`,
     "",
     "**Physical observation (human observed)**",
-    ...(t1 !== null ? [`- Full raster visible (T1): +${formatDuration(t1)} — ${approximateSeconds(t1)}, human observed`] : []),
-    ...(t2 !== null ? [`- Movement began (T2): +${formatDuration(t2)} — ${approximateSeconds(t2)}, human observed`] : []),
-    ...(end !== null ? [`- Observation ended, still static: +${formatDuration(end)} — ${approximateSeconds(end)}, human observed`] : []),
+    ...(t1 !== null
+      ? [
+          `- Full raster visible (T1): +${formatDuration(t1)} — ${approximateSeconds(t1)}, human observed`,
+        ]
+      : []),
+    ...(t2 !== null
+      ? [
+          `- Movement began (T2): +${formatDuration(t2)} — ${approximateSeconds(t2)}, human observed`,
+        ]
+      : []),
+    ...(end !== null
+      ? [
+          `- Observation ended, still static: +${formatDuration(end)} — ${approximateSeconds(end)}, human observed`,
+        ]
+      : []),
     "",
     "**Derived**",
-    ...(t1 !== null ? [`- Render latency (T1 − T0): ${approximateSeconds(t1)} (exact ${formatDuration(t1)})`] : []),
-    ...(t1 !== null && t2 !== null ? [`- Visible static hold (T2 − T1): ${approximateSeconds(Math.max(0, t2 - t1))} (exact ${formatDuration(Math.max(0, t2 - t1))})`] : []),
-    ...(t1 !== null && t2 === null && end !== null ? [`- Visible static hold (still static at stop): ${approximateSeconds(Math.max(0, end - t1))} (exact ${formatDuration(Math.max(0, end - t1))})`] : []),
+    ...(t1 !== null
+      ? [
+          `- Render latency (T1 − T0): ${approximateSeconds(t1)} (exact ${formatDuration(t1)})`,
+        ]
+      : []),
+    ...(t1 !== null && t2 !== null
+      ? [
+          `- Visible static hold (T2 − T1): ${approximateSeconds(Math.max(0, t2 - t1))} (exact ${formatDuration(Math.max(0, t2 - t1))})`,
+        ]
+      : []),
+    ...(t1 !== null && t2 === null && end !== null
+      ? [
+          `- Visible static hold (still static at stop): ${approximateSeconds(Math.max(0, end - t1))} (exact ${formatDuration(Math.max(0, end - t1))})`,
+        ]
+      : []),
     "",
     // T0 comes off the transport and is precise within that model. T1/T2 are
     // a person watching a panel and tapping a phone; reporting them to the
     // millisecond as though a sensor caught the transition would overstate
     // what was actually measured.
     "- Measurement basis: T0 is the final host-accepted transport write, measured automatically. T1 and T2 are human observations and carry human reaction delay — the approximate values are the honest reading, and the exact marks are retained for forensic use. Per-packet transport timing lives in the transactions/forensic appendix.",
-    ...(attempts.length > 0 ? ["", `**Attempts (${attempts.length}; ${attempts.length - invalid.length} valid)**`, ...attempts.flatMap((attempt) => describeAttempt(attempt).map((line) => `- ${line}`))] : []),
-    ...(invalid.length > 0 ? ["", "Invalid attempts are recorded above for completeness. They establish nothing about the hardware: a missed or mistimed mark means the measurement failed, not that the display behaved differently."] : []),
+    ...(attempts.length > 0
+      ? [
+          "",
+          `**Attempts (${attempts.length}; ${attempts.length - invalid.length} valid)**`,
+          ...attempts.flatMap((attempt) =>
+            describeAttempt(attempt).map((line) => `- ${line}`),
+          ),
+        ]
+      : []),
+    ...(invalid.length > 0
+      ? [
+          "",
+          "Invalid attempts are recorded above for completeness. They establish nothing about the hardware: a missed or mistimed mark means the measurement failed, not that the display behaved differently.",
+        ]
+      : []),
   ].join("\n");
 }
 
@@ -357,8 +732,11 @@ function coreProgressText(progress: CorePlanProgress): string {
     "",
   ];
   for (const entry of progress.steps) {
-    const label = entry.state === "skipped" ? "SKIPPED" : entry.state.toUpperCase();
-    lines.push(`${entry.step.ordinal}. ${entry.step.title} — ${label}${entry.skipReason ? ` — not needed because ${entry.skipReason}` : ""}`);
+    const label =
+      entry.state === "skipped" ? "SKIPPED" : entry.state.toUpperCase();
+    lines.push(
+      `${entry.step.ordinal}. ${entry.step.title} — ${label}${entry.skipReason ? ` — not needed because ${entry.skipReason}` : ""}`,
+    );
   }
   return lines.join("\n");
 }
@@ -371,25 +749,35 @@ function coreProgressText(progress: CorePlanProgress): string {
  * change all leave the panel unobserved, and only a live session that made
  * the write can claim otherwise.
  */
-function panelProgramText(state: PanelProgramState, liveSession: boolean): string {
+function panelProgramText(
+  state: PanelProgramState,
+  liveSession: boolean,
+): string {
   if (state.certainty === "unknown" || !liveSession) {
-    const reason = !liveSession && state.certainty !== "unknown"
-      ? "This report was generated without a live physical session, so the display's current contents were not observed."
-      : state.uncertaintyReason ?? "The display's current contents were not observed.";
+    const reason =
+      !liveSession && state.certainty !== "unknown"
+        ? "This report was generated without a live physical session, so the display's current contents were not observed."
+        : (state.uncertaintyReason ??
+          "The display's current contents were not observed.");
     return [
       `Last known program sent: ${state.label}${state.writtenAt ? ` (written at ${state.writtenAt})` : ""}`,
       "",
       `Currently on the display: UNKNOWN. ${reason}`,
     ].join("\n");
   }
-  const heading = state.certainty === "known-active"
-    ? `Currently on the display: ${state.label} — written and accepted in this session.`
-    : `Currently on the display: ${state.label}. Any previously sent guided diagnostic has been replaced.`;
+  const heading =
+    state.certainty === "known-active"
+      ? `Currently on the display: ${state.label} — written and accepted in this session.`
+      : `Currently on the display: ${state.label}. Any previously sent guided diagnostic has been replaced.`;
   return [
     heading,
-    ...(state.fingerprint ? ["", `Execution identity: \`${state.fingerprint.key}\``] : []),
+    ...(state.fingerprint
+      ? ["", `Execution identity: \`${state.fingerprint.key}\``]
+      : []),
     // The final host-accepted write, not the moment the transfer began.
-    ...(state.writtenAt ? ["", `Written at ${state.writtenAt} (final host-accepted write).`] : []),
+    ...(state.writtenAt
+      ? ["", `Written at ${state.writtenAt} (final host-accepted write).`]
+      : []),
   ].join("\n");
 }
 
@@ -400,39 +788,67 @@ function panelProgramText(state: PanelProgramState, liveSession: boolean): strin
  * experiment are one experiment. Flattening them into unrelated transmissions
  * is what made a retry-heavy session unreadable.
  */
-function experimentsText(experiments: readonly ExperimentRun[], progress: CorePlanProgress | null): string {
+function experimentsText(
+  experiments: readonly ExperimentRun[],
+  progress: CorePlanProgress | null,
+): string {
   // Positions are the slots' own stable ordinals, so a report written after a
   // branch closed still numbers experiments the way the user saw them.
   const positions = new Map<string, number>();
-  for (const entry of progress?.steps ?? []) positions.set(entry.step.id, entry.step.ordinal);
+  for (const entry of progress?.steps ?? [])
+    positions.set(entry.step.id, entry.step.ordinal);
   const blocks = experiments.map((run) => {
-    const number = run.corePlanStepId ? positions.get(run.corePlanStepId) : undefined;
+    const number = run.corePlanStepId
+      ? positions.get(run.corePlanStepId)
+      : undefined;
     const heading = `### ${number ? `Test ${number} of ${progress?.total ?? "?"} — ` : ""}${run.title}`;
     const lines: string[] = [heading, ""];
     if (run.variant) lines.push(`Variant: ${run.variant}`);
-    lines.push(`Status: ${run.status}${run.conclusion ? ` — ${run.conclusion}` : ""}`);
-    if (run.resolution) lines.push(`Resolution: ${EXPERIMENT_RESOLUTION_LABELS[run.resolution]}${run.resolution === "retryable-incomplete" ? " — the same experiment may legitimately be measured again" : ""}`);
-    if (run.reopenReason) lines.push(`Reopened deliberately: ${run.reopenReason}`);
-    lines.push(`Execution identity: \`${run.fingerprint.key}\`${run.fingerprint.programCrc32 ? ` (program CRC ${run.fingerprint.programCrc32})` : ""}`);
+    lines.push(
+      `Status: ${run.status}${run.conclusion ? ` — ${run.conclusion}` : ""}`,
+    );
+    if (run.resolution)
+      lines.push(
+        `Resolution: ${EXPERIMENT_RESOLUTION_LABELS[run.resolution]}${run.resolution === "retryable-incomplete" ? " — the same experiment may legitimately be measured again" : ""}`,
+      );
+    if (run.reopenReason)
+      lines.push(`Reopened deliberately: ${run.reopenReason}`);
+    lines.push(
+      `Execution identity: \`${run.fingerprint.key}\`${run.fingerprint.programCrc32 ? ` (program CRC ${run.fingerprint.programCrc32})` : ""}`,
+    );
     lines.push("");
     for (const attempt of run.attempts) {
       lines.push(`Attempt ${attempt.attemptNumber}`);
-      lines.push(`- transfer reason: ${TRANSFER_REASON_LABELS[attempt.reason]}`);
-      lines.push(`- ${attempt.validity === "valid" ? "valid" : attempt.validity === "invalid" ? "INVALID" : "in progress"}`);
-      if (attempt.failureKind) lines.push(`- failure: ${ATTEMPT_FAILURE_LABELS[attempt.failureKind]}`);
-      if (attempt.invalidationReason) lines.push(`- reason: ${attempt.invalidationReason}`);
-      if (attempt.validity === "invalid") lines.push("- excluded from conclusions");
+      lines.push(
+        `- transfer reason: ${TRANSFER_REASON_LABELS[attempt.reason]}`,
+      );
+      lines.push(
+        `- ${attempt.validity === "valid" ? "valid" : attempt.validity === "invalid" ? "INVALID" : "in progress"}`,
+      );
+      if (attempt.failureKind)
+        lines.push(`- failure: ${ATTEMPT_FAILURE_LABELS[attempt.failureKind]}`);
+      if (attempt.invalidationReason)
+        lines.push(`- reason: ${attempt.invalidationReason}`);
+      if (attempt.validity === "invalid")
+        lines.push("- excluded from conclusions");
       if (attempt.failureKind === "transfer-failed") {
-        lines.push("- no hardware conclusion: the transfer failed, so nothing physical was observed. Any transactions listed below record packets that were sent before the failure.");
+        lines.push(
+          "- no hardware conclusion: the transfer failed, so nothing physical was observed. Any transactions listed below record packets that were sent before the failure.",
+        );
       }
       // describeAttempt restates the validity and reason; those are already
       // above, so only its measurement detail is carried through here.
       if (attempt.timing) {
-        lines.push(...describeAttempt(attempt.timing)
-          .slice(1)
-          .map((line) => line.trim())
-          .filter((line) => !line.startsWith("Reason:") && !line.startsWith("Excluded"))
-          .map((line) => `- ${line}`));
+        lines.push(
+          ...describeAttempt(attempt.timing)
+            .slice(1)
+            .map((line) => line.trim())
+            .filter(
+              (line) =>
+                !line.startsWith("Reason:") && !line.startsWith("Excluded"),
+            )
+            .map((line) => `- ${line}`),
+        );
       }
       lines.push("");
     }
@@ -450,15 +866,27 @@ function experimentsText(experiments: readonly ExperimentRun[], progress: CorePl
  * deliberately opened is indistinguishable from one the workflow pushed on
  * them — and the fix for one is the opposite of the fix for the other.
  */
-function recommendationTrailText(trail: readonly RecommendationTrailEntry[], tests: readonly GuidedTestDefinition[]): string {
+function recommendationTrailText(
+  trail: readonly RecommendationTrailEntry[],
+  tests: readonly GuidedTestDefinition[],
+): string {
   const titles = new Map(tests.map((test) => [test.id, test.title]));
   const lines: string[] = [];
   for (const entry of trail) {
     const origin = entry.origin ?? "automatic-recommendation";
-    lines.push(`- ${titles.get(entry.testId) ?? entry.testId} (\`${entry.testId}\`) — origin: ${RECOMMENDATION_ORIGIN_LABELS[origin] ?? origin}${entry.at ? `, ${entry.at}` : ""}`);
+    lines.push(
+      `- ${titles.get(entry.testId) ?? entry.testId} (\`${entry.testId}\`) — origin: ${RECOMMENDATION_ORIGIN_LABELS[origin] ?? origin}${entry.at ? `, ${entry.at}` : ""}`,
+    );
   }
-  const automatic = trail.filter((entry) => (entry.origin ?? "automatic-recommendation") === "automatic-recommendation").length;
-  lines.push("", `${automatic} of ${trail.length} run${trail.length === 1 ? "" : "s"} were opened by the recommendation engine; the rest were user decisions.`);
+  const automatic = trail.filter(
+    (entry) =>
+      (entry.origin ?? "automatic-recommendation") ===
+      "automatic-recommendation",
+  ).length;
+  lines.push(
+    "",
+    `${automatic} of ${trail.length} run${trail.length === 1 ? "" : "s"} were opened by the recommendation engine; the rest were user decisions.`,
+  );
   return lines.join("\n");
 }
 
@@ -471,28 +899,53 @@ function recommendationTrailText(trail: readonly RecommendationTrailEntry[], tes
  */
 function transferSummaryText(transfers: readonly TransferRecord[]): string {
   const summary = classifyTransfers(transfers);
-  const lines: string[] = [`Total diagnostic transfers: ${summary.total}${summary.failed > 0 ? ` (${summary.failed} failed)` : ""}`, ""];
+  const lines: string[] = [
+    `Total diagnostic transfers: ${summary.total}${summary.failed > 0 ? ` (${summary.failed} failed)` : ""}`,
+    "",
+  ];
   for (const [reason, count] of Object.entries(summary.byReason)) {
-    if (count > 0) lines.push(`- ${TRANSFER_REASON_LABELS[reason as keyof typeof TRANSFER_REASON_LABELS]}: ${count}`);
+    if (count > 0)
+      lines.push(
+        `- ${TRANSFER_REASON_LABELS[reason as keyof typeof TRANSFER_REASON_LABELS]}: ${count}`,
+      );
   }
-  lines.push(`- Unclassified duplicate transfers: ${summary.unclassifiedDuplicates}`);
+  lines.push(
+    `- Unclassified duplicate transfers: ${summary.unclassifiedDuplicates}`,
+  );
   if (summary.repeatedExecutions.length > 0) {
     lines.push("", "Repeated payloads:");
     for (const group of summary.repeatedExecutions) {
-      const reasons = Object.entries(group.byReason).map(([reason, count]) => `${count} × ${TRANSFER_REASON_LABELS[reason as keyof typeof TRANSFER_REASON_LABELS] ?? reason}`).join(", ");
-      lines.push(`- \`${group.testId}\`${group.programCrc32 ? ` (CRC ${group.programCrc32})` : ""}: ${group.transfers} transfers — ${reasons}`);
+      const reasons = Object.entries(group.byReason)
+        .map(
+          ([reason, count]) =>
+            `${count} × ${TRANSFER_REASON_LABELS[reason as keyof typeof TRANSFER_REASON_LABELS] ?? reason}`,
+        )
+        .join(", ");
+      lines.push(
+        `- \`${group.testId}\`${group.programCrc32 ? ` (CRC ${group.programCrc32})` : ""}: ${group.transfers} transfers — ${reasons}`,
+      );
     }
-    lines.push("", "Repeated identical payloads are expected when a measurement is retried; only unclassified duplicates indicate a workflow problem.");
+    lines.push(
+      "",
+      "Repeated identical payloads are expected when a measurement is retried; only unclassified duplicates indicate a workflow problem.",
+    );
   }
-  const failures = transfers.filter((transfer) => transfer.failureReason !== null);
+  const failures = transfers.filter(
+    (transfer) => transfer.failureReason !== null,
+  );
   if (failures.length > 0) {
     lines.push("", "Failed transfers:");
     for (const transfer of failures) {
-      lines.push(`- \`${transfer.fingerprint.testId}\` (${TRANSFER_REASON_LABELS[transfer.reason]}): ${transfer.failureReason}${transfer.transactionIds.length > 0 ? ` — ${transfer.transactionIds.length} transaction(s) recorded before the failure; the display may have been partly written` : " — no transactions recorded"}.`);
+      lines.push(
+        `- \`${transfer.fingerprint.testId}\` (${TRANSFER_REASON_LABELS[transfer.reason]}): ${transfer.failureReason}${transfer.transactionIds.length > 0 ? ` — ${transfer.transactionIds.length} transaction(s) recorded before the failure; the display may have been partly written` : " — no transactions recorded"}.`,
+      );
     }
   }
   if (summary.unclassifiedDuplicates > 0) {
-    lines.push("", `POSSIBLE WORKFLOW ISSUE: ${summary.unclassifiedDuplicates} transmission(s) repeated an execution while claiming to be a new experiment.`);
+    lines.push(
+      "",
+      `POSSIBLE WORKFLOW ISSUE: ${summary.unclassifiedDuplicates} transmission(s) repeated an execution while claiming to be a new experiment.`,
+    );
   }
   return lines.join("\n");
 }
@@ -503,7 +956,17 @@ function deviceText(device: DeviceReportContext): string {
     `- Name: ${device.fingerprint?.name ?? "unknown"}`,
     `- Profile: ${profile ? `${profile.id} (${profile.width}×${profile.height}, driver ${profile.driverId})` : "unresolved"}`,
     `- Session: ${device.liveConnected ? "live physical connection" : "not live"}`,
-    ...(profile?.quirks ? [`- Unexplained raw metadata: ${Object.entries(profile.quirks.unexplained).map(([key, value]) => `${key}=${String(value)} (semantics unknown)`).join(", ") || "none"}`] : []),
+    ...(profile?.quirks
+      ? [
+          `- Unexplained raw metadata: ${
+            Object.entries(profile.quirks.unexplained)
+              .map(
+                ([key, value]) => `${key}=${String(value)} (semantics unknown)`,
+              )
+              .join(", ") || "none"
+          }`,
+        ]
+      : []),
   ].join("\n");
 }
 
@@ -521,29 +984,54 @@ function advertisementText(device: DeviceReportContext): string {
     // byte stream; the source is labeled and raw bytes are never fabricated.
     lines.push(
       `- Structured advertisement observation (source: ${observation.source}, captured ${observation.capturedAt}):`,
-      ...(observation.name !== undefined ? [`  - Advertised name: ${observation.name}`] : []),
-      ...(observation.rssi !== undefined ? [`  - RSSI: ${observation.rssi} dBm`] : []),
-      ...(observation.txPower !== undefined ? [`  - TX power: ${observation.txPower} dBm`] : []),
+      ...(observation.name !== undefined
+        ? [`  - Advertised name: ${observation.name}`]
+        : []),
+      ...(observation.rssi !== undefined
+        ? [`  - RSSI: ${observation.rssi} dBm`]
+        : []),
+      ...(observation.txPower !== undefined
+        ? [`  - TX power: ${observation.txPower} dBm`]
+        : []),
       `  - Advertised service UUIDs: ${observation.advertisedServiceUuids.length ? observation.advertisedServiceUuids.join(", ") : "none observed"}`,
       ...(observation.manufacturerData.length
-        ? observation.manufacturerData.map((entry) => `  - Manufacturer data: company id 0x${entry.companyId.toString(16).toUpperCase().padStart(4, "0")}, data ${entry.dataHex || "(empty)"}`)
+        ? observation.manufacturerData.map(
+            (entry) =>
+              `  - Manufacturer data: company id 0x${entry.companyId.toString(16).toUpperCase().padStart(4, "0")}, data ${entry.dataHex || "(empty)"}`,
+          )
         : ["  - Manufacturer data: none observed"]),
       ...(observation.serviceData.length
-        ? observation.serviceData.map((entry) => `  - Service data ${entry.uuid}: ${entry.dataHex || "(empty)"}`)
+        ? observation.serviceData.map(
+            (entry) =>
+              `  - Service data ${entry.uuid}: ${entry.dataHex || "(empty)"}`,
+          )
         : []),
     );
   } else {
-    lines.push("- Structured advertisement observation: not captured (watchAdvertisements unsupported or nothing received; never fabricated)");
+    lines.push(
+      "- Structured advertisement observation: not captured (watchAdvertisements unsupported or nothing received; never fabricated)",
+    );
   }
   return lines.join("\n");
 }
 
 function gattText(fingerprint: DeviceFingerprint | null): string {
-  if (!fingerprint?.services.length) return "No accessible GATT hierarchy recorded.";
-  return fingerprint.services.flatMap((service) => [
-    `- Service \`${service.uuid}\`${service.isPrimary ? " (primary)" : ""}`,
-    ...service.characteristics.map((characteristic) => `  - \`${characteristic.uuid}\`: ${Object.entries(characteristic.properties).filter(([, enabled]) => enabled).map(([name]) => name).join(", ")}`),
-  ]).join("\n");
+  if (!fingerprint?.services.length)
+    return "No accessible GATT hierarchy recorded.";
+  return fingerprint.services
+    .flatMap((service) => [
+      `- Service \`${service.uuid}\`${service.isPrimary ? " (primary)" : ""}`,
+      ...service.characteristics.map(
+        (characteristic) =>
+          `  - \`${characteristic.uuid}\`: ${Object.entries(
+            characteristic.properties,
+          )
+            .filter(([, enabled]) => enabled)
+            .map(([name]) => name)
+            .join(", ")}`,
+      ),
+    ])
+    .join("\n");
 }
 
 function compilationText(record: ContentCompilationRecord | null): string {
@@ -552,96 +1040,199 @@ function compilationText(record: ContentCompilationRecord | null): string {
     `- Program: ${record.width}×${record.height}, ${record.tileCount} tile(s) of width ${record.tileWidth}, ${record.programBytes} bytes uncompressed`,
     `- CRC32 (custom): 0x${record.crc32.toString(16).padStart(8, "0").toUpperCase()}; compressed ${record.compressedBytes} bytes (${record.compression})`,
     `- Transmission: 1 announce + ${record.chunkCount} chunk packet(s), ${record.pacingMs} ms requested pacing`,
-    ...(record.frameCount !== undefined ? [`- Frames: ${record.frameCount}`] : []),
+    ...(record.frameCount !== undefined
+      ? [`- Frames: ${record.frameCount}`]
+      : []),
   ].join("\n");
 }
 
 function automaticObservationsText(input: TestReportInput): string {
-  const relevant = input.transactions.filter((transaction) => input.completed.transactionIds.includes(transaction.id));
+  const relevant = input.transactions.filter((transaction) =>
+    input.completed.transactionIds.includes(transaction.id),
+  );
   if (relevant.length === 0) return "No transactions captured for this test.";
   const lines: string[] = [];
   for (const transaction of relevant) {
-    lines.push(`- ${transaction.operation}: host accepted=${transaction.hostAccepted}${transaction.error ? `; error=${transaction.error}` : ""}`);
-    const chunkCount = input.compilation?.transactionId === transaction.id ? input.compilation.chunkCount : null;
+    lines.push(
+      `- ${transaction.operation}: host accepted=${transaction.hostAccepted}${transaction.error ? `; error=${transaction.error}` : ""}`,
+    );
+    const chunkCount =
+      input.compilation?.transactionId === transaction.id
+        ? input.compilation.chunkCount
+        : null;
     if (chunkCount !== null && input.decoder) {
-      for (const line of describeUploadAnalysis(analyzeStoredProgramUpload(transaction, chunkCount, input.decoder))) lines.push(`- ${line}`);
+      for (const line of describeUploadAnalysis(
+        analyzeStoredProgramUpload(transaction, chunkCount, input.decoder),
+      ))
+        lines.push(`- ${line}`);
     }
   }
   return lines.join("\n");
 }
 
-function structuredObservationsText(investigation: Investigation | null, tests: readonly GuidedTestDefinition[], regionsByTest: ReadonlyMap<string, readonly DiagnosticRegion[]>): string {
+function structuredObservationsText(
+  investigation: Investigation | null,
+  tests: readonly GuidedTestDefinition[],
+  regionsByTest: ReadonlyMap<string, readonly DiagnosticRegion[]>,
+): string {
   const completed = investigation?.completedTests ?? [];
   if (completed.length === 0) return "None recorded.";
-  return completed.map((test) => {
-    const definition = tests.find(({ id }) => id === test.testId);
-    return [`### ${test.title}`, "", ...test.observations.map((value) => {
-      const spec = definition?.observation.find((candidate) => candidate.id === value.fieldId);
-      const region = spec?.regionId ? regionsByTest.get(test.testId)?.find((candidate) => candidate.id === spec.regionId) : undefined;
-      return `- ${observationValueSummary(spec, value, region?.displayLabel)}`;
-    })].join("\n");
-  }).join("\n\n");
+  return completed
+    .map((test) => {
+      const definition = tests.find(({ id }) => id === test.testId);
+      return [
+        `### ${test.title}`,
+        "",
+        ...test.observations.map((value) => {
+          const spec = definition?.observation.find(
+            (candidate) => candidate.id === value.fieldId,
+          );
+          const region = spec?.regionId
+            ? regionsByTest
+                .get(test.testId)
+                ?.find((candidate) => candidate.id === spec.regionId)
+            : undefined;
+          return `- ${observationValueSummary(spec, value, region?.displayLabel)}`;
+        }),
+      ].join("\n");
+    })
+    .join("\n\n");
 }
 
-function driverRecommendationsText(claims: readonly ClaimState[], device: DeviceReportContext): string {
+function driverRecommendationsText(
+  claims: readonly ClaimState[],
+  device: DeviceReportContext,
+): string {
   const lines: string[] = [];
-  const status = (id: ClaimId): string => claims.find((claim) => claim.id === id)?.status ?? "unknown";
-  const encoder = claims.find((claim) => claim.id === "pixel.encoder-correctness");
+  const status = (id: ClaimId): string =>
+    claims.find((claim) => claim.id === id)?.status ?? "unknown";
+  const encoder = claims.find(
+    (claim) => claim.id === "pixel.encoder-correctness",
+  );
   if (encoder?.status === "rejected") {
     const details = encoder.decidedBy?.details;
-    lines.push(`ENCODER CORRECTION REQUIRED: the raw channel map is characterized but MatrixSmith's encoder maps logical channels incorrectly. Observed: ${String(details?.observedMap ?? "see pixel.channel-map evidence")}. Encoder emits: ${String(details?.expectedMap ?? "RGB444 (byte0 low nibble=R, byte1 high nibble=G, byte1 low nibble=B)")}. Implement the corrected ordering in the driver/profile, then re-run the channel verification; the profile is never mutated at runtime and normal image/text sending stays gated until re-verified.`);
+    lines.push(
+      `ENCODER CORRECTION REQUIRED: the raw channel map is characterized but MatrixSmith's encoder maps logical channels incorrectly. Observed: ${String(details?.observedMap ?? "see pixel.channel-map evidence")}. Encoder emits: ${String(details?.expectedMap ?? "RGB444 (byte0 low nibble=R, byte1 high nibble=G, byte1 low nibble=B)")}. Implement the corrected ordering in the driver/profile, then re-run the channel verification; the profile is never mutated at runtime and normal image/text sending stays gated until re-verified.`,
+    );
   }
-  if (status("static.strategy") !== "verified") lines.push("No static-raster strategy is validated; images/text must stay gated until one is (candidates: graffiti, animation-single-frame, animation-identical-frames).");
-  if (status("graffiti.black-semantics") === "source-supported") lines.push("The Graffiti 0x0004 off workaround is inherited from reference hardware and untested here; run the black probe before changing it.");
-  if (status("pixel.white-channel") === "unknown") lines.push("The unused high nibble may drive a physical emitter (hypothesis only); do not claim RGBW without the channel probe evidence.");
-  if (device.profile?.quirks?.preferredRasterStrategy === "unresolved") lines.push("Profile preferredRasterStrategy is unresolved by design; session validation selects the current strategy.");
+  if (status("static.strategy") !== "verified")
+    lines.push(
+      "No static-raster strategy is validated; images/text must stay gated until one is (candidates: graffiti, animation-single-frame, animation-identical-frames).",
+    );
+  if (status("graffiti.black-semantics") === "source-supported")
+    lines.push(
+      "The Graffiti 0x0004 off workaround is inherited from reference hardware and untested here; run the black probe before changing it.",
+    );
+  if (status("pixel.white-channel") === "unknown")
+    lines.push(
+      "The unused high nibble may drive a physical emitter (hypothesis only); do not claim RGBW without the channel probe evidence.",
+    );
+  if (device.profile?.quirks?.preferredRasterStrategy === "unresolved")
+    lines.push(
+      "Profile preferredRasterStrategy is unresolved by design; session validation selects the current strategy.",
+    );
   return listOrNone(lines);
 }
 
-function transactionSummaryText(transactions: readonly ProtocolTransaction[], relevantIds: readonly string[]): string {
-  const relevant = relevantIds.length > 0 ? transactions.filter((transaction) => relevantIds.includes(transaction.id)) : [];
+function transactionSummaryText(
+  transactions: readonly ProtocolTransaction[],
+  relevantIds: readonly string[],
+): string {
+  const relevant =
+    relevantIds.length > 0
+      ? transactions.filter((transaction) =>
+          relevantIds.includes(transaction.id),
+        )
+      : [];
   if (relevant.length === 0) return "No transactions referenced.";
-  return relevant.map((transaction) => {
-    const tx = transaction.packets.filter((packet) => packet.direction === "TX");
-    const rx = transaction.packets.filter((packet) => packet.direction === "RX");
-    return `- ${transaction.startedAt} ${transaction.operation}: ${tx.length} TX / ${rx.length} RX packet(s); host=${transaction.hostAccepted}; duration ${transaction.durationMs} ms${transaction.error ? `; error=${transaction.error}` : ""} (id ${transaction.id})`;
-  }).join("\n");
+  return relevant
+    .map((transaction) => {
+      const tx = transaction.packets.filter(
+        (packet) => packet.direction === "TX",
+      );
+      const rx = transaction.packets.filter(
+        (packet) => packet.direction === "RX",
+      );
+      return `- ${transaction.startedAt} ${transaction.operation}: ${tx.length} TX / ${rx.length} RX packet(s); host=${transaction.hostAccepted}; duration ${transaction.durationMs} ms${transaction.error ? `; error=${transaction.error}` : ""} (id ${transaction.id})`;
+    })
+    .join("\n");
 }
 
 /** A few representative packets, never the full stream: announce, first data chunk, and first receipts. */
-function packetExemplarText(transactions: readonly ProtocolTransaction[], relevantIds: readonly string[]): string {
-  const relevant = transactions.filter((transaction) => relevantIds.includes(transaction.id));
+function packetExemplarText(
+  transactions: readonly ProtocolTransaction[],
+  relevantIds: readonly string[],
+): string {
+  const relevant = transactions.filter((transaction) =>
+    relevantIds.includes(transaction.id),
+  );
   const lines: string[] = [];
   for (const transaction of relevant) {
-    const tx = transaction.packets.filter((packet) => packet.direction === "TX");
-    const rx = transaction.packets.filter((packet) => packet.direction === "RX");
-    if (tx[0]) lines.push(`- ${transaction.operation} first TX (announce): \`${tx[0].hex}\``);
-    if (tx[1]) lines.push(`- ${transaction.operation} second TX (first data chunk): \`${truncateHex(tx[1].hex)}\``);
-    for (const packet of rx.slice(0, 3)) lines.push(`- ${transaction.operation} RX: \`${packet.hex}\``);
-    if (tx.length > 2 || rx.length > 3) lines.push(`- (${tx.length} TX / ${rx.length} RX total; full bytes available in the forensic report)`);
+    const tx = transaction.packets.filter(
+      (packet) => packet.direction === "TX",
+    );
+    const rx = transaction.packets.filter(
+      (packet) => packet.direction === "RX",
+    );
+    if (tx[0])
+      lines.push(
+        `- ${transaction.operation} first TX (announce): \`${tx[0].hex}\``,
+      );
+    if (tx[1])
+      lines.push(
+        `- ${transaction.operation} second TX (first data chunk): \`${truncateHex(tx[1].hex)}\``,
+      );
+    for (const packet of rx.slice(0, 3))
+      lines.push(`- ${transaction.operation} RX: \`${packet.hex}\``);
+    if (tx.length > 2 || rx.length > 3)
+      lines.push(
+        `- (${tx.length} TX / ${rx.length} RX total; full bytes available in the forensic report)`,
+      );
   }
   return lines.length ? lines.join("\n") : "No packet exemplars available.";
 }
 
 function truncateHex(hex: string, maxBytes = 24): string {
   const bytes = hex.split(" ");
-  return bytes.length <= maxBytes ? hex : `${bytes.slice(0, maxBytes).join(" ")} … (${bytes.length} bytes)`;
+  return bytes.length <= maxBytes
+    ? hex
+    : `${bytes.slice(0, maxBytes).join(" ")} … (${bytes.length} bytes)`;
 }
 
-function reproductionText(device: DeviceReportContext, completed: CompletedGuidedTest | null): string {
+function reproductionText(
+  device: DeviceReportContext,
+  completed: CompletedGuidedTest | null,
+): string {
   return [
     `- MatrixSmith ${device.matrixsmithVersion}; Web Bluetooth transport`,
     `- Profile: ${device.profile?.id ?? "unresolved"}`,
-    ...(completed ? [`- Re-run: guided test \`${completed.testId}\`${completed.parameters ? ` with ${Object.entries(completed.parameters).map(([key, value]) => `${key}=${String(value)}`).join(", ")}` : ""}`] : []),
+    ...(completed
+      ? [
+          `- Re-run: guided test \`${completed.testId}\`${
+            completed.parameters
+              ? ` with ${Object.entries(completed.parameters)
+                  .map(([key, value]) => `${key}=${String(value)}`)
+                  .join(", ")}`
+              : ""
+          }`,
+        ]
+      : []),
     "- No vendor app, external BLE tools, or cloud services were involved.",
   ].join("\n");
 }
 
-function compilationChunkCount(compilations: readonly ContentCompilationRecord[], transactionId: string): number | null {
-  const record = compilations.find((compilation) => compilation.transactionId === transactionId);
+function compilationChunkCount(
+  compilations: readonly ContentCompilationRecord[],
+  transactionId: string,
+): number | null {
+  const record = compilations.find(
+    (compilation) => compilation.transactionId === transactionId,
+  );
   return record ? record.chunkCount : null;
 }
 
 function listOrNone(values: readonly string[]): string {
-  return values.length ? values.map((value) => `- ${value}`).join("\n") : "None recorded.";
+  return values.length
+    ? values.map((value) => `- ${value}`).join("\n")
+    : "None recorded.";
 }
