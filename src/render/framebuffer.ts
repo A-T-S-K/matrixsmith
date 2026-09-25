@@ -10,7 +10,12 @@ export class Framebuffer {
   readonly data: Uint8Array;
 
   constructor(width: number, height: number) {
-    if (!Number.isInteger(width) || !Number.isInteger(height) || width <= 0 || height <= 0) {
+    if (
+      !Number.isInteger(width) ||
+      !Number.isInteger(height) ||
+      width <= 0 ||
+      height <= 0
+    ) {
       throw new RangeError("Framebuffer dimensions must be positive integers.");
     }
     this.width = width;
@@ -36,7 +41,8 @@ export class Framebuffer {
 
   fill(r: number, g: number, b: number): void {
     const color = [clampByte(r), clampByte(g), clampByte(b)] as const;
-    for (let offset = 0; offset < this.data.length; offset += 3) this.data.set(color, offset);
+    for (let offset = 0; offset < this.data.length; offset += 3)
+      this.data.set(color, offset);
   }
 
   clear(): void {
@@ -44,8 +50,17 @@ export class Framebuffer {
   }
 
   #offset(x: number, y: number): number {
-    if (!Number.isInteger(x) || !Number.isInteger(y) || x < 0 || x >= this.width || y < 0 || y >= this.height) {
-      throw new RangeError(`Pixel (${x}, ${y}) is outside ${this.width}x${this.height}`);
+    if (
+      !Number.isInteger(x) ||
+      !Number.isInteger(y) ||
+      x < 0 ||
+      x >= this.width ||
+      y < 0 ||
+      y >= this.height
+    ) {
+      throw new RangeError(
+        `Pixel (${x}, ${y}) is outside ${this.width}x${this.height}`,
+      );
     }
     return (y * this.width + x) * 3;
   }

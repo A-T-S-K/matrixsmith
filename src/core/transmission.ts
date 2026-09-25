@@ -4,23 +4,17 @@ import type { MatrixOperation } from "./operations";
 import type { Persistence, RiskClass } from "./risk";
 
 export type WriteMode = "with-response" | "without-response";
-export type AckPolicy = "none" | "per-packet" | "final";
 
 export type ResponseExpectation =
   | { readonly type: "none" }
   | {
-    readonly type: "notification";
-    readonly required: boolean;
-    readonly timeoutMs: number;
-    readonly opcode?: number;
-    readonly kind?: string;
-    readonly fulfillsOperation: boolean;
-  };
-
-export interface RetryPolicy {
-  readonly maxAttempts: number;
-  readonly retryOn: readonly string[];
-}
+      readonly type: "notification";
+      readonly required: boolean;
+      readonly timeoutMs: number;
+      readonly opcode?: number;
+      readonly kind?: string;
+      readonly fulfillsOperation: boolean;
+    };
 
 export interface TransmissionPacket {
   readonly index: number;
@@ -28,6 +22,11 @@ export interface TransmissionPacket {
   readonly writeMode: WriteMode;
   readonly bytes: Uint8Array;
   readonly hex: string;
+  /**
+   * Pause after this packet before the next write, in milliseconds. Pacing is
+   * generic plan metadata: codecs never sleep, the executor owns timing.
+   */
+  readonly delayAfterMs?: number;
 }
 
 export interface TransmissionPlan {
@@ -40,28 +39,242 @@ export interface TransmissionPlan {
   readonly validation: ValidationStatus;
   readonly evidenceRefs: readonly string[];
   readonly packets: readonly TransmissionPacket[];
-  readonly ackPolicy: AckPolicy;
   readonly responseExpectation: ResponseExpectation;
   /** Explicit driver intent. Validation alone never makes a plan executable. */
   readonly execution: "live" | "dry-run-only";
   readonly purpose: "operation" | "probe";
-  readonly retryPolicy: RetryPolicy;
   readonly timeoutMs: number;
   readonly recoveryNotes: readonly string[];
   readonly metadata: Readonly<Record<string, string | number | boolean>>;
 }
 
+/** Identifies one physical target during one unbroken connection generation. */
+export interface TargetBinding {
+  readonly connectionId: string;
+  readonly fingerprintKey: string;
+  readonly browserDeviceId: string | null;
+}
+
+/**
+ * A plan after the application has bound it to the current target. Packet
+ * buffers are copied at this boundary and the digest covers every property
+ * that can change what is written or what consequence the write has.
+ */
+export interface PreparedTransmission extends TransmissionPlan {
+  readonly targetBinding: TargetBinding;
+  readonly digest: string;
+}
+
 export interface AuthorizedTransmission {
-  readonly plan: TransmissionPlan;
+  /** A second defensive copy owned by this one command authorization. */
+  readonly plan: PreparedTransmission;
+  readonly targetBinding: TargetBinding;
+  readonly digest: string;
   readonly authorizedAt: string;
   readonly policyDecision: "allow";
 }
 
 export function createPlanId(prefix = "plan"): string {
-  const random = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  const random =
+    globalThis.crypto?.randomUUID?.() ??
+    `${Date.now()}-${Math.random().toString(16).slice(2)}`;
   return `${prefix}:${random}`;
 }
 
 export function packetHex(bytes: Uint8Array): string {
-  return [...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join(" ").toUpperCase();
+  return [...bytes]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join(" ")
+    .toUpperCase();
+}
+
+export function prepareTransmission(
+  plan: TransmissionPlan,
+  targetBinding: TargetBinding,
+): PreparedTransmission {
+  const copied = copyPlan(plan);
+  const digest = transmissionDigest(copied, targetBinding);
+  return { ...copied, targetBinding: { ...targetBinding }, digest };
+}
+
+export function copyPreparedTransmission(
+  prepared: PreparedTransmission,
+): PreparedTransmission {
+  const copied = copyPlan(prepared);
+  return {
+    ...copied,
+    targetBinding: { ...prepared.targetBinding },
+    digest: prepared.digest,
+  };
+}
+
+export function isPreparedTransmission(
+  plan: TransmissionPlan,
+): plan is PreparedTransmission {
+  const candidate = plan as Partial<PreparedTransmission>;
+  return (
+    typeof candidate.digest === "string" &&
+    candidate.digest.length > 0 &&
+    typeof candidate.targetBinding?.connectionId === "string"
+  );
+}
+
+export function transmissionDigest(
+  plan: TransmissionPlan,
+  targetBinding: TargetBinding,
+): string {
+  const canonical = canonicalJson({
+    targetBinding,
+    safety: {
+      risk: plan.risk,
+      persistence: plan.persistence,
+      validation: plan.validation,
+      execution: plan.execution,
+      purpose: plan.purpose,
+    },
+    packets: plan.packets.map((packet) => ({
+      index: packet.index,
+      endpoint: {
+        serviceUuid: packet.endpoint.serviceUuid.toLowerCase(),
+        characteristicUuid: packet.endpoint.characteristicUuid.toLowerCase(),
+      },
+      writeMode: packet.writeMode,
+      bytes: [...packet.bytes],
+      delayAfterMs: packet.delayAfterMs ?? 0,
+    })),
+    timeoutMs: plan.timeoutMs,
+    consequence: {
+      operation: plan.operation,
+      recoveryNotes: plan.recoveryNotes,
+      metadata: plan.metadata,
+    },
+  });
+  return `sha256:${sha256(canonical)}`;
+}
+
+function copyPlan(plan: TransmissionPlan): TransmissionPlan {
+  return {
+    ...plan,
+    operation: structuredCloneValue(plan.operation),
+    evidenceRefs: [...plan.evidenceRefs],
+    packets: plan.packets.map((packet) => {
+      const bytes = packet.bytes.slice();
+      return {
+        ...packet,
+        endpoint: { ...packet.endpoint },
+        bytes,
+        hex: packetHex(bytes),
+      };
+    }),
+    responseExpectation: { ...plan.responseExpectation },
+    recoveryNotes: [...plan.recoveryNotes],
+    metadata: { ...plan.metadata },
+  };
+}
+
+function structuredCloneValue<T>(value: T): T {
+  if (value instanceof Uint8Array) return value.slice() as T;
+  if (Array.isArray(value))
+    return value.map((item) => structuredCloneValue(item)) as T;
+  if (value && typeof value === "object") {
+    const clone = Object.create(Object.getPrototypeOf(value)) as Record<
+      string,
+      unknown
+    >;
+    for (const [key, item] of Object.entries(value))
+      clone[key] = structuredCloneValue(item);
+    return clone as T;
+  }
+  return value;
+}
+
+function canonicalJson(value: unknown): string {
+  if (value instanceof Uint8Array) return `[${[...value].join(",")}]`;
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.entries(value as Record<string, unknown>)
+      .filter(([, item]) => item !== undefined)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([key, item]) => `${JSON.stringify(key)}:${canonicalJson(item)}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+// Small synchronous SHA-256 implementation keeps authorization synchronous
+// in browsers while still producing a standard, portable digest.
+function sha256(input: string): string {
+  const bytes = new TextEncoder().encode(input);
+  const bitLength = bytes.length * 8;
+  const paddedLength = Math.ceil((bytes.length + 9) / 64) * 64;
+  const padded = new Uint8Array(paddedLength);
+  padded.set(bytes);
+  padded[bytes.length] = 0x80;
+  const view = new DataView(padded.buffer);
+  view.setUint32(paddedLength - 4, bitLength >>> 0, false);
+  view.setUint32(
+    paddedLength - 8,
+    Math.floor(bitLength / 0x1_0000_0000),
+    false,
+  );
+  const h = new Uint32Array([
+    0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c,
+    0x1f83d9ab, 0x5be0cd19,
+  ]);
+  const k = new Uint32Array([
+    0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1,
+    0x923f82a4, 0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3,
+    0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174, 0xe49b69c1, 0xefbe4786,
+    0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+    0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147,
+    0x06ca6351, 0x14292967, 0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13,
+    0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85, 0xa2bfe8a1, 0xa81a664b,
+    0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+    0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a,
+    0x5b9cca4f, 0x682e6ff3, 0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208,
+    0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
+  ]);
+  const w = new Uint32Array(64);
+  const rotr = (value: number, amount: number): number =>
+    (value >>> amount) | (value << (32 - amount));
+  for (let offset = 0; offset < padded.length; offset += 64) {
+    for (let i = 0; i < 16; i += 1)
+      w[i] = view.getUint32(offset + i * 4, false);
+    for (let i = 16; i < 64; i += 1) {
+      const a = w[i - 15]!;
+      const b = w[i - 2]!;
+      w[i] =
+        (w[i - 16]! +
+          (rotr(a, 7) ^ rotr(a, 18) ^ (a >>> 3)) +
+          w[i - 7]! +
+          (rotr(b, 17) ^ rotr(b, 19) ^ (b >>> 10))) >>>
+        0;
+    }
+    let [a, b, c, d, e, f, g, hh] = h;
+    for (let i = 0; i < 64; i += 1) {
+      const s1 = rotr(e!, 6) ^ rotr(e!, 11) ^ rotr(e!, 25);
+      const ch = (e! & f!) ^ (~e! & g!);
+      const t1 = (hh! + s1 + ch + k[i]! + w[i]!) >>> 0;
+      const s0 = rotr(a!, 2) ^ rotr(a!, 13) ^ rotr(a!, 22);
+      const maj = (a! & b!) ^ (a! & c!) ^ (b! & c!);
+      const t2 = (s0 + maj) >>> 0;
+      hh = g;
+      g = f;
+      f = e;
+      e = (d! + t1) >>> 0;
+      d = c;
+      c = b;
+      b = a;
+      a = (t1 + t2) >>> 0;
+    }
+    h[0] = (h[0]! + a!) >>> 0;
+    h[1] = (h[1]! + b!) >>> 0;
+    h[2] = (h[2]! + c!) >>> 0;
+    h[3] = (h[3]! + d!) >>> 0;
+    h[4] = (h[4]! + e!) >>> 0;
+    h[5] = (h[5]! + f!) >>> 0;
+    h[6] = (h[6]! + g!) >>> 0;
+    h[7] = (h[7]! + hh!) >>> 0;
+  }
+  return [...h].map((value) => value.toString(16).padStart(8, "0")).join("");
 }

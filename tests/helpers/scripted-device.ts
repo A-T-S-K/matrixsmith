@@ -2,7 +2,7 @@ import { FakeTransport } from "../../src/transport/fake";
 import { parseHexBytes } from "../../src/discovery/advertisement";
 import type { GattEndpoint } from "../../src/core/device";
 import type { WriteMode } from "../../src/core/transmission";
-import type { TransportReceipt } from "../../src/transport/types";
+import type { TransportReceipt } from "../../src/application/ports/transport";
 import infoCc from "../fixtures/iledhat/coolledux-device-info-cc.json";
 import info40 from "../fixtures/iledhat/coolledux-device-info-40.json";
 
@@ -27,7 +27,11 @@ export class ScriptedCoolLedUxDevice extends FakeTransport {
   unrelatedResponse: Uint8Array | null = null;
   #brightnessWrites = 0;
 
-  override async write(endpoint: GattEndpoint, bytes: Uint8Array, mode: WriteMode): Promise<TransportReceipt> {
+  override async write(
+    endpoint: GattEndpoint,
+    bytes: Uint8Array,
+    mode: WriteMode,
+  ): Promise<TransportReceipt> {
     this.notificationOnWrite = this.#respond(bytes);
     return super.write(endpoint, bytes, mode);
   }
@@ -36,10 +40,15 @@ export class ScriptedCoolLedUxDevice extends FakeTransport {
     if (this.silent) return null;
     if (this.unrelatedResponse) return this.unrelatedResponse.slice();
     const opcode = bytes[OPCODE_INDEX];
-    if (opcode === 0x1f) return parseHexBytes(this.brightness === 0xcc ? infoCc.rxHex : info40.rxHex);
+    if (opcode === 0x1f)
+      return parseHexBytes(
+        this.brightness === 0xcc ? infoCc.rxHex : info40.rxHex,
+      );
     if (opcode === 0x04) {
       this.#brightnessWrites += 1;
-      const apply = !this.ignoreBrightnessState && !(this.stickAfterFirstBrightnessWrite && this.#brightnessWrites > 1);
+      const apply =
+        !this.ignoreBrightnessState &&
+        !(this.stickAfterFirstBrightnessWrite && this.#brightnessWrites > 1);
       if (apply) this.brightness = bytes[VALUE_INDEX] ?? this.brightness;
       return bytes.slice();
     }

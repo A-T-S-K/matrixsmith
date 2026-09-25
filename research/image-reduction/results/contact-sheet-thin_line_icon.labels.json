@@ -1,0 +1,16 @@
+{
+  "A": "nearest",
+  "B": "bilinear",
+  "C": "bicubic",
+  "D": "lanczos",
+  "E": "linear-area",
+  "F": "rgb444-before",
+  "G": "edge-enhanced",
+  "H": "perceptual-palette",
+  "I": "palette-region",
+  "J": "contour-reraster",
+  "K": "sdf-gridfit",
+  "L": "sdf-controlled",
+  "M": "framebuffer-opt",
+  "N": "foreground-trim"
+}

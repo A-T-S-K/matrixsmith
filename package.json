@@ -5,19 +5,47 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "tunnel": "cloudflared tunnel --url http://localhost:5174",
     "build": "tsc -b && vite build",
     "typecheck": "tsc -b",
+    "lint": "eslint . --max-warnings=0 && node scripts/verify-architecture.mjs",
+    "format:check": "prettier --check .",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:coverage": "node scripts/test-coverage.mjs",
+    "test:e2e": "playwright test",
+    "test:e2e:offline": "playwright test --config=playwright.offline.config.ts",
+    "verify:static": "node scripts/verify-static-output.mjs",
+    "verify": "npm run typecheck && npm run lint && npm run format:check && npm test && npm run build && npm run verify:static",
+    "verify:release": "npm run typecheck && npm run lint && npm run format:check && npm run test:coverage && npm run build && npm run verify:static && npm run test:e2e:offline && npm audit --omit=dev && git diff --check",
+    "release:package": "node scripts/package-release.mjs"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
+    "@babel/eslint-parser": "8.0.5",
+    "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.62.1",
+    "@types/node": "^26.4.0",
     "@types/web-bluetooth": "0.0.21",
+    "axe-core": "^4.13.0",
+    "eslint": "^10.9.1",
+    "istanbul-lib-coverage": "3.2.2",
+    "istanbul-lib-instrument": "6.0.3",
+    "istanbul-lib-report": "3.0.1",
+    "istanbul-reports": "3.2.0",
+    "prettier": "^3.9.6",
     "typescript": "7.0.2",
     "vite": "8.2.2",
     "vitest": "4.1.11"
   },
   "dependencies": {
-    "preact": "^10.27.2"
-  }
+    "@preact/signals": "^2.11.1",
+    "preact": "^10.29.8"
+  },
+  "engines": {
+    "node": "24.20.x",
+    "npm": "11.19.x"
+  },
+  "packageManager": "npm@11.19.0"
 }

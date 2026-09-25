@@ -1,5 +1,72 @@
 import type { JSX } from "preact";
-import { useEffect, useState } from "preact/hooks";
-import type { AppSnapshot, MatrixStore } from "../store";
-import { StatusBadge } from "../components/StatusBadge";
-export function ControlView({ snapshot, store }: { readonly snapshot: AppSnapshot; readonly store: MatrixStore }): JSX.Element { const verified = snapshot.liveConnected && snapshot.capabilities.some((c) => c.id === "brightness" && c.live && c.validation === "verified"); const [brightness, setBrightness] = useState(snapshot.deviceState.brightness ?? 64); useEffect(() => { if (snapshot.deviceState.brightness !== null) setBrightness(snapshot.deviceState.brightness); }, [snapshot.deviceState.brightness]); return <section class="view"><div class="view-heading"><div><p class="eyebrow">NORMAL OPERATION</p><h1>Control</h1><p>Verified controls for this display. Protocol details stay out of the way.</p></div><button class="secondary" onClick={() => void store.refreshInfo()} disabled={!verified || snapshot.busy !== null}>Refresh device info</button></div><div class="control-layout"><article class="panel state-panel"><div class="panel-title"><div><span class="panel-kicker">CURRENT STATE</span><h2>Display status</h2></div><StatusBadge tone={snapshot.liveConnected ? "good" : "neutral"}>{snapshot.liveConnected ? "Live readback" : "Imported evidence"}</StatusBadge></div><dl class="state-grid"><div><dt>Power</dt><dd>{snapshot.deviceState.power}</dd></div><div><dt>Brightness</dt><dd>{snapshot.deviceState.brightness ?? "Unknown"}</dd></div><div><dt>Protocol</dt><dd>{snapshot.device?.protocol}</dd></div><div><dt>Profile geometry</dt><dd>{snapshot.device?.profileGeometry}</dd></div></dl></article><article class="panel brightness-panel"><div class="panel-title"><div><span class="panel-kicker">VERIFIED LIVE</span><h2>Brightness</h2></div><strong class="big-value">{brightness}</strong></div><input class="range" aria-label="Brightness" type="range" min="0" max="255" value={brightness} disabled={!verified} onInput={(event) => setBrightness(Number((event.currentTarget as HTMLInputElement).value))}/><div class="range-labels"><span>0</span><span>Raw device value</span><span>255</span></div><button class="primary" disabled={!verified || snapshot.busy !== null} title={verified ? "" : snapshot.liveConnected ? "Brightness is not a verified live capability for this session." : "Live operations are blocked for offline reports."} onClick={() => void store.applyBrightness(brightness)}>Apply brightness</button><p class="fineprint">Apply requires a matching command response and verifies the value with a fresh device-info readback.</p></article></div><section><div class="section-heading"><h2>Available capabilities</h2><p>Controls appear here only when verified for live use.</p></div><div class="capability-strip">{snapshot.capabilities.map((cap) => <article><span>{cap.id === "brightness" ? "☀" : cap.id === "device-info" ? "ⓘ" : "◉"}</span><div><strong>{cap.label}</strong><small>{cap.live && cap.validation === "verified" ? "Verified live" : cap.live ? "Experimental / gated" : "Dry-run only"}</small></div></article>)}</div></section></section>; }
+import { useState } from "preact/hooks";
+import type { AppSnapshot, PresentationStore } from "../../presentation/store";
+import type { ContentPathId } from "../../investigation/gating";
+import { Tabs } from "../components/Tabs";
+import { ContentEditor } from "../features/control/ContentEditor";
+import { DeviceControls } from "../features/control/DeviceControls";
+
+const CONTENT_TYPES: readonly {
+  readonly id: ContentPathId;
+  readonly label: string;
+}[] = [
+  { id: "text", label: "Text" },
+  { id: "image", label: "Image" },
+  { id: "animation", label: "Demo animation" },
+  { id: "gif", label: "GIF" },
+];
+
+/**
+ * Making something and putting it on the display.
+ *
+ * Four creator panels used to render at once, so a phone showed four sets of
+ * controls, four previews and four Send buttons for one task. Choosing the
+ * content type first means the screen holds one set of controls, the preview
+ * they affect, and a single primary action. A type that is not yet unlocked
+ * explains itself where the user selected it, rather than as a warning banner
+ * above work they were not doing.
+ */
+export function ControlView({
+  snapshot,
+  store,
+}: {
+  readonly snapshot: AppSnapshot;
+  readonly store: PresentationStore;
+}): JSX.Element {
+  const [selected, setSelected] = useState<ContentPathId>("text");
+  return (
+    <section class="view create">
+      <h1 class="view-title">Create</h1>
+      <Tabs
+        label="Content type"
+        selected={selected}
+        onSelect={setSelected}
+        class="type-tabs"
+        items={CONTENT_TYPES.map((type) => ({
+          id: type.id,
+          label: (
+            <>
+              {type.label}
+              {!snapshot.contentGates[type.id].allowed && (
+                <span class="lock" aria-label="not yet verified">
+                  ●
+                </span>
+              )}
+            </>
+          ),
+          panel: (
+            <ContentEditor
+              selected={type.id}
+              snapshot={snapshot}
+              store={store}
+            />
+          ),
+        }))}
+      />
+      <details class="secondary-section">
+        <summary>Brightness and display status</summary>
+        <DeviceControls snapshot={snapshot} store={store} />
+      </details>
+    </section>
+  );
+}

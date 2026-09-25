@@ -1,0 +1,8 @@
+{
+  "A": "nearest",
+  "B": "bilinear",
+  "C": "bicubic",
+  "D": "lanczos",
+  "E": "linear-area",
+  "F": "rgb444-before"
+}

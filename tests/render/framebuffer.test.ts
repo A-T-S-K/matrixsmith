@@ -30,6 +30,7 @@ describe("orientation pattern", () => {
     expect(frame.getPixel(0, 0)).toEqual({ r: 255, g: 0, b: 0 });
     expect(frame.getPixel(31, 0)).toEqual({ r: 0, g: 255, b: 0 });
     expect(frame.getPixel(0, 15)).toEqual({ r: 0, g: 0, b: 255 });
-    expect(frame.getPixel(31, 15)).toEqual({ r: 255, g: 255, b: 255 });
+    expect(frame.getPixel(31, 15)).toEqual({ r: 255, g: 255, b: 0 });
+    expect(frame.getPixel(15, 7)).toEqual({ r: 255, g: 255, b: 255 });
   });
 });

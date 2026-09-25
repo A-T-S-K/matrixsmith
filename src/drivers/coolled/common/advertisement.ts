@@ -7,7 +7,9 @@ export interface CoolLedManufacturerMetadata {
   readonly firmwareRaw?: number;
 }
 
-export function parseCoolLedManufacturerData(bytes: Uint8Array): CoolLedManufacturerMetadata | null {
+export function parseCoolLedManufacturerData(
+  bytes: Uint8Array,
+): CoolLedManufacturerMetadata | null {
   if (bytes.length < 2) return null;
   const companyId = (bytes[0] ?? 0) | ((bytes[1] ?? 0) << 8);
   const vendor = bytes.slice(2);
@@ -15,11 +17,13 @@ export function parseCoolLedManufacturerData(bytes: Uint8Array): CoolLedManufact
   return {
     companyId,
     deviceIdentifierBytes: vendor.slice(0, Math.min(6, vendor.length)),
-    ...(knownLayout ? {
-      height: vendor[6],
-      width: ((vendor[7] ?? 0) << 8) | (vendor[8] ?? 0),
-      colorModeRaw: vendor[9],
-      firmwareRaw: vendor[10],
-    } : {}),
+    ...(knownLayout
+      ? {
+          height: vendor[6],
+          width: ((vendor[7] ?? 0) << 8) | (vendor[8] ?? 0),
+          colorModeRaw: vendor[9],
+          firmwareRaw: vendor[10],
+        }
+      : {}),
   };
 }

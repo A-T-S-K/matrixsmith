@@ -1,0 +1,20 @@
+{
+  "A": "nearest",
+  "B": "bilinear",
+  "C": "bicubic",
+  "D": "lanczos",
+  "E": "linear-area",
+  "F": "rgb444-before",
+  "G": "edge-enhanced",
+  "H": "perceptual-palette",
+  "I": "floyd-steinberg",
+  "J": "jarvis-jjn",
+  "K": "ordered-bayer",
+  "L": "blue-noise",
+  "M": "structure-dither",
+  "N": "center-cover",
+  "O": "saliency-cover",
+  "P": "seam-carve",
+  "Q": "controlled-aspect",
+  "R": "full-stretch"
+}

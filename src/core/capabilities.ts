@@ -9,7 +9,8 @@ export type CapabilityId =
   | "power"
   | "static-frame"
   | "animation"
-  | "text";
+  | "text"
+  | "gif";
 
 export interface Capability {
   readonly id: CapabilityId;

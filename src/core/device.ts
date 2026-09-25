@@ -1,6 +1,7 @@
 import type { EvidenceReference, ValidationStatus } from "./evidence";
 
-export type TransportKind = "web-bluetooth" | "web-serial" | "web-usb" | "network" | "fake" | "replay";
+export type TransportKind =
+  "web-bluetooth" | "web-serial" | "web-usb" | "network" | "fake" | "replay";
 
 export interface CharacteristicProperties {
   readonly read: boolean;
@@ -33,8 +34,13 @@ export interface DeviceFingerprint {
   readonly browserGrantedServices?: readonly string[];
   readonly rawAdvertisementHex?: string;
   readonly manufacturerDataHex?: string;
+  /** Live structured advertisement observation, when the browser supports watchAdvertisements(). */
+  readonly advertisementObservation?: AdvertisementObservation;
   readonly services: readonly GattServiceFingerprint[];
-  readonly manuallyConfirmedGeometry?: { readonly width: number; readonly height: number };
+  readonly manuallyConfirmedGeometry?: {
+    readonly width: number;
+    readonly height: number;
+  };
   readonly evidenceRefs: readonly string[];
   readonly notes: readonly string[];
 }
@@ -47,7 +53,34 @@ export interface DeviceProfile {
   readonly height: number;
   readonly validation: ValidationStatus;
   readonly evidence: readonly EvidenceReference[];
-  readonly metadata: Readonly<Record<string, string | number | boolean | readonly string[]>>;
+  readonly metadata: Readonly<
+    Record<string, string | number | boolean | readonly string[]>
+  >;
+  /** Structured behavior/quirks facts; immutable at runtime. */
+  readonly quirks?: import("./quirks").ProfileQuirks;
+}
+
+/**
+ * Structured advertisement data observed live through the Web Bluetooth
+ * advertisementreceived event. This is deliberately distinct from a raw
+ * external capture: the browser exposes parsed fields, never the original
+ * byte stream, and MatrixSmith never fabricates one.
+ */
+export interface AdvertisementObservation {
+  readonly capturedAt: string;
+  readonly source: "web-bluetooth-watch";
+  readonly name?: string;
+  readonly rssi?: number;
+  readonly txPower?: number;
+  readonly advertisedServiceUuids: readonly string[];
+  readonly manufacturerData: readonly {
+    readonly companyId: number;
+    readonly dataHex: string;
+  }[];
+  readonly serviceData: readonly {
+    readonly uuid: string;
+    readonly dataHex: string;
+  }[];
 }
 
 export interface GattEndpoint {
@@ -57,11 +90,15 @@ export interface GattEndpoint {
 
 export function normalizeUuid(uuid: string): string {
   const value = uuid.trim().toLowerCase();
-  if (/^[0-9a-f]{4}$/.test(value)) return `0000${value}-0000-1000-8000-00805f9b34fb`;
+  if (/^[0-9a-f]{4}$/.test(value))
+    return `0000${value}-0000-1000-8000-00805f9b34fb`;
   return value;
 }
 
-export function emptyFingerprint(transportKind: TransportKind, name?: string): DeviceFingerprint {
+export function emptyFingerprint(
+  transportKind: TransportKind,
+  name?: string,
+): DeviceFingerprint {
   return {
     schemaVersion: 1,
     transportKind,

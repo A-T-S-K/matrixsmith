@@ -1,0 +1,2 @@
+declare const __MATRIXSMITH_VERSION__: string;
+export const MATRIXSMITH_VERSION = __MATRIXSMITH_VERSION__;

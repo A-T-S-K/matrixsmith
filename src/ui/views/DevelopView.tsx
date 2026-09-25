@@ -1,16 +1,79 @@
 import type { JSX } from "preact";
 import { useState } from "preact/hooks";
-import type { AppSnapshot, MatrixStore, TransactionFilter } from "../store";
-import type { ProtocolTransaction } from "../../diagnostics/transactions";
+import type { AppSnapshot, PresentationStore } from "../../presentation/store";
 import { StatusBadge } from "../components/StatusBadge";
+import {
+  CandidateSection,
+  ToolSection,
+} from "../features/develop/CandidateTools";
+import { GattSection } from "../features/develop/GattSection";
+import { TransactionSection } from "../features/develop/TransactionSection";
+import {
+  RawSection,
+  EvidenceSection,
+} from "../features/develop/EvidenceSections";
+import { OrchestrationSection } from "../features/develop/OrchestrationSection";
 
-export function DevelopView({ snapshot, store }: { readonly snapshot: AppSnapshot; readonly store: MatrixStore }): JSX.Element { const [section, setSection] = useState("transactions"); return <section class="view develop-view"><div class="view-heading"><div><p class="eyebrow">PROTOCOL WORKBENCH</p><h1>Develop</h1><p>Decoded activity first, exact bytes always available underneath.</p></div><div class="safety-copy"><StatusBadge tone="good">Safety policy active</StatusBadge><span>Verified controls are available. Experimental, persistent, destructive, firmware, and arbitrary operations remain restricted.</span></div></div><nav class="subnav" aria-label="Develop sections">{[["candidates","Protocol candidates"],["tools","Family probes & tests"],["gatt","GATT explorer"],["transactions","Transactions"],["raw","Raw events"],["evidence","Evidence / observations"]].map(([id,label]) => <button class={section === id ? "active" : ""} onClick={() => setSection(id!)}>{label}</button>)}</nav>{section === "candidates" && <CandidateSection snapshot={snapshot} store={store}/>} {section === "tools" && <ToolSection snapshot={snapshot} store={store}/>} {section === "gatt" && <GattSection snapshot={snapshot} store={store}/>} {section === "transactions" && <TransactionSection snapshot={snapshot} store={store}/>} {section === "raw" && <RawSection snapshot={snapshot} store={store}/>} {section === "evidence" && <EvidenceSection snapshot={snapshot} store={store}/>}</section>; }
-
-function CandidateSection({ snapshot, store }: { snapshot: AppSnapshot; store: MatrixStore }): JSX.Element { return <section><div class="section-heading"><h2>Protocol candidates</h2><p>Session evidence and safe actions, with numeric match details kept secondary.</p></div><div class="candidate-grid">{snapshot.candidates.map((candidate) => <article class="candidate-card"><div><h3>{candidate.family}</h3><StatusBadge tone={candidate.state.startsWith("VERIFIED") ? "good" : candidate.state.startsWith("Rejected") ? "bad" : "warn"}>{candidate.state}</StatusBadge></div><p>{candidate.summary}</p>{candidate.canIdentify ? <button class="primary" onClick={() => void store.identify()}>Run safe identification</button> : candidate.id === "coolledx" && candidate.state === "Candidate" ? <p class="notice">No verified read-only discriminator available.</p> : null}<details><summary>Match details</summary><p>Score: {candidate.score}</p><ul>{candidate.reasons.map((reason) => <li>{reason}</li>)}{candidate.contradictions.map((reason) => <li>Contradiction: {reason}</li>)}</ul></details></article>)}</div></section>; }
-function ToolSection({ snapshot, store }: { snapshot: AppSnapshot; store: MatrixStore }): JSX.Element { return <section><div class="section-heading"><h2>Family probes & tests</h2><p>Constrained semantic workflows; raw transport is not exposed.</p></div><div class="tool-grid">{snapshot.diagnosticTools.map((tool) => <article class="tool-card"><span class={`tool-kind ${tool.kind}`}>{tool.kind}</span><h3>{tool.label}</h3><p>{tool.explanation}</p><button class="secondary" disabled={!tool.available || snapshot.busy !== null} title={tool.unavailableReason} onClick={() => void store.runDiagnostic(tool.id)}>Run</button></article>)}</div></section>; }
-function GattSection({ snapshot, store }: { snapshot: AppSnapshot; store: MatrixStore }): JSX.Element { return <section><div class="section-heading"><h2>GATT explorer</h2><p>Browser-authorized services and characteristic-scoped safe actions.</p></div><div class="gatt-tree">{snapshot.gatt.length ? snapshot.gatt.map((service) => <details open><summary><span class="service-icon">S</span><strong>{service.uuid}</strong><small>{service.primary ? "Primary service" : "Service"}</small><Copy value={service.uuid} store={store}/></summary><div class="characteristics">{service.characteristics.map((c) => <article class="characteristic"><div class="characteristic-main"><span class="char-icon">C</span><div><code>{c.uuid}</code><div class="property-list">{c.properties.map((p) => <span>{p}</span>)}</div></div></div><div class="char-actions"><Copy value={c.uuid} store={store}/>{c.canRead && <button class="secondary small" disabled={!snapshot.liveConnected} title={snapshot.liveConnected ? "" : "Live operations are blocked for offline reports."} onClick={() => void store.readCharacteristic({ serviceUuid: c.serviceUuid, characteristicUuid: c.uuid })}>Read</button>}{c.canSubscribe && <button class="secondary small" disabled={c.subscribed || !snapshot.liveConnected} title={snapshot.liveConnected ? "" : "Live operations are blocked for offline reports."} onClick={() => void store.toggleSubscription({ serviceUuid: c.serviceUuid, characteristicUuid: c.uuid })}>{c.subscribed ? "Subscribed" : "Subscribe"}</button>}</div></article>)}</div></details>) : <p class="empty">No accessible GATT hierarchy. Browser permission limits may apply.</p>}</div></section>; }
-function TransactionSection({ snapshot, store }: { snapshot: AppSnapshot; store: MatrixStore }): JSX.Element { const filters: readonly [TransactionFilter,string][] = [["all","All"],["txrx","TX/RX"],["queries","Queries"],["probes","Probes"],["diagnostics","Diagnostics"],["errors","Errors"]]; return <section><div class="section-heading"><h2>Transactions</h2><p>Semantic operations correlated with exact TX/RX evidence.</p></div><div class="transaction-toolbar"><div class="filter-pills">{filters.map(([value,label]) => <button class={snapshot.transactionFilter === value ? "active" : ""} onClick={() => store.setTransactionFilter(value)}>{label}</button>)}</div><input type="search" placeholder="Search opcode, operation, hex, driver…" value={snapshot.transactionSearch} onInput={(event) => store.setTransactionSearch((event.currentTarget as HTMLInputElement).value)}/></div><div class="transaction-list"><div class="transaction-head"><span>Timestamp</span><span>Operation</span><span>Direction / result</span><span>Duration</span></div>{snapshot.transactions.length ? [...snapshot.transactions].reverse().map((t) => <Transaction transaction={t} store={store}/>) : <p class="empty">No matching transactions. Run a safe query or diagnostic to begin the capture.</p>}</div></section>; }
-function Transaction({ transaction: t, store }: { transaction: ProtocolTransaction; store: MatrixStore }): JSX.Element { const status = t.error || t.responseTimedOut ? "Error" : t.deviceStateVerified ? "Device verified" : t.protocolAcknowledged ? "Protocol acknowledged" : t.hostAccepted ? "Host accepted" : "Not accepted"; return <details class="transaction"><summary><time>{new Date(t.startedAt).toLocaleTimeString([], { hour12: false })}</time><strong>{t.operation}</strong><span>{t.packets.map((p) => p.direction).join(" → ") || t.source} · {status}</span><small>{t.durationMs} ms</small></summary><div class="transaction-body"><dl><div><dt>Driver / profile</dt><dd>{t.driverId ?? "none"} / {t.profileId ?? "none"}</dd></div><div><dt>Safety</dt><dd>{t.safety.risk} · {t.safety.validation}</dd></div><div><dt>Host result</dt><dd>{String(t.hostAccepted)}</dd></div><div><dt>Protocol result</dt><dd>{String(t.protocolAcknowledged)}</dd></div><div><dt>Verification result</dt><dd>{String(t.deviceStateVerified)}</dd></div></dl>{t.packets.map((packet) => <div class={`packet ${packet.direction.toLowerCase()}`}><div><strong>{packet.direction} RAW HEX</strong><Copy value={packet.hex} store={store}/></div><code>{packet.hex || "(zero bytes)"}</code></div>)}<div class="decoded"><div><strong>Decoded response</strong>{t.decodedResponse?.payloadHex && <Copy value={t.decodedResponse.payloadHex} store={store}/>}</div><p>{t.decodedResponse?.summary ?? "No decoded response. Raw bytes remain preserved above."}</p>{t.decodedResponse && <code>{JSON.stringify(t.decodedResponse.fields, null, 2)}</code>}</div>{t.error && <p class="notice error">{t.error}</p>}</div></details>; }
-function RawSection({ snapshot, store }: { snapshot: AppSnapshot; store: MatrixStore }): JSX.Element { return <section><div class="section-heading"><h2>Raw events</h2><p>Advanced ground-truth trace. Decoding failures never remove raw notifications.</p></div><details class="raw-layer"><summary>Show full raw event trace ({snapshot.rawEvents.length} events)</summary><ol>{[...snapshot.rawEvents].reverse().map((event) => { const hex = event.rawBytes ? [...event.rawBytes].map((b) => b.toString(16).padStart(2,"0")).join(" ").toUpperCase() : ""; return <li><time>{event.timestamp}</time><strong>{event.type}</strong><span>{JSON.stringify(event.metadata)}</span>{hex && <><code>{hex}</code><Copy value={hex} store={store}/></>}</li>; })}</ol></details></section>; }
-function EvidenceSection({ snapshot, store }: { snapshot: AppSnapshot; store: MatrixStore }): JSX.Element { const [note, setNote] = useState(""); return <section><div class="section-heading"><h2>Evidence / observations</h2><p>Attach a lightweight note to this capture session. Electronically verifiable state is recorded automatically.</p></div><article class="panel"><div class="inline-form"><input value={note} placeholder="What did you observe?" onInput={(event) => setNote((event.currentTarget as HTMLInputElement).value)}/><button class="primary" disabled={!note.trim()} onClick={() => { store.recordObservation(note); setNote(""); }}>Add session note</button></div><ul class="observation-list">{snapshot.observations.map((o) => <li><time>{o.recordedAt}</time><span>{o.summary}</span><StatusBadge>{o.confidence}</StatusBadge></li>)}</ul></article><article class="panel import-placeholder"><div class="panel-title"><div><span class="panel-kicker">COMING SOON</span><h2>Import external capture</h2></div><StatusBadge>Planned</StatusBadge></div><p>Bring evidence from other tools into this session. nRF Connect text-log import arrives first; imported captures stay read-only.</p><button class="secondary" disabled title="No external-capture importer ships in this branch yet.">Import external capture</button></article></section>; }
-function Copy({ value, store }: { value: string; store: MatrixStore }): JSX.Element { return <button class="copy" title="Copy" aria-label="Copy to clipboard" onClick={(event) => { event.preventDefault(); event.stopPropagation(); void store.copy(value); }}>Copy</button>; }
+export function DevelopView({
+  snapshot,
+  store,
+}: {
+  readonly snapshot: AppSnapshot;
+  readonly store: PresentationStore;
+}): JSX.Element {
+  const [section, setSection] = useState("transactions");
+  return (
+    <section class="view develop-view">
+      <div class="view-heading">
+        <div>
+          <p class="eyebrow">PROTOCOL WORKBENCH</p>
+          <h1>Develop</h1>
+          <p>
+            Decoded activity first, exact bytes always available underneath.
+          </p>
+        </div>
+        <div class="safety-copy">
+          <StatusBadge tone="good">Safety policy active</StatusBadge>
+          <span>
+            Verified controls are available. Experimental, persistent,
+            destructive, firmware, and arbitrary operations remain restricted.
+          </span>
+        </div>
+      </div>
+      <nav class="subnav" aria-label="Develop sections">
+        {[
+          ["candidates", "Protocol candidates"],
+          ["tools", "Family probes & tests"],
+          ["gatt", "GATT explorer"],
+          ["transactions", "Transactions"],
+          ["raw", "Raw events"],
+          ["evidence", "Evidence / observations"],
+          ["orchestration", "Guided orchestration"],
+        ].map(([id, label]) => (
+          <button
+            key={id}
+            class={section === id ? "active" : ""}
+            onClick={() => setSection(id!)}
+          >
+            {label}
+          </button>
+        ))}
+      </nav>
+      {section === "candidates" && (
+        <CandidateSection snapshot={snapshot} store={store} />
+      )}{" "}
+      {section === "tools" && <ToolSection snapshot={snapshot} store={store} />}{" "}
+      {section === "gatt" && <GattSection snapshot={snapshot} store={store} />}{" "}
+      {section === "transactions" && (
+        <TransactionSection snapshot={snapshot} store={store} />
+      )}{" "}
+      {section === "raw" && <RawSection snapshot={snapshot} store={store} />}{" "}
+      {section === "evidence" && (
+        <EvidenceSection snapshot={snapshot} store={store} />
+      )}{" "}
+      {section === "orchestration" && (
+        <OrchestrationSection snapshot={snapshot} />
+      )}
+    </section>
+  );
+}

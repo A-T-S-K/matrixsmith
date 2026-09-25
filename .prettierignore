@@ -1,0 +1,12 @@
+coverage/
+dist/
+node_modules/
+playwright-report/
+test-results/
+research/image-reduction/results/
+.claude/
+.env
+*.tsbuildinfo
+
+/release/
+dependency-audit.json

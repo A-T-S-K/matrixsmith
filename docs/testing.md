@@ -1,30 +1,31 @@
 # Testing
 
-Run the complete hardware-independent gate:
+Use the pinned Node/npm versions, then install dependencies with `npm ci` and Chromium with `npx playwright install chromium` (`--with-deps` on Linux CI).
 
-```sh
-npm ci
-npm run typecheck
-npm test
-npm run build
-git diff --check
-```
+## Gates
 
-Coverage includes shared-envelope failures/round trips; exact 2026-08-31 hardware RX/TX; 48-byte and variable-length device-info parsing; conservative advertisement metadata; same-GATT ambiguity and probe resolution; offline replay; raw notification retention; pre-write waiter arming; unrelated-response timeout; CoolLEDX regressions; capability-driven safety; and host/protocol/state separation.
+- `npm run verify`: typecheck, ESLint/native architecture and promise checks, formatting, unit/application tests, production build, and static-output validation.
+- `npm run test:coverage`: unit tests plus instrumented development-browser journeys, instrumented identically on original source before Node/browser transformations and combined into one production-source coverage inventory. Thresholds remain 80% statements, 70% branches, 80% functions, and 80% lines. Test helpers do not contribute production coverage. Instrumentation is never enabled in release builds.
+- `npm run test:e2e`: simulator/browser journeys, ARIA and reviewed visual baselines, axe, breakpoint checks, file recovery, exports, and disconnect handling. Unexpected page errors/unhandled rejections fail the journey.
+- `npm run test:e2e:offline`: real production builds A/B on an isolated server; first install, upgrade, multiple tabs, offline lazy routes, failed installation, and rollback.
+- `npm run verify:release`: the complete candidate gate including audit and whitespace checks.
 
-New in this branch: deterministic Markdown report generation (stable headings, exact packet preservation, identifier redaction defaults, imported-bundle reports, verified/inferred/unknown/rejected sections); protocol transaction recording (request/response correlation, timeout with unrelated raw RX preserved, read transactions, device verification, export/import round trip); diagnostic workflows (safe identification, the full brightness baseline/test/verify/restore/verify round-trip, restoration after test failure, surfaced restore failure, serialized runs); recommended-next-action derivation; the GATT explorer view model (read only where READ, subscribe only where notify/indicate, no generic write action); and default report privacy. A scripted CoolLEDUX device built from the captured fixtures (`tests/helpers/scripted-device.ts`) drives the workflow tests.
+Linux image baselines are reviewed in the pinned Playwright Ubuntu container used by CI; macOS image baselines remain separate because the application uses native system fonts. ARIA snapshots are shared across platforms. Baseline changes require visual review, not relaxed tolerances.
 
-No automated test requires Bluetooth hardware. `ReplayTransport` rejects writes by construction. Physical promotion requires a saved diagnostic bundle plus a separate visible observation.
+Browser tests own their local servers and fail on port collisions. The simulator suite uses port 4187 and production fixtures use 4174. Stop only the conflicting test server or configure an isolated run; never reuse an unrelated application's server.
 
-## Verified iLedHat workflow
+## Regression evidence
 
-1. Deploy the green build over HTTPS and open it in current Chrome for Android with Bluetooth enabled.
-2. Open MatrixSmith fresh; verify capability-driven safety is active.
-3. Tap **Connect display**, select only the known `iLedHat`, and wait for Connected.
-4. Diagnose should show CoolLEDX/CoolLEDUX static ambiguity and recommend safe identification. Tap **Run safe identification** deliberately; verify TX `01 00 02 05 1F 03` and a parsed `0x1F` response before CoolLEDUX resolves.
-5. In Control, Refresh device information and confirm power plus raw brightness appear.
-6. Move the raw 0–255 slider, then tap Apply once. Verify opcode `0x04`, separate host/echo status, and follow-up device-info readback.
-7. In Develop → Transactions, verify each operation shows TX/RX raw hex, decoded fields, and host/protocol/device results, with copy on every packet. Unknown/malformed data must retain raw bytes in Raw events.
-8. Download the bundle. Imported replay may reproduce resolution but must not transmit.
+Preserve the byte-level fixtures under `tests/fixtures/` and their source provenance. Do not regenerate golden packets or visual baselines merely to make a refactor pass. CoolLEDUX conformance regeneration remains documented in `research/coolledux-sources.md` against the pinned reference commit.
 
-Exact fixtures under `tests/fixtures/iledhat/` preserve advertisement, GATT, classic `08 FE`, initial `1F 01 CC`, `04 40`, and follow-up `1F 01 40` packets.
+Coverage includes target/digest authorization, imported/historical trust boundaries, current-session isolation, timeouts and quarantine, reconnect/notification lifecycle, brightness restoration, claim/strategy agreement, Bundle V3 validation, and scoped reports.
+
+Release-specific tests exercise pre-decode limits, malformed files, unavailable storage, runtime disposal, repeated offline workspace replacement, retained live connections, update failure/retry, and identifier redaction inside structured diagnostics. The opt-in QA bundle generator remains skipped unless `QA_BUNDLE_PATH` is set.
+
+## Hardware boundary
+
+Automated tests use fixtures, fake transports, or the development simulator. They do not establish that a display rendered content correctly. Run `docs/physical-acceptance.md` against the exact candidate on the stable HTTPS origin before publishing support claims. Record build ID, commit, browser/OS, device label, and observed outcome.
+
+## Reviewing a failure
+
+Reproduce the specific failure before changing code or baselines. Distinguish application defects from fixture/server problems. Keep unexpected browser errors visible; fix rejection handling rather than suppressing the error collector. CI retains coverage and browser artifacts to make failures reviewable.

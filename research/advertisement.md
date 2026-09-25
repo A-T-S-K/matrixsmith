@@ -15,21 +15,21 @@ Evidence labels in this document mean:
 
 ## AD structures
 
-| Offset | Bytes | Decode | Status |
-|---:|---|---|---|
-| 0 | `02` | following AD-structure length = 2 | VERIFIED |
-| 1 | `01` | Flags AD type | VERIFIED |
-| 2 | `06` | LE General Discoverable + BR/EDR Not Supported | VERIFIED |
-| 3 | `03` | following AD-structure length = 3 | VERIFIED |
-| 4 | `03` | Complete List of 16-bit Service UUIDs | VERIFIED |
-| 5–6 | `F0 FF` | little-endian service UUID `0xFFF0` | VERIFIED |
-| 7 | `0E` | following AD-structure length = 14 | VERIFIED |
-| 8 | `FF` | Manufacturer Specific Data AD type | VERIFIED |
-| 9–10 | `AE 31` | little-endian manufacturer/company identifier value `0x31AE`; its assignee was not independently verified | VERIFIED bytes / UNKNOWN identity |
-| 11–21 | `5E EA 07 00 00 01 10 00 20 03 1E` | vendor-defined payload | VERIFIED bytes / UNKNOWN fields |
-| 22 | `08` | following AD-structure length = 8 | VERIFIED |
-| 23 | `09` | Complete Local Name AD type | VERIFIED |
-| 24–30 | `69 4C 65 64 48 61 74` | UTF-8/ASCII `iLedHat` | VERIFIED |
+| Offset | Bytes                              | Decode                                                                                                    | Status                            |
+| -----: | ---------------------------------- | --------------------------------------------------------------------------------------------------------- | --------------------------------- |
+|      0 | `02`                               | following AD-structure length = 2                                                                         | VERIFIED                          |
+|      1 | `01`                               | Flags AD type                                                                                             | VERIFIED                          |
+|      2 | `06`                               | LE General Discoverable + BR/EDR Not Supported                                                            | VERIFIED                          |
+|      3 | `03`                               | following AD-structure length = 3                                                                         | VERIFIED                          |
+|      4 | `03`                               | Complete List of 16-bit Service UUIDs                                                                     | VERIFIED                          |
+|    5–6 | `F0 FF`                            | little-endian service UUID `0xFFF0`                                                                       | VERIFIED                          |
+|      7 | `0E`                               | following AD-structure length = 14                                                                        | VERIFIED                          |
+|      8 | `FF`                               | Manufacturer Specific Data AD type                                                                        | VERIFIED                          |
+|   9–10 | `AE 31`                            | little-endian manufacturer/company identifier value `0x31AE`; its assignee was not independently verified | VERIFIED bytes / UNKNOWN identity |
+|  11–21 | `5E EA 07 00 00 01 10 00 20 03 1E` | vendor-defined payload                                                                                    | VERIFIED bytes / UNKNOWN fields   |
+|     22 | `08`                               | following AD-structure length = 8                                                                         | VERIFIED                          |
+|     23 | `09`                               | Complete Local Name AD type                                                                               | VERIFIED                          |
+|  24–30 | `69 4C 65 64 48 61 74`             | UTF-8/ASCII `iLedHat`                                                                                     | VERIFIED                          |
 
 ## Vendor layout
 

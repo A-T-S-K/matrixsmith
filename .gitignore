@@ -5,6 +5,8 @@ node_modules/
 dist/
 coverage/
 .vitest/
+playwright-report/
+test-results/
 
 # TypeScript and Vite caches
 *.tsbuildinfo
@@ -40,3 +42,7 @@ Thumbs.db
 Desktop.ini
 
 .claude/
+
+# Candidate artifacts and advisory reports
+/release/
+dependency-audit.json

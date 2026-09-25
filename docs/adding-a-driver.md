@@ -36,7 +36,7 @@ Start new operations dry-run only. Use `FakeTransport` for order/failure/timeout
 
 ## 7. Contribute diagnostic tools and support status
 
-Register named diagnostic workflows for the family in `src/diagnostics/workflows.ts` (kind `identify` / `inspect` / `validate`, with risk, persistence, validation, and a plain-language pre-run explanation). Tools run through `MatrixController.runDiagnostic`, which only executes semantic operations under the safety policy and records serializable per-step results. Reversible validations must restore and re-verify the original state, and surface a restore failure prominently. If a family has no safe probe, say so rather than inventing one. Capability metadata plus session evidence feed the Diagnose support matrix and report sections automatically — see [UX workflows](ux-workflows.md).
+Contribute named diagnostic tools through the driver contract (kind `identify` / `inspect` / `validate`, semantic workflow, risk, persistence, assurance, and a plain-language explanation). `ApplicationRuntime.runDiagnostic` executes only semantic operations under the safety policy and records serializable steps, transactions, restoration state, and findings. Reversible tests restore and re-verify the original state. If a family has no safe probe, say so rather than inventing one. Capability metadata and atomic evidence feed the canonical `DeviceAssessment` used by every UI and report surface.
 
 ## 8. Validate hardware deliberately
 
@@ -44,4 +44,20 @@ Choose the least risky transient/read-only experiment supported by provenance. C
 
 After repeated reviewed hardware evidence, promote the specific profile capability from unverified to experimental to verified. Do not promote the entire family or other profiles by association.
 
-Persistent, destructive, reset, password, storage erase, OTA, and firmware operations require owner authorization, documented recovery, and dedicated policy work. MatrixSmith must not acquire an arbitrary live writer as a reverse-engineering shortcut.
+Persistent content operations are supported through a dedicated path: declare the plan `persistent`, attach compiler metadata and per-packet `delayAfterMs` pacing (the executor owns timing), and route live sends through `sendPersistentContent`, which enforces a single-use explicit consequence confirmation. Pair each new persistent capability with a guided validation workflow (`src/diagnostics/validation.ts`) so the first hardware run records structured evidence. Destructive, reset, password, storage erase, OTA, and firmware operations remain blocked and require dedicated policy work. MatrixSmith must not acquire an arbitrary live writer as a reverse-engineering shortcut.
+
+## 9. Contribute guided tests and claims (2026-08-31 revision)
+
+Beyond capabilities and probes, a driver contributes:
+
+- `claimEvidence(profile)` — baseline atomic-claim evidence with honest scopes (`built-in-profile` for facts physically observed on that exact hardware, `source-reference` for upstream-only behavior).
+- `guidedTests(profile)` — `GuidedTestDefinition`s: a user-language title and question, claim prerequisites, a fixed deterministic operation (usually `ShowDiagnostic` with a declared content id and enumerated parameters), structured observation specs, an optional stopwatch, and a conservative `interpret()` that turns observations into claim updates plus establishes/rejects/unknowns. The engine, dialog, recommendation ranking, support map, and reports all render from the definition — no view or recommendation edits are needed for a new test.
+- Fixed diagnostic content builders (e.g. `src/drivers/coolledux/diagnostics.ts`) for any raw-word patterns a test needs. Diagnostic content must be fully determined by the definition: enumerate every allowed parameter value and never expose arbitrary bytes or pixel words.
+- Structured profile quirks (`src/core/quirks.ts`) instead of `if (profile.id === …)` conditionals, with every uncertain field spelled `unknown`.
+
+Additional contracts from the hardening revision:
+
+- **Applicability**: scope test suites to the profiles whose assumptions they bake in (geometry, tiling, observed history). Do not expose a device-specific suite to every profile of the driver family; give other profiles a genuinely generic suite or none.
+- **Evidence-aware operations**: when a test's exact operation depends on established evidence, implement `buildOperation(context)` — the result must still be a fixed diagnostic id with enumerated parameters. Optionally implement `validate(values)` for cross-field coherence; the controller enforces generic structural validation regardless.
+- **Measured timelines**: physical timing uses the multi-phase timer (`GuidedTestTimer.phases`); durations are measured from the final host-accepted write and only MatrixSmith-measured values verify claims. Attach measured quantities as `metrics` and structured outcome facts as `details` on claim updates — `details` is what activates session-resolved behavior (`src/investigation/session-behavior.ts`) and powers report clarity.
+- **Do not write `static.strategy` evidence**: it is derived. Contribute the atomic requirement claims and let `src/investigation/static-viability.ts` decide.

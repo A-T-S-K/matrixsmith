@@ -1,0 +1,37 @@
+- group "Report":
+    - text: ""
+    - radio "Forensic — every transaction and packet"
+    - text: Forensic — every transaction and packet
+    - radio "Canonical device report" [checked]
+    - text: Canonical device report
+- strong: Goal / question
+- textbox "Goal / question":
+    - /placeholder: What should a reviewer help determine?
+- group "Include":
+    - text: ""
+    - checkbox "Summary" [checked]
+    - text: Summary
+    - checkbox "Device fingerprint" [checked]
+    - text: Device fingerprint
+    - checkbox "GATT" [checked]
+    - text: GATT
+    - checkbox "Driver resolution" [checked]
+    - text: Driver resolution
+    - checkbox "Capabilities / support status" [checked]
+    - text: Capabilities / support status
+    - checkbox "Diagnostic runs" [checked]
+    - text: Diagnostic runs
+    - checkbox "Transactions" [checked]
+    - text: Transactions
+    - checkbox "Raw packet hex" [checked]
+    - text: Raw packet hex
+    - checkbox "Evidence / unknowns / rejected hypotheses" [checked]
+    - text: Evidence / unknowns / rejected hypotheses
+    - checkbox "Observations" [checked]
+    - text: Observations
+    - checkbox "User text content in compiler evidence"
+    - text: User text content in compiler evidence
+    - checkbox "Browser/device identifiers May identify this browser/device"
+    - text: Browser/device identifiers May identify this browser/device
+    - checkbox "Full raw event trace"
+    - text: Full raw event trace

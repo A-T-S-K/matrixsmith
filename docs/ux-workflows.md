@@ -1,52 +1,57 @@
-# UX workflows
+# Product workflows
 
-MatrixSmith's UI is organized around four user jobs, not around code layers. The Preact UI renders immutable `AppSnapshot` objects from `MatrixStore` and invokes semantic controller operations; no component talks to a characteristic or reconstructs domain state from trace text.
+MatrixSmith separates three jobs: use a known display, characterize/troubleshoot a display, and inspect protocol evidence. Developer tooling is never required to complete Create or guided Investigate.
 
-```text
-HOME
-DEVICE WORKSPACE
-  CONTROL   — use a supported display
-  DIAGNOSE  — identify / troubleshoot a display
-  DEVELOP   — protocol workbench
-REPORT      — persistent Share report action in the device header
-```
+## Navigation
 
-## Use
+- `/#/home`
+- `/#/device/create`
+- `/#/device/investigate`
+- `/#/device/develop/transactions`
+- `/#/device/develop/gatt`
+- `/#/offline/report`
 
-Home offers one primary call to action: **Connect a display**. When the browser supports `navigator.bluetooth.getDevices()`, previously authorized devices appear as a progressive enhancement; nothing requires it. After connection, a persistent device header shows name, geometry, protocol/resolution state, connection state, support status, **Share report**, and **Disconnect**. Mobile uses a compact top summary plus bottom navigation; desktop uses a sidebar.
+Browser navigation changes presentation state only. Home keeps a connected display visible with **Return to display** and **Disconnect / change display**.
 
-**Control** is the normal-user surface. It renders only verified live capabilities (currently CoolLEDUX device info and raw brightness with explicit Apply and verified readback). It never shows driver scores, raw GATT, packets, or transport receipts. Capabilities that are not verified live appear labeled (`Experimental / gated`, `Dry-run only`) rather than pretending to be normal controls.
+## Known display
 
-## Diagnose
+1. Connect the reviewed profile.
+2. Choose Text, Image, or Demo animation.
+3. Edit and preview content locally.
+4. Press **Display it**.
+5. The button area shows transfer progress and finishes with **Display updated.**
 
-Diagnose answers three questions: what is working, what is uncertain, and what to run next.
+Verified routine content opens no confirmation. The target-bound digest and execution policy still enforce safety. GIF and other experimental persistent content use one concise consequence-specific confirmation without a checkbox.
 
-- A support/development status matrix covers transport, protocol identity, read-only status, transient control, persistence, framebuffer, orientation, color, stored programs, animation, and recovery — each with an evidence label (`Verified live`, `Experimental / gated`, `Dry-run only`, `Blocked`, `Unsupported`).
-- A prominent **Recommended next action** is derived deterministically from session state: disconnected → connect; ambiguous shared GATT → run safe identification; resolved CoolLEDUX → run safe device checks; no safe probe → collect GATT evidence only.
-- Driver families contribute named diagnostic tools (`src/diagnostics/workflows.ts`). Tools execute only semantic controller operations through the safety policy — no raw transport. Runs are serializable and land in the diagnostic bundle and reports.
+## Unknown display
 
-The CoolLEDUX brightness round-trip is a guided reversible validation: record baseline, set a sufficiently different test value, require a matching command response, verify by device-info readback, restore the baseline, require a response, and verify restoration. It never runs automatically; the pre-run explanation states that brightness changes temporarily and is restored. A restore failure is surfaced prominently and stops the workflow. Families with no safe probe say so instead of inventing one.
+1. Connect and enumerate browser-authorized GATT evidence.
+2. Run one driver-contributed, bounded, read-only family probe.
+3. If the family is identified but geometry is unavailable, confirm width and height explicitly.
+4. MatrixSmith creates a provisional target; it inherits no reviewed product-profile evidence.
+5. Run only the family tests and actions marked executable for that target.
 
-## Develop
+The UI renders application-provided actions. It never branches on driver IDs or reconstructs availability.
 
-Develop replaces the old Lab with six sections:
+## Known characterized profile
 
-1. **Protocol candidates** — actionable cards (candidate / verified this session / rejected) with safe identification where one exists; numeric scores and match reasons live under expandable details.
-2. **Family probes & tests** — the same constrained diagnostic tools, framed for protocol work.
-3. **GATT explorer** — nRF-Connect-style service/characteristic hierarchy; each characteristic row shows UUID, properties, copy, and per-characteristic Read/Subscribe only where the properties allow. There is no generic write box.
-4. **Transactions** — the primary protocol-debugging view. A concise timeline expands into TX/RX raw hex, decoded fields, host/protocol/device verification, errors, and one-click copy for every packet. Filters (All, TX/RX, Queries, Probes, Diagnostics, Errors) plus text search over opcode/operation/hex/driver/summary.
-5. **Raw events** — the `TraceEvent` ground truth, collapsed by default. Raw notifications never disappear because decoding failed.
-6. **Evidence / observations** — session notes, plus the planned **Import external capture** placeholder (`src/diagnostics/importers.ts`).
+Investigate leads with “This model is ready for normal use.” It offers Create and evidence access; there is no no-op Finish action. Troubleshooting and revalidation create real investigation runs with explicit terminal states.
 
-## Share
+## Guided tests
 
-**Share report** opens from the device header. The dialog takes a goal/question, offers per-section include toggles, and previews deterministic Markdown generated purely from domain data (`src/diagnostics/report.ts`) — never from the DOM. Actions: **Copy Markdown**, **Download .md**, **Download diagnostic JSON** (the canonical machine-readable bundle).
+The workflow stages are About, Transfer, timed observation or questions, Result, and optional explicit Retry. Stage-specific values exist only in their valid state-machine variant. Automatic recommendations leave concluded experiments out of rotation and detect cycles.
 
-Share-sensitive identifiers (browser opaque device IDs, imported MAC addresses, raw trace) default **off** and are labeled when included. Protocol UUIDs, packet bytes, product name, and profile identity are not redacted. The Markdown stands alone when pasted into an issue, forum, chat, or an AI assistant: stable headings, literal hex, and suggested next tests derived from deterministic driver metadata.
+## Reports and files
 
-## How a driver contributes
+- Shareable investigation report: conclusions and evidence, identifiers omitted by default.
+- Forensic report: transactions, timing, candidates, decodes, and exact packet evidence.
+- Shareable Bundle V3: strict portable data with identifiers, trace, advertisement bytes, and device binding removed.
+- Full local archive: complete identifiers and trace, explicitly labeled unsafe to share by default.
 
-- **Capabilities** — `driver.capabilities(profile)` declares supported/live/risk/persistence/validation; Control and the support matrix render from these, never from driver-id conditionals.
-- **Probes** — `driver.probes(context)` returns read-only semantic identification probes with serializable response expectations.
-- **Diagnostic tools** — named workflows registered in `src/diagnostics/workflows.ts` and executed by `MatrixController.runDiagnostic`, which records steps, transactions, restoration state, and findings.
-- **Support-status evidence** — capability metadata plus session resolution evidence feed the Diagnose matrix and the report's support table and suggested next tests.
+Bundle V3 validates fully and enforces resource budgets before application mutation. Live and offline workspaces stay separate.
+
+## Accessibility
+
+Shared Dialog, Tabs, MenuButton, NoticeRegion, FileButton, UnavailableAction, and EvidenceDisclosure primitives implement keyboard and screen-reader behavior. Animated previews honor reduced motion. Unavailable reasons are visible text. Notices and bottom navigation do not cover controls.
+
+Automated component tests and Playwright axe scans cover the critical routes; the stable-domain manual checklist is in [physical-acceptance.md](physical-acceptance.md).

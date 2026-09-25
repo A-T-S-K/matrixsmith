@@ -1,57 +1,51 @@
-# MatrixSmith architecture
+# Architecture and state ownership
 
-## Dependency direction
+MatrixSmith is a static browser application. The composition roots construct adapters and services; services depend on explicitly typed capabilities rather than browser globals or a shared mutable superclass.
 
-```text
-Preact UI (Home / Control / Diagnose / Develop / Report)
-  -> MatrixStore (immutable AppSnapshot + subscription)
-    -> MatrixController + MatrixSession
-    -> semantic MatrixOperation
-      -> statically registered MatrixDriver + DeviceProfile
-        -> immutable TransmissionPlan + serializable response expectation
-          -> SafetyPolicy
-            -> AuthorizedTransmission
-              -> TransmissionExecutor + pre-write NotificationRouter waiter
-                -> MatrixTransport
-                  -> Web Bluetooth / Fake / Replay
+## Application composition
 
-Scene / Framebuffer / FrameSequence
-  -> logical RGB888 rendering
-    -> driver-specific quantization and packing
-      -> TransmissionPlan
-```
+`ApplicationRuntime` is the stable command/query facade. It explicitly constructs the services, connects narrow capability ports, and binds its public methods. There is no runtime service inheritance, reflection-based method copying, or shared kernel.
 
-The UI never calls a characteristic write. A driver plans bytes but cannot access a browser device. The executor accepts only an authorized plan, sends its existing packet objects in order, and does not re-encode after approval.
+| Owner                                    | Responsibility                                                                                   |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| Connection                               | Device session, connection generation, transport lifetime, notification subscriptions            |
+| Identification                           | Driver registry, target/profile identification and assessment projection                         |
+| Transmission                             | Executor, safety policy, session-only transmission authority and confirmation consumption        |
+| Protocol evidence                        | Bounded transactions, notifications, compilations, observations, and imported-evidence summaries |
+| Diagnostics                              | Diagnostic runs and brightness restoration orchestration                                         |
+| Investigation                            | Current/detached investigations, orchestration, attempts, panel-program belief                   |
+| Guided catalog/orchestration/experiments | Bounded operations over investigation-owned state through explicit commands                      |
+| Report/import                            | Validated Bundle V3 and report projections; no live authority from imported data                 |
 
-## Responsibilities
+Capability contracts use type-only references. Deferred capability access connects mutually coordinating services without circular runtime imports or passing the entire runtime into each service. Private fields remain with their owners; cross-service changes use owner commands. Protocol drivers and pure evidence evaluators remain independently testable.
 
-- `src/core`: serializable fingerprints and profiles, evidence/validation, capabilities, risk, operations, and transmission artifacts.
-- `src/discovery`: generic advertisement parsing and fact extraction. Hypotheses stay out of the parser.
-- `src/transport`: browser/runtime I/O. `WebBluetoothTransport` knows chooser semantics, connections, endpoints, reads, notifications, writes, and host receipts; it contains no FFF0, opcode, or geometry constants.
-- `src/drivers`: one central built-in list and independent family implementations. Drivers own matching, endpoints/probes, planning, notification decoding, and response matching.
-- `src/drivers/coolled/common`: only shared FFF0/FFF1, envelope, conservative advertisement parsing, and static transport-shape matching.
-- `src/drivers/coolledx`: older/simple commands and content codec; it no longer owns the iLedHat profile.
-- `src/drivers/coolledux`: newer/advanced direct-command subset and safe `0x1F` probe.
-- `src/profiles`: physical products independent of driver directory layout.
-- `src/app`: session lifecycle, central policy, exact-plan authorization, execution, and application orchestration.
-- `src/diagnostics`: typed trace, serializable protocol transactions and diagnostic workflow runs, versioned portable bundle serialization, the deterministic Markdown report generator, and the future `EvidenceImporter` contract.
-- `src/render`: arbitrary positive dimensions in row-major RGB888; hardware wire order is driver-owned.
-- `src/storage`: small key/value abstraction and structured preset records.
-- `src/ui`: Preact pages/views/components plus `MatrixStore`, which turns controller/session/trace state into an immutable `AppSnapshot` consumed via `useSyncExternalStore`. Components invoke semantic store/controller operations only; domain and protocol logic never lives in components.
-- `src/main.tsx`: composition root wiring transport, trace, controller, store, and the Preact render.
+Atomic claim resolution lives below derived static-strategy assessment, eliminating the former runtime import cycle. Create, Investigate, and reports continue to use the canonical assessment.
 
-## Runtime versus portable evidence
+## Presentation composition
 
-`DeviceFingerprint` separates requested discovery filters, browser-granted/accessible services, enumerated GATT, and genuinely observed/imported advertisement services. A request filter is never promoted to advertisement evidence. Runtime Bluetooth objects remain private to transport.
+`PresentationStore` preserves `subscribe`/`getSnapshot` and public UI commands. It composes workspace, navigation, notice, connection, editor, send, report, investigation, guided-workflow, and projection controllers. The former inherited catch-all `any` index signature is gone.
 
-`MatrixSession` retains every raw notification, its optional rich decoded object, and protocol-resolution evidence. Trace metadata stays scalar. Imported bundles can replay captured resolution while policy blocks TX.
+- Workspace owns active and retained-live runtimes. Replacing an offline report retires its runtime; opening a report does not disconnect the retained live device.
+- Navigation owns routes, overlays, Browser Back behavior, and listener disposal.
+- Notice owns operation IDs and the active-operation collection. Completion of one operation cannot clear another operation's busy indication.
+- Content editor owns files/previews and latest-selection generations. Stale work cannot replace a newer preview or cross workspace boundaries.
+- Guided controller exclusively owns mutable guided UI flow. Pure domain transitions and read-only projections remain separate from that ownership.
+- Snapshot owns publication and subscriptions. Disposal suppresses later publications.
 
-## Driver versus profile
+The cohesive guided controller is larger than the old per-file limit. File length is a review signal, not an excuse to split one mutable state across inheritance layers. The public facade also contains explicit API bindings; it contains no feature logic.
 
-A driver is a protocol-family implementation such as CoolLEDX or CoolLEDUX. A profile is reviewed physical-product knowledge. Static FFF0/F1 can leave generations tied; a safe semantic probe can add exact session evidence without mutating either static matcher.
+Browser environment construction occurs in adapters invoked by bootstrap. Feature constructors receive only the storage, file, route, Wake Lock, discovery, or workspace-factory capabilities they use. Tests supply explicit environments, including in-memory persistence.
 
-## Transmission boundary
+## Boundaries and lifecycle
 
-Every write starts as a semantic operation. The plan carries identity, purpose, explicit live intent, risk, validation, exact packets, and a serializable notification expectation. The response waiter is armed before BLE write so fast replies are not lost. Host acceptance, matching response, and state verification remain distinct.
+The native TypeScript compiler resolves imports, re-exports, and dynamic imports for architecture verification. The gate rejects runtime cycles, concrete-driver imports in generic layers, browser-adapter imports in application/presentation services, and implementation inheritance in services/controllers.
 
-See [ADR 0001](adr/0001-driver-oriented-architecture.md).
+Runtime disposal disconnects owned transports and releases subscriptions. Presentation disposal releases routing, Wake Lock, previews, snapshots, and owned workspaces. State transitions retain the existing target/digest, quarantine, evidence-demotion, and notification-correlation invariants.
+
+## Files and updates
+
+File buttons catch both synchronous failures and rejected promises. Bounded readers check file sizes before allocation; PNG/JPEG/WebP headers are inspected before decoding, and bitmap dimensions are checked again before canvas allocation. Bundle validation precedes workspace mutation.
+
+A single update manager spans cold Home and the full application. Build identity is derived from source/build inputs and package version. The production worker precaches a complete generation and serves its matching shell, retaining the previous successful generation. Explicit activation waits for readiness from every open app tab, and operational errors remain visible independently of update availability.
+
+No backend, cloud persistence, analytics, or runtime third-party service is introduced by this architecture.

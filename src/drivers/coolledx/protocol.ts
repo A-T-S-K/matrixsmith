@@ -22,12 +22,17 @@ export function encodeControl(opcode: number, ...args: number[]): Uint8Array {
   return frameCoolLedPayload(Uint8Array.of(opcode, ...args));
 }
 
-export const encodeBrightness = (raw: number): Uint8Array => encodeControl(COOLLEDX_OPCODES.brightness, raw);
-export const encodeSpeed = (raw: number): Uint8Array => encodeControl(COOLLEDX_OPCODES.speed, raw);
-export const encodeMode = (raw: number): Uint8Array => encodeControl(COOLLEDX_OPCODES.mode, raw);
-export const encodeSwitch = (on: boolean): Uint8Array => encodeControl(COOLLEDX_OPCODES.switch, on ? 0x01 : 0x00);
+export const encodeBrightness = (raw: number): Uint8Array =>
+  encodeControl(COOLLEDX_OPCODES.brightness, raw);
+export const encodeSpeed = (raw: number): Uint8Array =>
+  encodeControl(COOLLEDX_OPCODES.speed, raw);
+export const encodeMode = (raw: number): Uint8Array =>
+  encodeControl(COOLLEDX_OPCODES.mode, raw);
+export const encodeSwitch = (on: boolean): Uint8Array =>
+  encodeControl(COOLLEDX_OPCODES.switch, on ? 0x01 : 0x00);
 
 function assertByte(value: number, label: string): void {
-  if (!Number.isInteger(value) || value < 0 || value > 0xff) throw new RangeError(`${label} must be an unsigned byte.`);
+  if (!Number.isInteger(value) || value < 0 || value > 0xff)
+    throw new RangeError(`${label} must be an unsigned byte.`);
 }
 import { encodeEnvelope, escapeBytes } from "../coolled/common/envelope";
