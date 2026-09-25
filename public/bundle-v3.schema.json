@@ -1,0 +1,341 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MatrixSmith Bundle V3",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "privacy",
+    "matrixsmithVersion",
+    "createdAt",
+    "fingerprint",
+    "driverMatches",
+    "selectedDriver",
+    "selectedProfile",
+    "capabilities",
+    "assessment",
+    "trace",
+    "observations",
+    "advertisementEvidence",
+    "transactions",
+    "diagnosticRuns",
+    "contentCompilations",
+    "importedEvidence",
+    "investigation"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 3 },
+    "privacy": { "enum": ["shareable", "full-local-archive"] },
+    "matrixsmithVersion": { "type": "string", "minLength": 1 },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "fingerprint": { "$ref": "#/$defs/fingerprint" },
+    "driverMatches": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/driverMatch" }
+    },
+    "selectedDriver": { "type": ["string", "null"] },
+    "selectedProfile": { "type": ["string", "null"] },
+    "capabilities": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/capability" }
+    },
+    "assessment": { "$ref": "#/$defs/assessment" },
+    "trace": {
+      "type": "array",
+      "maxItems": 50000,
+      "items": { "type": "object" }
+    },
+    "observations": { "type": "array", "items": { "type": "object" } },
+    "advertisementEvidence": { "type": ["object", "null"] },
+    "transactions": {
+      "type": "array",
+      "maxItems": 10000,
+      "items": { "$ref": "#/$defs/transaction" }
+    },
+    "diagnosticRuns": { "type": "array", "items": { "type": "object" } },
+    "contentCompilations": { "type": "array", "items": { "type": "object" } },
+    "importedEvidence": { "type": "array", "items": { "type": "object" } },
+    "investigation": { "type": ["object", "null"] }
+  },
+  "$defs": {
+    "endpoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["serviceUuid", "characteristicUuid"],
+      "properties": {
+        "serviceUuid": { "type": "string", "minLength": 1 },
+        "characteristicUuid": { "type": "string", "minLength": 1 }
+      }
+    },
+    "fingerprint": {
+      "type": "object",
+      "required": [
+        "schemaVersion",
+        "transportKind",
+        "advertisedServices",
+        "services",
+        "evidenceRefs",
+        "notes"
+      ],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "transportKind": {
+          "enum": [
+            "web-bluetooth",
+            "web-serial",
+            "web-usb",
+            "network",
+            "fake",
+            "replay"
+          ]
+        },
+        "browserDeviceId": { "type": "string" },
+        "name": { "type": "string" },
+        "advertisedServices": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "requestedServices": { "type": "array", "items": { "type": "string" } },
+        "browserGrantedServices": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "rawAdvertisementHex": {
+          "type": "string",
+          "pattern": "^[0-9A-Fa-f]*$"
+        },
+        "manufacturerDataHex": {
+          "type": "string",
+          "pattern": "^[0-9A-Fa-f]*$"
+        },
+        "services": { "type": "array", "items": { "type": "object" } },
+        "manuallyConfirmedGeometry": { "$ref": "#/$defs/geometry" },
+        "advertisementObservation": { "type": "object" },
+        "evidenceRefs": { "type": "array", "items": { "type": "string" } },
+        "notes": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "geometry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["width", "height"],
+      "properties": {
+        "width": { "type": "integer", "minimum": 1, "maximum": 512 },
+        "height": { "type": "integer", "minimum": 1, "maximum": 512 }
+      }
+    },
+    "driverMatch": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "driverId",
+        "score",
+        "confidence",
+        "reasons",
+        "contradictions"
+      ],
+      "properties": {
+        "driverId": { "type": "string" },
+        "score": { "type": "number" },
+        "confidence": {
+          "enum": ["none", "weak", "candidate", "strong", "exact"]
+        },
+        "reasons": { "type": "array", "items": { "type": "string" } },
+        "contradictions": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "capability": {
+      "type": "object",
+      "required": [
+        "id",
+        "label",
+        "supported",
+        "live",
+        "risk",
+        "persistence",
+        "evidenceConfidence",
+        "validation",
+        "evidenceRefs"
+      ],
+      "properties": {
+        "id": { "type": "string" },
+        "label": { "type": "string" },
+        "supported": { "type": "boolean" },
+        "live": { "type": "boolean" },
+        "risk": {
+          "enum": [
+            "read-only",
+            "transient",
+            "persistent",
+            "destructive",
+            "firmware"
+          ]
+        },
+        "persistence": {
+          "enum": ["none", "volatile", "persistent", "unknown"]
+        },
+        "evidenceConfidence": {
+          "enum": [
+            "observed",
+            "corroborated",
+            "inferred",
+            "speculative",
+            "unknown"
+          ]
+        },
+        "validation": {
+          "enum": ["unverified", "experimental", "verified", "rejected"]
+        },
+        "evidenceRefs": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "assessment": {
+      "type": "object",
+      "required": [
+        "readiness",
+        "summary",
+        "capabilities",
+        "strategies",
+        "actions",
+        "recommendedActionId",
+        "unresolvedClaims",
+        "conflicts"
+      ],
+      "properties": {
+        "readiness": {
+          "enum": [
+            "no-device",
+            "inspecting",
+            "needs-identification",
+            "needs-geometry",
+            "ready",
+            "limited",
+            "offline"
+          ]
+        },
+        "summary": { "type": "string" },
+        "capabilities": { "type": "object" },
+        "strategies": { "type": "object" },
+        "actions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "operationId",
+              "label",
+              "capabilityId",
+              "availability",
+              "confidence",
+              "reason",
+              "evidence",
+              "missingClaims",
+              "safety"
+            ],
+            "properties": {
+              "id": { "type": "string" },
+              "operationId": { "type": ["string", "null"] },
+              "label": { "type": "string" },
+              "capabilityId": { "type": ["string", "null"] },
+              "availability": {
+                "enum": ["available", "blocked", "unsupported"]
+              },
+              "confidence": {
+                "enum": ["verified", "experimental", "unknown", "conflicted"]
+              },
+              "reason": { "type": "string" },
+              "evidence": { "type": "array", "items": { "type": "object" } },
+              "missingClaims": {
+                "type": "array",
+                "items": { "type": "string" }
+              },
+              "safety": { "type": "object" }
+            }
+          }
+        },
+        "recommendedActionId": { "type": ["string", "null"] },
+        "unresolvedClaims": { "type": "array", "items": { "type": "object" } },
+        "conflicts": { "type": "array", "items": { "type": "object" } }
+      }
+    },
+    "transaction": {
+      "type": "object",
+      "required": [
+        "id",
+        "startedAt",
+        "completedAt",
+        "durationMs",
+        "sessionSource",
+        "source",
+        "driverId",
+        "profileId",
+        "operation",
+        "safety",
+        "endpoint",
+        "packets",
+        "decodedResponse",
+        "hostAccepted",
+        "protocolAcknowledged",
+        "deviceStateVerified",
+        "responseTimedOut",
+        "error",
+        "findings",
+        "observationIds",
+        "diagnosticRunId"
+      ],
+      "properties": {
+        "id": { "type": "string" },
+        "startedAt": { "type": "string", "format": "date-time" },
+        "completedAt": { "type": "string", "format": "date-time" },
+        "durationMs": { "type": "number", "minimum": 0 },
+        "sessionSource": { "enum": ["live", "imported", "fake", "replay"] },
+        "source": {
+          "enum": [
+            "operation",
+            "probe",
+            "diagnostic",
+            "gatt-read",
+            "external-import"
+          ]
+        },
+        "driverId": { "type": ["string", "null"] },
+        "profileId": { "type": ["string", "null"] },
+        "operation": { "type": "string" },
+        "safety": { "type": "object" },
+        "endpoint": {
+          "anyOf": [{ "$ref": "#/$defs/endpoint" }, { "type": "null" }]
+        },
+        "packets": { "type": "array", "items": { "$ref": "#/$defs/packet" } },
+        "decodedResponse": { "type": ["object", "null"] },
+        "hostAccepted": { "type": "boolean" },
+        "protocolAcknowledged": { "type": ["boolean", "null"] },
+        "deviceStateVerified": { "type": "boolean" },
+        "responseTimedOut": { "type": "boolean" },
+        "error": { "type": ["string", "null"] },
+        "findings": { "type": "array", "items": { "type": "string" } },
+        "observationIds": { "type": "array", "items": { "type": "string" } },
+        "diagnosticRunId": { "type": ["string", "null"] }
+      }
+    },
+    "packet": {
+      "type": "object",
+      "required": ["timestamp", "direction", "hex"],
+      "properties": {
+        "timestamp": { "type": "string", "format": "date-time" },
+        "direction": { "enum": ["TX", "RX"] },
+        "hex": { "type": "string" },
+        "endpoint": { "$ref": "#/$defs/endpoint" },
+        "relation": {
+          "enum": [
+            "matched-response",
+            "related-receipt",
+            "unrelated-concurrent"
+          ]
+        },
+        "hostAcceptedAt": { "type": "string", "format": "date-time" },
+        "scheduledDelayMs": { "type": "number", "minimum": 0 },
+        "gapSincePreviousTxMs": { "type": "number", "minimum": 0 }
+      }
+    }
+  }
+}
