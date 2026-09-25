@@ -1,11 +1,15 @@
-import { describe, expect, it } from "vitest";
-import { MatrixController } from "../../src/app/controller";
+import { createPresentationStore } from "../helpers/presentation-fixture";
+import { describe, expect, it, vi } from "vitest";
+import { ApplicationRuntime } from "../../src/application/runtime";
 import { TraceRecorder } from "../../src/diagnostics/trace";
-import { MatrixStore } from "../../src/ui/store";
+import { PresentationStore } from "../../src/presentation/store";
 import type { DeviceFingerprint } from "../../src/core/device";
 import { knownIledHatFingerprint } from "../helpers/fixtures";
 import { ScriptedCoolLedUxDevice } from "../helpers/scripted-device";
-import { compileAnimationStaticFrame, compileGraffitiFrame } from "../../src/drivers/coolledux/content";
+import {
+  compileAnimationStaticFrame,
+  compileGraffitiFrame,
+} from "../../src/drivers/coolledux/content";
 import { encodeFrameRegion } from "../../src/drivers/coolledux/pixels";
 import { Framebuffer } from "../../src/render/framebuffer";
 import { ILEDHAT_PROFILE_ID } from "../../src/profiles/iledhat-31ae-32x16";
@@ -21,10 +25,14 @@ import { ILEDHAT_PROFILE_ID } from "../../src/profiles/iledhat-31ae-32x16";
  * display we know must not make us less careful with one we do not.
  */
 
-async function freshKnownDevice(): Promise<{ store: MatrixStore; controller: MatrixController; transport: ScriptedCoolLedUxDevice }> {
+async function freshKnownDevice(): Promise<{
+  store: PresentationStore;
+  controller: ApplicationRuntime;
+  transport: ScriptedCoolLedUxDevice;
+}> {
   const transport = new ScriptedCoolLedUxDevice(knownIledHatFingerprint());
-  const controller = new MatrixController(transport, new TraceRecorder());
-  const store = new MatrixStore(controller, transport);
+  const controller = new ApplicationRuntime(transport, new TraceRecorder());
+  const store = createPresentationStore(controller, transport);
   await store.connect();
   return { store, controller, transport };
 }
@@ -34,15 +42,18 @@ function unknownSharedTransport(): DeviceFingerprint {
   const known = knownIledHatFingerprint();
   const stripped: DeviceFingerprint = { ...known, name: "Generic LED Panel" };
   delete (stripped as { manufacturerDataHex?: string }).manufacturerDataHex;
-  delete (stripped as { manuallyConfirmedGeometry?: unknown }).manuallyConfirmedGeometry;
+  delete (stripped as { manuallyConfirmedGeometry?: unknown })
+    .manuallyConfirmedGeometry;
   delete (stripped as { rawAdvertisementHex?: string }).rawAdvertisementHex;
   return stripped;
 }
 
 function testImage(): Framebuffer {
   const frame = new Framebuffer(32, 16);
-  for (let x = 0; x < 8; x += 1) for (let y = 0; y < 8; y += 1) frame.setPixel(x, y, 255, 0, 0);
-  for (let x = 24; x < 32; x += 1) for (let y = 8; y < 16; y += 1) frame.setPixel(x, y, 0, 0, 255);
+  for (let x = 0; x < 8; x += 1)
+    for (let y = 0; y < 8; y += 1) frame.setPixel(x, y, 255, 0, 0);
+  for (let x = 24; x < 32; x += 1)
+    for (let y = 8; y < 16; y += 1) frame.setPixel(x, y, 0, 0, 255);
   return frame;
 }
 
@@ -53,7 +64,11 @@ describe("a fresh session on the known iLedHat is immediately usable", () => {
     expect(transport.writes).toHaveLength(0);
     expect(controller.transactions).toHaveLength(0);
     expect(controller.investigation).toBeNull();
-    expect(controller.allClaimEvidence().every((entry) => entry.scope !== "current-session")).toBe(true);
+    expect(
+      controller
+        .allClaimEvidence()
+        .every((entry) => entry.scope !== "current-session"),
+    ).toBe(true);
 
     expect(controller.session.selection?.selected?.id).toBe("coolledux");
     expect(controller.session.selection?.ambiguous).toBe(false);
@@ -68,14 +83,18 @@ describe("a fresh session on the known iLedHat is immediately usable", () => {
     expect(controller.contentGate("animation").allowed).toBe(true);
     // GIF depends on a decoder this panel has never been observed running.
     expect(controller.contentGate("gif").allowed).toBe(false);
-    expect(controller.contentGate("gif").missingClaims).toContain("gif.playback");
+    expect(controller.contentGate("gif").missingClaims).toContain(
+      "gif.playback",
+    );
   });
 
   it("derives animation-single-frame as the static strategy", async () => {
     const { controller } = await freshKnownDevice();
     const assessment = controller.staticViability();
     expect(assessment.selected).toBe("animation-single-frame");
-    const verdicts = Object.fromEntries(assessment.strategies.map((entry) => [entry.strategy, entry.verdict]));
+    const verdicts = Object.fromEntries(
+      assessment.strategies.map((entry) => [entry.strategy, entry.verdict]),
+    );
     expect(verdicts).toEqual({
       graffiti: "not-viable",
       "animation-single-frame": "viable",
@@ -98,9 +117,18 @@ describe("a fresh session on the known iLedHat is immediately usable", () => {
 
     // Byte-identical to the one-frame Animation compiler, and NOT to Graffiti.
     const animation = compileAnimationStaticFrame(frame, "single");
-    expect(plan.metadata.crc32).toBe(`0x${animation.crc32.toString(16).padStart(8, "0").toUpperCase()}`);
-    const graffiti = compileGraffitiFrame(frame, undefined, {}, { state: "true-black", basis: "observed" });
-    expect(plan.metadata.crc32).not.toBe(`0x${graffiti.crc32.toString(16).padStart(8, "0").toUpperCase()}`);
+    expect(plan.metadata.crc32).toBe(
+      `0x${animation.crc32.toString(16).padStart(8, "0").toUpperCase()}`,
+    );
+    const graffiti = compileGraffitiFrame(
+      frame,
+      undefined,
+      {},
+      { state: "true-black", basis: "observed" },
+    );
+    expect(plan.metadata.crc32).not.toBe(
+      `0x${graffiti.crc32.toString(16).padStart(8, "0").toUpperCase()}`,
+    );
   });
 
   it("encodes black as real 0x0000 and never touches the high nibble", async () => {
@@ -123,21 +151,18 @@ describe("a fresh session on the known iLedHat is immediately usable", () => {
     expect(sawRed).toBe(true);
   });
 
-  it("lets Create reach the confirmation step, without a probe", async () => {
+  it("updates verified routine content in one click, without a probe or confirmation", async () => {
     const { store, controller, transport } = await freshKnownDevice();
     store.updateContentSettings({ text: "HI" });
     store.requestSendText();
-    const snapshot = store.getSnapshot();
-    expect(snapshot.error).toBeNull();
-    // Ready means characterized, not permitted: the send still stops for an
-    // explicit confirmation, because it replaces the stored display program.
-    expect(snapshot.pendingSend).not.toBeNull();
-    expect(snapshot.pendingSend!.consequence).toMatch(/replaces/i);
-    expect(transport.writes).toHaveLength(0);
-    expect(controller.transactions).toHaveLength(0);
-    // And it is the verified static route that was compiled.
-    expect(store.getSnapshot().pendingSend!.label).toBe("Send rendered text");
-    store.cancelPendingSend();
+    await vi.waitFor(() => expect(store.getSnapshot().busy).toBeNull(), {
+      timeout: 8_000,
+    });
+    expect(store.getSnapshot().error).toBeNull();
+    expect(store.getSnapshot().pendingSend).toBeNull();
+    expect(store.getSnapshot().info).toBe("Display updated.");
+    expect(transport.writes.length).toBeGreaterThan(0);
+    expect(controller.transactions.length).toBeGreaterThan(0);
   });
 
   it("never asks the user to identify the protocol first", async () => {
@@ -145,7 +170,7 @@ describe("a fresh session on the known iLedHat is immediately usable", () => {
     const snapshot = store.getSnapshot();
     expect(snapshot.recommended.action).not.toBe("identify");
     expect(snapshot.device?.protocol).toBe("CoolLEDUX");
-    expect(snapshot.device?.support).toBe("Supported");
+    expect(snapshot.device?.support).toMatch(/ready for normal use/i);
     expect(snapshot.view).toBe("control");
   });
 
@@ -158,13 +183,28 @@ describe("a fresh session on the known iLedHat is immediately usable", () => {
     expect(store.controller.session.validatedRasterStrategy).toBeNull();
     expect(store.getSnapshot().coreProgress?.complete).toBe(true);
   });
+
+  it("keeps an imported offline report separate from the live workspace", async () => {
+    const { store, controller, transport } = await freshKnownDevice();
+    store.importBundle(controller.exportBundle());
+    expect(store.getSnapshot().source).toBe("imported");
+    expect(store.getSnapshot().liveWorkspaceAvailable).toBe(true);
+    expect(transport.state).toBe("connected");
+    store.returnToLiveWorkspace();
+    expect(store.getSnapshot().source).toBe("live");
+    expect(store.getSnapshot().liveConnected).toBe(true);
+    expect(store.controller).toBe(controller);
+  });
 });
 
 describe("recognizing a known display does not weaken unknown-device safety", () => {
-  async function freshUnknownDevice(): Promise<{ store: MatrixStore; controller: MatrixController }> {
+  async function freshUnknownDevice(): Promise<{
+    store: PresentationStore;
+    controller: ApplicationRuntime;
+  }> {
     const transport = new ScriptedCoolLedUxDevice(unknownSharedTransport());
-    const controller = new MatrixController(transport, new TraceRecorder());
-    const store = new MatrixStore(controller, transport);
+    const controller = new ApplicationRuntime(transport, new TraceRecorder());
+    const store = createPresentationStore(controller, transport);
     await store.connect();
     return { store, controller };
   }
@@ -176,7 +216,11 @@ describe("recognizing a known display does not weaken unknown-device safety", ()
     expect(controller.session.selection?.ambiguous).toBe(true);
     expect(controller.profileReady()).toBe(false);
     // Only source-reference facts about OTHER hardware are in scope.
-    expect(controller.allClaimEvidence().every((entry) => entry.scope === "source-reference")).toBe(true);
+    expect(
+      controller
+        .allClaimEvidence()
+        .every((entry) => entry.scope === "source-reference"),
+    ).toBe(true);
   });
 
   it("keeps every content path gated", async () => {
@@ -189,14 +233,47 @@ describe("recognizing a known display does not weaken unknown-device safety", ()
 
   it("cannot even build a plan without a resolved driver and profile", async () => {
     const { controller } = await freshUnknownDevice();
-    expect(() => controller.plan({ type: "ShowFrame", frame: testImage() })).toThrow(/non-ambiguous/);
+    expect(() =>
+      controller.plan({ type: "ShowFrame", frame: testImage() }),
+    ).toThrow(/non-ambiguous/);
   });
 
   it("still offers safe identification as the next step", async () => {
     const { store } = await freshUnknownDevice();
     const snapshot = store.getSnapshot();
     expect(snapshot.recommended.action).toBe("identify");
-    expect(snapshot.device?.support).toBe("Identification required");
+    expect(snapshot.device?.support).toMatch(/read-only identification/i);
     expect(snapshot.view).toBe("diagnose");
+  });
+
+  it("identifies an unknown FFF0/F1 display before any reviewed profile exists", async () => {
+    const transport = new ScriptedCoolLedUxDevice(unknownSharedTransport());
+    const controller = new ApplicationRuntime(transport, new TraceRecorder());
+    await controller.connect();
+    const result = await controller.probe("coolledux", "get-device-info");
+    expect(result.protocolAcknowledged).toBe(true);
+    expect(controller.session.selection?.selected?.id).toBe("coolledux");
+    expect(controller.session.profile).toBeNull();
+    const provisional = controller.confirmProvisionalGeometry(32, 16);
+    expect(provisional.id).toBe("provisional:coolledux:32x16");
+    expect(provisional.validation).toBe("experimental");
+    const assessment = controller.assessment();
+    expect(
+      assessment.actions.find(
+        ({ operationId }) => operationId === "GetDeviceInfo",
+      ),
+    ).toMatchObject({
+      availability: "available",
+      confidence: "experimental",
+      missingClaims: [],
+    });
+    expect(
+      assessment.actions.find(({ operationId }) => operationId === "ShowFrame"),
+    ).toMatchObject({ availability: "blocked" });
+    expect(
+      controller
+        .baselineClaimEvidence()
+        .every((entry) => entry.scope === "source-reference"),
+    ).toBe(true);
   });
 });

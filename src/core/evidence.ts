@@ -1,6 +1,8 @@
-export type EvidenceConfidence = "observed" | "corroborated" | "inferred" | "speculative" | "unknown";
+export type EvidenceConfidence =
+  "observed" | "corroborated" | "inferred" | "speculative" | "unknown";
 
-export type ValidationStatus = "unverified" | "experimental" | "verified" | "rejected";
+export type ValidationStatus =
+  "unverified" | "experimental" | "verified" | "rejected";
 
 export interface EvidenceReference {
   readonly id: string;

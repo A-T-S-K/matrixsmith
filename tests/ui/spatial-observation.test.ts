@@ -1,7 +1,8 @@
+import { createPresentationStore } from "../helpers/presentation-fixture";
 import { describe, expect, it } from "vitest";
-import { MatrixController } from "../../src/app/controller";
+import { ApplicationRuntime } from "../../src/application/runtime";
 import { TraceRecorder } from "../../src/diagnostics/trace";
-import { MatrixStore } from "../../src/ui/store";
+import { PresentationStore } from "../../src/presentation/store";
 import { knownIledHatFingerprint } from "../helpers/fixtures";
 import { ScriptedCoolLedUxDevice } from "../helpers/scripted-device";
 
@@ -10,9 +11,12 @@ import { ScriptedCoolLedUxDevice } from "../helpers/scripted-device";
  * redesign depends on: one region question at a time, an unambiguous active
  * region, and answers that survive navigating back and forth.
  */
-async function storeAtObserve(testId: string): Promise<MatrixStore> {
+async function storeAtObserve(testId: string): Promise<PresentationStore> {
   const transport = new ScriptedCoolLedUxDevice(knownIledHatFingerprint());
-  const store = new MatrixStore(new MatrixController(transport, new TraceRecorder()), transport);
+  const store = createPresentationStore(
+    new ApplicationRuntime(transport, new TraceRecorder()),
+    transport,
+  );
   await store.connect();
   await store.identify();
   store.startGuidedTest(testId);
@@ -20,7 +24,7 @@ async function storeAtObserve(testId: string): Promise<MatrixStore> {
   return store;
 }
 
-const flow = (store: MatrixStore) => store.getSnapshot().guidedFlow!;
+const flow = (store: PresentationStore) => store.getSnapshot().guidedFlow!;
 
 describe("spatial observation flow", () => {
   it("presents the channel test as one zone at a time, not an eleven-question form", async () => {
@@ -36,17 +40,27 @@ describe("spatial observation flow", () => {
 
   it("advances, goes back, and keeps answers while navigating", async () => {
     const store = await storeAtObserve("coolledux-pixel-channels");
-    store.setGuidedObservation({ kind: "choice", fieldId: "patch-0x0000", optionId: "off" });
+    store.setGuidedObservation({
+      kind: "choice",
+      fieldId: "patch-0x0000",
+      optionId: "off",
+    });
     store.nextGuidedStep();
     expect(flow(store).stepIndex).toBe(1);
-    store.setGuidedObservation({ kind: "choice", fieldId: "patch-0x0f00", optionId: "red" });
+    store.setGuidedObservation({
+      kind: "choice",
+      fieldId: "patch-0x0f00",
+      optionId: "red",
+    });
     store.nextGuidedStep();
     expect(flow(store).stepIndex).toBe(2);
     store.previousGuidedStep();
     store.previousGuidedStep();
     expect(flow(store).stepIndex).toBe(0);
     // Earlier answers survive the round trip and stay marked as answered.
-    expect(flow(store).values["patch-0x0000"]).toMatchObject({ optionId: "off" });
+    expect(flow(store).values["patch-0x0000"]).toMatchObject({
+      optionId: "off",
+    });
     expect(flow(store).steps[0]?.answered).toBe(true);
     expect(flow(store).steps[1]?.answered).toBe(true);
     expect(flow(store).steps[2]?.answered).toBe(false);
@@ -63,7 +77,9 @@ describe("spatial observation flow", () => {
   it("jumps to a zone's question when that zone is selected on the map", async () => {
     const store = await storeAtObserve("coolledux-pixel-channels");
     store.focusRegion("channel-blue");
-    expect(flow(store).steps[flow(store).stepIndex]?.regionId).toBe("channel-blue");
+    expect(flow(store).steps[flow(store).stepIndex]?.regionId).toBe(
+      "channel-blue",
+    );
     // An unknown zone must not move the user somewhere arbitrary.
     const before = flow(store).stepIndex;
     store.focusRegion("not-a-zone");
@@ -85,11 +101,19 @@ describe("spatial observation flow", () => {
   it("compares the black candidate against the workaround as two grouped zones", async () => {
     const store = await storeAtObserve("coolledux-graffiti-black");
     const current = flow(store);
-    expect(current.steps.map((step) => step.regionId)).toEqual(["black-candidate-0", "workaround-1", null]);
-    const active = current.regions.find((region) => region.id === "black-candidate-0");
+    expect(current.steps.map((step) => step.regionId)).toEqual([
+      "black-candidate-0",
+      "workaround-1",
+      null,
+    ]);
+    const active = current.regions.find(
+      (region) => region.id === "black-candidate-0",
+    );
     expect(active?.groupId).toBe("black-candidate");
     // The other black tile is a peer, so the question can highlight both.
-    expect(current.regions.filter((region) => region.groupId === "black-candidate")).toHaveLength(2);
+    expect(
+      current.regions.filter((region) => region.groupId === "black-candidate"),
+    ).toHaveLength(2);
   }, 30000);
 
   it("never asks about a zone that is not part of this run", async () => {

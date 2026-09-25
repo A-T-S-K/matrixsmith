@@ -9,8 +9,15 @@ import type { RasterStrategy } from "./raster-strategy";
  */
 
 export type BlackSemantics =
-  | { readonly state: "true-black"; readonly basis: "observed" | "source-derived" }
-  | { readonly state: "white-sentinel"; readonly basis: "observed" | "source-derived"; readonly workaroundWord: number }
+  | {
+      readonly state: "true-black";
+      readonly basis: "observed" | "source-derived";
+    }
+  | {
+      readonly state: "white-sentinel";
+      readonly basis: "observed" | "source-derived";
+      readonly workaroundWord: number;
+    }
   | { readonly state: "unknown" };
 
 export type WhiteChannelState =
@@ -29,7 +36,10 @@ export interface ProfileQuirks {
   readonly graffitiPlaybackNotes: readonly string[];
   readonly pixelFormat: "rgb444-16bit" | "unknown";
   /** Channel map of the 16-bit pixel word, or unknown until characterized. */
-  readonly channelMap: { readonly state: "rgb444-hypothesis" | "verified-rgb444" | "unknown"; readonly notes?: string };
+  readonly channelMap: {
+    readonly state: "rgb444-hypothesis" | "verified-rgb444" | "unknown";
+    readonly notes?: string;
+  };
   readonly whiteChannel: WhiteChannelState;
   readonly preferredRasterStrategy: RasterStrategy | "unresolved";
   readonly rasterStrategyCandidates: readonly RasterStrategy[];
@@ -63,7 +73,8 @@ export const ILEDHAT_QUIRKS: ProfileQuirks = Object.freeze<ProfileQuirks>({
   pixelFormat: "rgb444-16bit",
   channelMap: {
     state: "verified-rgb444",
-    notes: "Physically confirmed on this panel: byte0 low nibble drives red, byte1 high nibble green, byte1 low nibble blue. The byte0 high nibble drives nothing — probes 0x1000 through 0xF000 were all observed off.",
+    notes:
+      "Physically confirmed on this panel: byte0 low nibble drives red, byte1 high nibble green, byte1 low nibble blue. The byte0 high nibble drives nothing — probes 0x1000 through 0xF000 were all observed off.",
   },
   // Not "unknown pending a test": the high nibble was swept and drove no
   // emitter, so there is no fourth channel to be white.
@@ -73,7 +84,10 @@ export const ILEDHAT_QUIRKS: ProfileQuirks = Object.freeze<ProfileQuirks>({
   // protocol research and profiles whose evidence says it works; it is not a
   // candidate for NORMAL static routing on a panel where it was physically
   // rejected.
-  rasterStrategyCandidates: ["animation-single-frame", "animation-identical-frames"],
+  rasterStrategyCandidates: [
+    "animation-single-frame",
+    "animation-identical-frames",
+  ],
   contentLimits: [
     "One Graffiti/Animation segment renders at most 8 columns; wider content must tile.",
     "Native GIF is source-verified only inside the untiled ≤8-column zone.",
@@ -82,17 +96,28 @@ export const ILEDHAT_QUIRKS: ProfileQuirks = Object.freeze<ProfileQuirks>({
 });
 
 /** Source-derived defaults for CoolLEDUX profiles with no physical characterization. */
-export const COOLLEDUX_DEFAULT_QUIRKS: ProfileQuirks = Object.freeze<ProfileQuirks>({
-  tileWidth: 8,
-  heightStride: 16,
-  graffitiBlack: { state: "white-sentinel", basis: "source-derived", workaroundWord: 0x0004 },
-  animationBlack: { state: "true-black", basis: "source-derived" },
-  graffitiPlaybackNotes: [],
-  pixelFormat: "rgb444-16bit",
-  channelMap: { state: "rgb444-hypothesis" },
-  whiteChannel: { state: "unknown" },
-  preferredRasterStrategy: "unresolved",
-  rasterStrategyCandidates: ["graffiti", "animation-single-frame", "animation-identical-frames"],
-  contentLimits: ["One Graffiti/Animation segment renders at most 8 columns; wider content must tile."],
-  unexplained: {},
-});
+export const COOLLEDUX_DEFAULT_QUIRKS: ProfileQuirks =
+  Object.freeze<ProfileQuirks>({
+    tileWidth: 8,
+    heightStride: 16,
+    graffitiBlack: {
+      state: "white-sentinel",
+      basis: "source-derived",
+      workaroundWord: 0x0004,
+    },
+    animationBlack: { state: "true-black", basis: "source-derived" },
+    graffitiPlaybackNotes: [],
+    pixelFormat: "rgb444-16bit",
+    channelMap: { state: "rgb444-hypothesis" },
+    whiteChannel: { state: "unknown" },
+    preferredRasterStrategy: "unresolved",
+    rasterStrategyCandidates: [
+      "graffiti",
+      "animation-single-frame",
+      "animation-identical-frames",
+    ],
+    contentLimits: [
+      "One Graffiti/Animation segment renders at most 8 columns; wider content must tile.",
+    ],
+    unexplained: {},
+  });

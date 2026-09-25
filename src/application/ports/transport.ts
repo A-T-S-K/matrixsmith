@@ -1,7 +1,14 @@
-import type { DeviceFingerprint, GattEndpoint } from "../core/device";
-import type { WriteMode } from "../core/transmission";
+import type { DeviceFingerprint, GattEndpoint } from "../../core/device";
+import type { WriteMode } from "../../core/transmission";
 
-export type ConnectionState = "idle" | "selecting" | "connecting" | "connected" | "disconnecting" | "error";
+export type ConnectionState =
+  | "idle"
+  | "selecting"
+  | "connecting"
+  | "connected"
+  | "disconnecting"
+  | "quarantined"
+  | "error";
 
 export interface DiscoveryHints {
   readonly filters: readonly BluetoothLEScanFilter[];
@@ -27,17 +34,34 @@ export interface MatrixTransport {
   readonly kind: DeviceFingerprint["transportKind"];
   readonly state: ConnectionState;
   readonly fingerprint: DeviceFingerprint | null;
+  /** Unique token for one successful GATT connection generation. */
+  readonly connectionId: string | null;
   selectAndConnect(options: DeviceSelectionOptions): Promise<DeviceFingerprint>;
   disconnect(): Promise<void>;
   read(endpoint: GattEndpoint): Promise<Uint8Array>;
-  subscribe(endpoint: GattEndpoint, listener: (bytes: Uint8Array) => void): Promise<() => Promise<void>>;
-  write(endpoint: GattEndpoint, bytes: Uint8Array, mode: WriteMode): Promise<TransportReceipt>;
+  subscribe(
+    endpoint: GattEndpoint,
+    listener: (bytes: Uint8Array) => void,
+  ): Promise<() => Promise<void>>;
+  write(
+    endpoint: GattEndpoint,
+    bytes: Uint8Array,
+    mode: WriteMode,
+  ): Promise<TransportReceipt>;
+  /** Prevent any further writes after an outcome that cannot be known. */
+  quarantine(reason: string): void;
+  subscribeState?(listener: (state: ConnectionState) => void): () => void;
   /** Reconnect a previously browser-authorized device without a chooser, where getDevices() is supported. */
-  reconnectAuthorized?(deviceId: string, options: DeviceSelectionOptions): Promise<DeviceFingerprint>;
+  reconnectAuthorized?(
+    deviceId: string,
+    options: DeviceSelectionOptions,
+  ): Promise<DeviceFingerprint>;
   /**
    * Best-effort structured advertisement observation via watchAdvertisements().
    * Returns null when unsupported or nothing arrives in time; must never
    * throw in a way that affects the connection.
    */
-  observeAdvertisements?(timeoutMs?: number): Promise<import("../core/device").AdvertisementObservation | null>;
+  observeAdvertisements?(
+    timeoutMs?: number,
+  ): Promise<import("../../core/device").AdvertisementObservation | null>;
 }

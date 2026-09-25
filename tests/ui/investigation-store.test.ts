@@ -1,16 +1,21 @@
-import { describe, expect, it } from "vitest";
-import { MatrixController } from "../../src/app/controller";
+import { createPresentationStore } from "../helpers/presentation-fixture";
+import { describe, expect, it, vi } from "vitest";
+import { ApplicationRuntime } from "../../src/application/runtime";
 import { TraceRecorder } from "../../src/diagnostics/trace";
-import { MatrixStore } from "../../src/ui/store";
+import { PresentationStore } from "../../src/presentation/store";
 import { parseHexBytes } from "../../src/discovery/advertisement";
 import { knownIledHatFingerprint } from "../helpers/fixtures";
 import { ScriptedCoolLedUxDevice } from "../helpers/scripted-device";
 import infoFixture from "../fixtures/iledhat/coolledux-device-info-cc.json";
 
-async function identifiedStore(): Promise<{ transport: ScriptedCoolLedUxDevice; store: MatrixStore; controller: MatrixController }> {
+async function identifiedStore(): Promise<{
+  transport: ScriptedCoolLedUxDevice;
+  store: PresentationStore;
+  controller: ApplicationRuntime;
+}> {
   const transport = new ScriptedCoolLedUxDevice(knownIledHatFingerprint());
-  const controller = new MatrixController(transport, new TraceRecorder());
-  const store = new MatrixStore(controller, transport);
+  const controller = new ApplicationRuntime(transport, new TraceRecorder());
+  const store = createPresentationStore(controller, transport);
   await store.connect();
   transport.notificationOnWrite = parseHexBytes(infoFixture.rxHex);
   await store.identify();
@@ -21,7 +26,10 @@ async function identifiedStore(): Promise<{ transport: ScriptedCoolLedUxDevice; 
 describe("workspace routing", () => {
   it("opens a known display straight into the control view", async () => {
     const transport = new ScriptedCoolLedUxDevice(knownIledHatFingerprint());
-    const store = new MatrixStore(new MatrixController(transport, new TraceRecorder()), transport);
+    const store = createPresentationStore(
+      new ApplicationRuntime(transport, new TraceRecorder()),
+      transport,
+    );
     await store.connect();
     expect(store.getSnapshot().page).toBe("workspace");
     // Recognized from its own profile: no identification detour.
@@ -41,18 +49,28 @@ describe("claims-derived support map", () => {
   it("groups claims into core/content/optional with honest statuses", async () => {
     const { store } = await identifiedStore();
     const groups = store.getSnapshot().claimGroups;
-    expect(groups.map((group) => group.category)).toEqual(["core", "content", "optional"]);
+    expect(groups.map((group) => group.category)).toEqual([
+      "core",
+      "content",
+      "optional",
+    ]);
     const content = groups.find((group) => group.category === "content")!;
     // Both were physically settled on this panel — negatively, which is a
     // real answer and must read as one rather than as an open question.
-    const stability = content.claims.find((claim) => claim.id === "graffiti.playback-stability");
+    const stability = content.claims.find(
+      (claim) => claim.id === "graffiti.playback-stability",
+    );
     expect(stability?.status).toBe("rejected");
-    const whiteChannel = content.claims.find((claim) => claim.id === "pixel.white-channel");
+    const whiteChannel = content.claims.find(
+      (claim) => claim.id === "pixel.white-channel",
+    );
     expect(whiteChannel?.status).toBe("rejected");
     // Still genuinely open, and shown as such.
-    const calibration = groups.find((group) => group.category === "optional")!.claims
-      .find((claim) => claim.id === "pixel.color-calibration")
-      ?? content.claims.find((claim) => claim.id === "pixel.color-calibration");
+    const calibration =
+      groups
+        .find((group) => group.category === "optional")!
+        .claims.find((claim) => claim.id === "pixel.color-calibration") ??
+      content.claims.find((claim) => claim.id === "pixel.color-calibration");
     expect(calibration?.status).toBe("unresolved");
   });
 });
@@ -66,15 +84,15 @@ describe("path-specific content gating in the store", () => {
     expect(gates.text.allowed).toBe(true);
     // GIF depends on a claim this panel has never demonstrated.
     expect(gates.gif.allowed).toBe(false);
-    // A text send reaches the confirmation step rather than being refused —
-    // and still requires that explicit confirmation, because it replaces the
-    // stored display program.
+    // A verified routine text send is direct and target-bound.
     store.updateContentSettings({ text: "HI" });
     store.requestSendText();
+    await vi.waitFor(() => expect(store.getSnapshot().busy).toBeNull(), {
+      timeout: 8_000,
+    });
     expect(store.getSnapshot().error).toBeNull();
-    expect(store.getSnapshot().pendingSend).not.toBeNull();
-    expect(store.getSnapshot().pendingSend!.consequence).toMatch(/replaces/i);
-    store.cancelPendingSend();
+    expect(store.getSnapshot().pendingSend).toBeNull();
+    expect(store.getSnapshot().info).toBe("Display updated.");
   });
 
   it("still refuses a GIF send behind its own gate", async () => {
@@ -87,8 +105,11 @@ describe("path-specific content gating in the store", () => {
   it("allows an animation send request through its own gate", async () => {
     const { store } = await identifiedStore();
     store.requestSendAnimation();
-    expect(store.getSnapshot().pendingSend).not.toBeNull();
-    store.cancelPendingSend();
+    await vi.waitFor(() => expect(store.getSnapshot().busy).toBeNull(), {
+      timeout: 8_000,
+    });
+    expect(store.getSnapshot().pendingSend).toBeNull();
+    expect(store.getSnapshot().error).toBeNull();
   });
 });
 
@@ -106,8 +127,16 @@ describe("guided flow state machine", () => {
     flow = store.getSnapshot().guidedFlow!;
     expect(flow.stage).toBe("observe");
     expect(flow.transactionIds.length).toBeGreaterThan(0);
-    store.setGuidedObservation({ kind: "choice", fieldId: "zero-appearance", optionId: "off-black" });
-    store.setGuidedObservation({ kind: "choice", fieldId: "workaround-appearance", optionId: "dim-blue" });
+    store.setGuidedObservation({
+      kind: "choice",
+      fieldId: "zero-appearance",
+      optionId: "off-black",
+    });
+    store.setGuidedObservation({
+      kind: "choice",
+      fieldId: "workaround-appearance",
+      optionId: "dim-blue",
+    });
     expect(store.getSnapshot().guidedFlow!.observationsReady).toBe(true);
     store.submitGuidedObservations();
     flow = store.getSnapshot().guidedFlow!;
@@ -115,8 +144,13 @@ describe("guided flow state machine", () => {
     expect(flow.result?.status).toBe("passed");
     expect(flow.nextTest).not.toBeNull();
     // The result carries the claim change into the support map.
-    const contentClaims = store.getSnapshot().claimGroups.find((group) => group.category === "content")!.claims;
-    expect(contentClaims.find((claim) => claim.id === "graffiti.black-semantics")?.status).toBe("verified");
+    const contentClaims = store
+      .getSnapshot()
+      .claimGroups.find((group) => group.category === "content")!.claims;
+    expect(
+      contentClaims.find((claim) => claim.id === "graffiti.black-semantics")
+        ?.status,
+    ).toBe("verified");
   }, 30000);
 
   it("records the T0/T1/T2 timeline as measured duration observations", async () => {
@@ -132,7 +166,11 @@ describe("guided flow state machine", () => {
     const t1 = flow.values["image-visible"];
     expect(t1?.kind).toBe("duration");
     expect((t1 as { measuredBy: string }).measuredBy).toBe("matrixsmith-timer");
-    expect(flow.values["initial-correct"]).toEqual({ kind: "boolean", fieldId: "initial-correct", value: "yes" });
+    expect(flow.values["initial-correct"]).toEqual({
+      kind: "boolean",
+      fieldId: "initial-correct",
+      value: "yes",
+    });
     expect(flow.currentPhase?.id).toBe("movement");
     // T2: movement began.
     store.recordGuidedTimeline("event");
@@ -140,9 +178,27 @@ describe("guided flow state machine", () => {
     const t2 = flow.values["movement-start"];
     expect(t2?.kind).toBe("duration");
     expect((t2 as { measuredBy: string }).measuredBy).toBe("matrixsmith-timer");
-    expect(flow.values.moved).toEqual({ kind: "boolean", fieldId: "moved", value: "yes" });
+    expect(flow.values.moved).toEqual({
+      kind: "boolean",
+      fieldId: "moved",
+      value: "yes",
+    });
     expect(flow.timerStopped).toBe(true);
     store.closeGuidedTest();
+  }, 30000);
+
+  it("does not rebuild or publish the application snapshot for timer ticks", async () => {
+    const { store } = await identifiedStore();
+    store.startGuidedTest("coolledux-graffiti-timing");
+    await store.confirmGuidedTransfer();
+    let publications = 0;
+    const unsubscribe = store.subscribe(() => publications++);
+
+    await new Promise((resolve) => setTimeout(resolve, 250));
+
+    unsubscribe();
+    expect(publications).toBe(0);
+    store.abandonGuidedTest();
   }, 30000);
 
   it("records a still stop with the exact measured observation window", async () => {
@@ -153,7 +209,11 @@ describe("guided flow state machine", () => {
     store.recordGuidedTimeline("still"); // stopped while still static
     const flow = store.getSnapshot().guidedFlow!;
     expect(flow.values["observation-end"]?.kind).toBe("duration");
-    expect(flow.values.moved).toEqual({ kind: "boolean", fieldId: "moved", value: "no" });
+    expect(flow.values.moved).toEqual({
+      kind: "boolean",
+      fieldId: "moved",
+      value: "no",
+    });
     expect(flow.values["movement-start"]).toBeUndefined();
     store.closeGuidedTest();
   }, 30000);
@@ -164,7 +224,11 @@ describe("guided flow state machine", () => {
     await store.confirmGuidedTransfer();
     store.recordGuidedTimeline("fail");
     const flow = store.getSnapshot().guidedFlow!;
-    expect(flow.values["initial-correct"]).toEqual({ kind: "boolean", fieldId: "initial-correct", value: "no" });
+    expect(flow.values["initial-correct"]).toEqual({
+      kind: "boolean",
+      fieldId: "initial-correct",
+      value: "no",
+    });
     expect(flow.values["image-visible"]).toBeUndefined();
     expect(flow.timerStopped).toBe(true);
     store.closeGuidedTest();
@@ -177,11 +241,32 @@ describe("guided flow state machine", () => {
     expect(store.getSnapshot().view).toBe("diagnose");
     // The symptom's primary focus claim (playback stability) selects the
     // movement measurement as the first discriminator.
-    expect(store.getSnapshot().nextTest?.testId).toBe("coolledux-graffiti-timing");
+    expect(store.getSnapshot().nextTest?.testId).toBe(
+      "coolledux-graffiti-timing",
+    );
   });
 });
 
 describe("transfer protection and abandonment", () => {
+  it("projects a failed transfer as an explicit retryable machine state", async () => {
+    const { store, transport } = await identifiedStore();
+    store.startGuidedTest("coolledux-graffiti-timing");
+    transport.failWriteAt = transport.writes.length + 1;
+    await store.confirmGuidedTransfer();
+
+    const failed = store.getSnapshot().guidedFlow!;
+    expect(failed.stage).toBe("failed");
+    expect(failed.failure).toMatchObject({ retryable: true });
+    expect(failed.failure?.message).toMatch(/write failure/i);
+    expect(failed.attempts).toMatchObject([
+      { attemptNumber: 1, validity: "transfer-failed" },
+    ]);
+
+    transport.failWriteAt = null;
+    await store.retryFailedGuidedTransfer();
+    expect(store.getSnapshot().guidedFlow?.stage).toBe("observe");
+  }, 30000);
+
   it("cannot dismiss the dialog while a transfer is running", async () => {
     const { store } = await identifiedStore();
     store.startGuidedTest("coolledux-graffiti-black");
@@ -209,7 +294,11 @@ describe("transfer protection and abandonment", () => {
     expect(completed?.status).toBe("abandoned");
     expect(completed?.transactionIds.length).toBeGreaterThan(0);
     // No claim conclusions beyond automatic capture.
-    expect(controller.investigation?.claimEvidence.filter((entry) => entry.testId === "coolledux-graffiti-timing")).toHaveLength(0);
+    expect(
+      controller.investigation?.claimEvidence.filter(
+        (entry) => entry.testId === "coolledux-graffiti-timing",
+      ),
+    ).toHaveLength(0);
     // A partial test report is available.
     const report = controller.testReportMarkdown("coolledux-graffiti-timing");
     expect(report).toContain("ABANDONED");
@@ -221,6 +310,8 @@ describe("transfer protection and abandonment", () => {
     store.startGuidedTest("coolledux-graffiti-black");
     await store.confirmGuidedTransfer();
     store.closeGuidedTest();
-    expect(controller.investigation?.completedTests.at(-1)?.status).toBe("abandoned");
+    expect(controller.investigation?.completedTests.at(-1)?.status).toBe(
+      "abandoned",
+    );
   }, 30000);
 });

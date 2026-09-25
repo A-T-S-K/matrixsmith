@@ -1,11 +1,16 @@
-import { BrowserStorageRepository, type KeyValueStorage } from "./repository";
+import {
+  BrowserStorageRepository,
+  storageFailure,
+  type KeyValueStorage,
+  type PersistenceResult,
+} from "./repository";
 
 /**
  * Lightweight local presets for content settings. Small JSON only — image
  * pixels and GIF bytes never enter localStorage; only their configuration
  * (fit mode, colors, text) persists.
  */
-const KEY = "matrixsmith:v1:content-settings";
+export const CONTENT_SETTINGS_KEY = "matrixsmith:v2:content-settings";
 
 export interface ContentSettings {
   readonly schemaVersion: 1;
@@ -43,22 +48,74 @@ export const DEFAULT_CONTENT_SETTINGS: ContentSettings = Object.freeze({
   lastBrightness: null,
 });
 
-export function loadContentSettings(storage?: KeyValueStorage): ContentSettings {
+export function loadContentSettings(
+  storage?: KeyValueStorage,
+): ContentSettings {
   try {
-    const raw = new BrowserStorageRepository(storage).get(KEY);
+    const raw = new BrowserStorageRepository(storage).get(CONTENT_SETTINGS_KEY);
     if (!raw) return DEFAULT_CONTENT_SETTINGS;
     const value: unknown = JSON.parse(raw);
-    if (typeof value !== "object" || value === null || (value as { schemaVersion?: unknown }).schemaVersion !== 1) return DEFAULT_CONTENT_SETTINGS;
-    return { ...DEFAULT_CONTENT_SETTINGS, ...(value as Partial<ContentSettings>), schemaVersion: 1 };
+    if (
+      typeof value !== "object" ||
+      value === null ||
+      (value as { schemaVersion?: unknown }).schemaVersion !== 1
+    )
+      return DEFAULT_CONTENT_SETTINGS;
+    if (!validSettings(value)) return DEFAULT_CONTENT_SETTINGS;
+    return value;
   } catch {
     return DEFAULT_CONTENT_SETTINGS;
   }
 }
 
-export function saveContentSettings(settings: ContentSettings, storage?: KeyValueStorage): void {
+export function saveContentSettings(
+  settings: ContentSettings,
+  storage?: KeyValueStorage,
+): PersistenceResult {
   try {
-    new BrowserStorageRepository(storage).set(KEY, JSON.stringify(settings));
-  } catch {
-    // Storage may be unavailable (private mode); settings simply don't persist.
+    if (!validSettings(settings))
+      return {
+        ok: false,
+        reason: "invalid-data",
+        message: "Content settings are invalid.",
+      };
+    new BrowserStorageRepository(storage).set(
+      CONTENT_SETTINGS_KEY,
+      JSON.stringify(settings),
+    );
+    return { ok: true };
+  } catch (error) {
+    return storageFailure(error);
   }
+}
+
+function validSettings(value: unknown): value is ContentSettings {
+  if (typeof value !== "object" || value === null) return false;
+  const v = value as Record<string, unknown>;
+  return (
+    v.schemaVersion === 1 &&
+    ["text", "textColor", "textBackground"].every(
+      (key) => typeof v[key] === "string",
+    ) &&
+    ["left", "center", "right"].includes(String(v.textAlignment)) &&
+    ["auto", "still", "scroll"].includes(String(v.textDisplayMode)) &&
+    ["contain", "cover", "stretch", "center"].includes(
+      String(v.imageFitMode),
+    ) &&
+    ["auto", "artwork", "photo", "pixel-art", "legacy"].includes(
+      String(v.imageMode),
+    ) &&
+    ["contain", "cover", "foreground-trim", "custom"].includes(
+      String(v.imageComposition),
+    ) &&
+    typeof v.imageOpticalFit === "boolean" &&
+    ["imageEdgeStrength", "imageZoom", "imageOffsetX", "imageOffsetY"].every(
+      (key) => typeof v[key] === "number" && Number.isFinite(v[key]),
+    ) &&
+    (v.lastBrightness === null ||
+      (typeof v.lastBrightness === "number" &&
+        Number.isInteger(v.lastBrightness) &&
+        v.lastBrightness >= 0 &&
+        v.lastBrightness <= 255))
+  );
 }

@@ -10,9 +10,11 @@ export function parseAdvertisement(bytes: Uint8Array): AdStructure[] {
     const length = bytes[offset];
     if (length === undefined || length === 0) break;
     const end = offset + 1 + length;
-    if (end > bytes.length || length < 1) throw new Error(`Malformed AD structure at offset ${offset}`);
+    if (end > bytes.length || length < 1)
+      throw new Error(`Malformed AD structure at offset ${offset}`);
     const type = bytes[offset + 1];
-    if (type === undefined) throw new Error(`Missing AD type at offset ${offset}`);
+    if (type === undefined)
+      throw new Error(`Missing AD type at offset ${offset}`);
     structures.push({ type, data: bytes.slice(offset + 2, end) });
     offset = end;
   }
@@ -27,15 +29,23 @@ export interface AdvertisementFacts {
   readonly manufacturerCompanyFieldHex?: string;
 }
 
-export function extractAdvertisementFacts(bytes: Uint8Array): AdvertisementFacts {
+export function extractAdvertisementFacts(
+  bytes: Uint8Array,
+): AdvertisementFacts {
   const structures = parseAdvertisement(bytes);
   const flags = find(structures, 0x01)?.data[0];
-  const serviceData = [...structures.filter(({ type }) => type === 0x02 || type === 0x03).flatMap(({ data }) => [...data])];
+  const serviceData = [
+    ...structures
+      .filter(({ type }) => type === 0x02 || type === 0x03)
+      .flatMap(({ data }) => [...data]),
+  ];
   const serviceUuids16: string[] = [];
   for (let index = 0; index + 1 < serviceData.length; index += 2) {
     const low = serviceData[index] ?? 0;
     const high = serviceData[index + 1] ?? 0;
-    serviceUuids16.push((low | (high << 8)).toString(16).padStart(4, "0").toUpperCase());
+    serviceUuids16.push(
+      (low | (high << 8)).toString(16).padStart(4, "0").toUpperCase(),
+    );
   }
   const nameData = find(structures, 0x09)?.data ?? find(structures, 0x08)?.data;
   const manufacturer = find(structures, 0xff)?.data;
@@ -43,16 +53,33 @@ export function extractAdvertisementFacts(bytes: Uint8Array): AdvertisementFacts
     ...(flags !== undefined ? { flags } : {}),
     serviceUuids16,
     ...(nameData ? { localName: new TextDecoder().decode(nameData) } : {}),
-    ...(manufacturer ? { manufacturerDataHex: toCompactHex(manufacturer) } : {}),
-    ...(manufacturer && manufacturer.length >= 2 ? { manufacturerCompanyFieldHex: toCompactHex(manufacturer.slice(0, 2)) } : {}),
+    ...(manufacturer
+      ? { manufacturerDataHex: toCompactHex(manufacturer) }
+      : {}),
+    ...(manufacturer && manufacturer.length >= 2
+      ? { manufacturerCompanyFieldHex: toCompactHex(manufacturer.slice(0, 2)) }
+      : {}),
   };
 }
 
 export function parseHexBytes(hex: string): Uint8Array {
   const compact = hex.replaceAll(/\s/g, "");
-  if (compact.length % 2 !== 0 || !/^[0-9a-f]*$/i.test(compact)) throw new Error("Hex input must contain complete byte pairs.");
-  return Uint8Array.from(compact.match(/../g) ?? [], (pair) => Number.parseInt(pair, 16));
+  if (compact.length % 2 !== 0 || !/^[0-9a-f]*$/i.test(compact))
+    throw new Error("Hex input must contain complete byte pairs.");
+  return Uint8Array.from(compact.match(/../g) ?? [], (pair) =>
+    Number.parseInt(pair, 16),
+  );
 }
 
-function find(structures: readonly AdStructure[], type: number): AdStructure | undefined { return structures.find((item) => item.type === type); }
-function toCompactHex(bytes: Uint8Array): string { return [...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("").toUpperCase(); }
+function find(
+  structures: readonly AdStructure[],
+  type: number,
+): AdStructure | undefined {
+  return structures.find((item) => item.type === type);
+}
+function toCompactHex(bytes: Uint8Array): string {
+  return [...bytes]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("")
+    .toUpperCase();
+}

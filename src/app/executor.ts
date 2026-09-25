@@ -1,8 +1,30 @@
-import type { AuthorizedTransmission } from "../core/transmission";
+import {
+  transmissionDigest,
+  type AuthorizedTransmission,
+  type TargetBinding,
+} from "../core/transmission";
 import type { TraceRecorder } from "../diagnostics/trace";
-import type { MatrixTransport, TransportReceipt } from "../transport/types";
+import type {
+  MatrixTransport,
+  TransportReceipt,
+} from "../application/ports/transport";
 import type { DecodedNotification, MatrixDriver } from "../drivers/types";
 import type { NotificationRouter } from "./notifications";
+import { fingerprintIdentityKey } from "../investigation/device-identity";
+
+export class IndeterminateWriteError extends Error {
+  readonly indeterminate = true;
+  constructor(
+    readonly planId: string,
+    readonly packetIndex: number,
+    readonly timeoutMs: number,
+  ) {
+    super(
+      `Transmission timed out after ${timeoutMs} ms; the write may still complete. Disconnect and reconnect before sending again.`,
+    );
+    this.name = "IndeterminateWriteError";
+  }
+}
 
 /**
  * Real measured timing for one written packet. Reports must never replace
@@ -35,100 +57,283 @@ export interface ExecutionResult {
   readonly finalWriteAcceptedAt: string | null;
 }
 
-export interface ExecutionProgress { readonly completedPackets: number; readonly totalPackets: number; readonly elapsedMs: number; readonly estimatedRemainingMs: number | null }
+export interface ExecutionProgress {
+  readonly completedPackets: number;
+  readonly totalPackets: number;
+  readonly elapsedMs: number;
+  readonly estimatedRemainingMs: number | null;
+}
 
 export class TransmissionExecutor {
   #running = false;
-  constructor(private readonly transport: MatrixTransport, private readonly trace: TraceRecorder, private readonly notifications?: NotificationRouter) {}
+  constructor(
+    private readonly transport: MatrixTransport,
+    private readonly trace: TraceRecorder,
+    private readonly notifications?: NotificationRouter,
+  ) {}
 
-  async execute(authorized: AuthorizedTransmission, driver?: MatrixDriver, onProgress?: (progress: ExecutionProgress) => void): Promise<ExecutionResult> {
-    if (this.#running) throw new Error("A transmission is already in progress.");
-    if (this.transport.state !== "connected") throw new Error("Cannot transmit while disconnected.");
+  async execute(
+    authorized: AuthorizedTransmission,
+    driver?: MatrixDriver,
+    onProgress?: (progress: ExecutionProgress) => void,
+  ): Promise<ExecutionResult> {
+    if (this.#running)
+      throw new Error("A transmission is already in progress.");
+    if (this.transport.state !== "connected")
+      throw new Error("Cannot transmit while disconnected.");
+    this.#verifyAuthorization(authorized);
     this.#running = true;
     const receipts: TransportReceipt[] = [];
     const packetTimings: PacketTiming[] = [];
     let previousWriteStartMs: number | null = null;
     const expectation = authorized.plan.responseExpectation;
     const executionStartedMs = Date.now();
-    const armed = expectation.type === "notification" && this.notifications && driver
-      ? this.notifications.arm(expectation, (notification, expected) => driver.responseMatches?.(notification, expected) ?? false)
-      : null;
+    const armed =
+      expectation.type === "notification" && this.notifications && driver
+        ? this.notifications.arm(
+            expectation,
+            (notification, expected) =>
+              driver.responseMatches?.(notification, expected) ?? false,
+          )
+        : null;
     try {
       for (const packet of authorized.plan.packets) {
-        if (!endpointAvailable(this.transport, packet.endpoint, packet.writeMode)) throw new Error("Transmission endpoint is absent or has incompatible properties.");
-        const maxAttempts = Math.max(1, Math.min(5, authorized.plan.retryPolicy.maxAttempts));
-        for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-          this.trace.record("tx.packet.started", { planId: authorized.plan.id, packetIndex: packet.index, attempt }, packet.bytes);
+        this.#verifyAuthorization(authorized);
+        if (
+          !endpointAvailable(this.transport, packet.endpoint, packet.writeMode)
+        )
+          throw new Error(
+            "Transmission endpoint is absent or has incompatible properties.",
+          );
+        {
+          const attempt = 1;
+          this.trace.record(
+            "tx.packet.started",
+            { planId: authorized.plan.id, packetIndex: packet.index, attempt },
+            packet.bytes,
+          );
           try {
             const writeStartMs = Date.now();
-            const receipt = await withTimeout(this.transport.write(packet.endpoint, packet.bytes, packet.writeMode), authorized.plan.timeoutMs);
+            const pendingWrite = this.transport.write(
+              packet.endpoint,
+              packet.bytes,
+              packet.writeMode,
+            );
+            const receipt = await withWriteTimeout(
+              pendingWrite,
+              authorized.plan.timeoutMs,
+              () => {
+                const error = new IndeterminateWriteError(
+                  authorized.plan.id,
+                  packet.index,
+                  authorized.plan.timeoutMs,
+                );
+                this.transport.quarantine(error.message);
+                this.trace.record("tx.packet.indeterminate", {
+                  planId: authorized.plan.id,
+                  packetIndex: packet.index,
+                  timeoutMs: authorized.plan.timeoutMs,
+                });
+                void pendingWrite.then(
+                  (lateReceipt) =>
+                    this.trace.record("tx.packet.lateHostAccepted", {
+                      planId: authorized.plan.id,
+                      packetIndex: packet.index,
+                      acceptedAt: lateReceipt.acceptedAt,
+                    }),
+                  (lateError) =>
+                    this.trace.record("tx.packet.lateRejected", {
+                      planId: authorized.plan.id,
+                      packetIndex: packet.index,
+                      message: errorMessage(lateError),
+                    }),
+                );
+                return error;
+              },
+            );
             receipts.push(receipt);
             packetTimings.push({
               index: packet.index,
               writeStartedAt: new Date(writeStartMs).toISOString(),
               hostAcceptedAt: receipt.acceptedAt,
               scheduledDelayMs: packet.delayAfterMs ?? 0,
-              gapSincePreviousTxMs: previousWriteStartMs === null ? null : writeStartMs - previousWriteStartMs,
+              gapSincePreviousTxMs:
+                previousWriteStartMs === null
+                  ? null
+                  : writeStartMs - previousWriteStartMs,
             });
             previousWriteStartMs = writeStartMs;
-            this.trace.record("tx.packet.hostAccepted", { planId: authorized.plan.id, packetIndex: packet.index, byteLength: receipt.byteLength, attempt });
-            const completedPackets = packetTimings.length; const elapsedMs = Date.now() - executionStartedMs;
-            onProgress?.({ completedPackets, totalPackets: authorized.plan.packets.length, elapsedMs, estimatedRemainingMs: completedPackets > 0 ? Math.max(0, Math.round(elapsedMs / completedPackets * (authorized.plan.packets.length - completedPackets))) : null });
+            this.trace.record("tx.packet.hostAccepted", {
+              planId: authorized.plan.id,
+              packetIndex: packet.index,
+              byteLength: receipt.byteLength,
+              attempt,
+            });
+            const completedPackets = packetTimings.length;
+            const elapsedMs = Date.now() - executionStartedMs;
+            onProgress?.({
+              completedPackets,
+              totalPackets: authorized.plan.packets.length,
+              elapsedMs,
+              estimatedRemainingMs:
+                completedPackets > 0
+                  ? Math.max(
+                      0,
+                      Math.round(
+                        (elapsedMs / completedPackets) *
+                          (authorized.plan.packets.length - completedPackets),
+                      ),
+                    )
+                  : null,
+            });
             // Executor-owned pacing: honor the packet's declared inter-write
             // delay (skipped after the final packet).
-            if (packet.delayAfterMs && packet.index < authorized.plan.packets.length - 1) await sleep(packet.delayAfterMs);
-            break;
+            if (
+              packet.delayAfterMs &&
+              packet.index < authorized.plan.packets.length - 1
+            )
+              await sleep(packet.delayAfterMs);
           } catch (error) {
             const message = errorMessage(error);
-            this.trace.record("tx.packet.failed", { planId: authorized.plan.id, packetIndex: packet.index, message, attempt });
-            const retryable = attempt < maxAttempts && authorized.plan.retryPolicy.retryOn.some((condition) => message.includes(condition));
-            if (!retryable) throw error;
+            this.trace.record("tx.packet.failed", {
+              planId: authorized.plan.id,
+              packetIndex: packet.index,
+              message,
+              attempt,
+            });
+            throw error;
           }
         }
       }
       let response: DecodedNotification | null = null;
       let responseTimedOut = false;
       if (armed) {
-        try { response = await armed.promise; } catch (error) {
+        try {
+          response = await armed.promise;
+        } catch (error) {
           responseTimedOut = true;
-          this.trace.record("tx.response.timeout", { planId: authorized.plan.id, message: errorMessage(error) });
+          this.trace.record("tx.response.timeout", {
+            planId: authorized.plan.id,
+            message: errorMessage(error),
+          });
         }
       }
-      if (response) this.trace.record("tx.response.matched", { planId: authorized.plan.id, kind: response.kind, opcode: response.opcode ?? null });
+      if (response)
+        this.trace.record("tx.response.matched", {
+          planId: authorized.plan.id,
+          kind: response.kind,
+          opcode: response.opcode ?? null,
+        });
       const completedAt = new Date().toISOString();
-      const protocolAcknowledged = expectation.type === "none" ? null : response !== null;
-      const deviceStateVerified = response !== null && expectation.type === "notification" && expectation.fulfillsOperation;
-      this.trace.record("tx.completed", { planId: authorized.plan.id, hostAccepted: true, protocolAcknowledged, deviceStateVerified });
+      const protocolAcknowledged =
+        expectation.type === "none" ? null : response !== null;
+      const deviceStateVerified =
+        response !== null &&
+        expectation.type === "notification" &&
+        expectation.fulfillsOperation;
+      this.trace.record("tx.completed", {
+        planId: authorized.plan.id,
+        hostAccepted: true,
+        protocolAcknowledged,
+        deviceStateVerified,
+      });
       return {
-        planId: authorized.plan.id, receipts, packetTimings, completedAt,
-        hostAccepted: true, protocolAcknowledged, deviceStateVerified, response, responseTimedOut,
-        finalWriteAcceptedAt: packetTimings[packetTimings.length - 1]?.hostAcceptedAt ?? null,
+        planId: authorized.plan.id,
+        receipts,
+        packetTimings,
+        completedAt,
+        hostAccepted: true,
+        protocolAcknowledged,
+        deviceStateVerified,
+        response,
+        responseTimedOut,
+        finalWriteAcceptedAt:
+          packetTimings[packetTimings.length - 1]?.hostAcceptedAt ?? null,
       };
     } finally {
       armed?.cancel();
       this.#running = false;
     }
   }
+
+  #verifyAuthorization(authorized: AuthorizedTransmission): void {
+    const current = currentTargetBinding(this.transport);
+    if (!current || !sameBinding(current, authorized.targetBinding))
+      throw new Error(
+        "Authorization belongs to a different connection or physical target.",
+      );
+    if (
+      authorized.digest !== authorized.plan.digest ||
+      transmissionDigest(authorized.plan, authorized.targetBinding) !==
+        authorized.digest
+    ) {
+      throw new Error("Authorized transmission changed after confirmation.");
+    }
+  }
 }
 
-async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+async function withWriteTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  onTimeout: () => Error,
+): Promise<T> {
   let timeout: ReturnType<typeof setTimeout> | undefined;
   try {
     return await Promise.race([
       promise,
-      new Promise<never>((_, reject) => { timeout = setTimeout(() => reject(new Error(`Transmission timed out after ${timeoutMs} ms.`)), timeoutMs); }),
+      new Promise<never>((_, reject) => {
+        timeout = setTimeout(() => reject(onTimeout()), timeoutMs);
+      }),
     ]);
   } finally {
     if (timeout !== undefined) clearTimeout(timeout);
   }
 }
 
-function errorMessage(error: unknown): string { return error instanceof Error ? error.message : String(error); }
+function currentTargetBinding(
+  transport: MatrixTransport,
+): TargetBinding | null {
+  if (!transport.connectionId || !transport.fingerprint) return null;
+  return {
+    connectionId: transport.connectionId,
+    fingerprintKey: fingerprintIdentityKey(transport.fingerprint),
+    browserDeviceId: transport.fingerprint.browserDeviceId ?? null,
+  };
+}
 
-function sleep(ms: number): Promise<void> { return new Promise((resolve) => setTimeout(resolve, ms)); }
+function sameBinding(a: TargetBinding, b: TargetBinding): boolean {
+  return (
+    a.connectionId === b.connectionId &&
+    a.fingerprintKey === b.fingerprintKey &&
+    a.browserDeviceId === b.browserDeviceId
+  );
+}
 
-function endpointAvailable(transport: MatrixTransport, endpoint: import("../core/device").GattEndpoint, mode: import("../core/transmission").WriteMode): boolean {
-  return transport.fingerprint?.services.some((service) => service.uuid.toLowerCase() === endpoint.serviceUuid.toLowerCase()
-    && service.characteristics.some((characteristic) => characteristic.uuid.toLowerCase() === endpoint.characteristicUuid.toLowerCase()
-      && (mode === "without-response" ? characteristic.properties.writeWithoutResponse : characteristic.properties.write))) ?? false;
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function endpointAvailable(
+  transport: MatrixTransport,
+  endpoint: import("../core/device").GattEndpoint,
+  mode: import("../core/transmission").WriteMode,
+): boolean {
+  return (
+    transport.fingerprint?.services.some(
+      (service) =>
+        service.uuid.toLowerCase() === endpoint.serviceUuid.toLowerCase() &&
+        service.characteristics.some(
+          (characteristic) =>
+            characteristic.uuid.toLowerCase() ===
+              endpoint.characteristicUuid.toLowerCase() &&
+            (mode === "without-response"
+              ? characteristic.properties.writeWithoutResponse
+              : characteristic.properties.write),
+        ),
+    ) ?? false
+  );
 }
