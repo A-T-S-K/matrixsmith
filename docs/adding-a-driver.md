@@ -36,7 +36,7 @@ Start new operations dry-run only. Use `FakeTransport` for order/failure/timeout
 
 ## 7. Contribute diagnostic tools and support status
 
-Register named diagnostic workflows for the family in `src/diagnostics/workflows.ts` (kind `identify` / `inspect` / `validate`, with risk, persistence, validation, and a plain-language pre-run explanation). Tools run through `MatrixController.runDiagnostic`, which only executes semantic operations under the safety policy and records serializable per-step results. Reversible validations must restore and re-verify the original state, and surface a restore failure prominently. If a family has no safe probe, say so rather than inventing one. Capability metadata plus session evidence feed the Diagnose support matrix and report sections automatically — see [UX workflows](ux-workflows.md).
+Contribute named diagnostic tools through the driver contract (kind `identify` / `inspect` / `validate`, semantic workflow, risk, persistence, assurance, and a plain-language explanation). `ApplicationRuntime.runDiagnostic` executes only semantic operations under the safety policy and records serializable steps, transactions, restoration state, and findings. Reversible tests restore and re-verify the original state. If a family has no safe probe, say so rather than inventing one. Capability metadata and atomic evidence feed the canonical `DeviceAssessment` used by every UI and report surface.
 
 ## 8. Validate hardware deliberately
 

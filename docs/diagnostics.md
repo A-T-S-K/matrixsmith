@@ -51,7 +51,9 @@ From Home choose **Explore unknown BLE device** to open the inspection chooser (
 
 ## Guided investigation evidence (2026-08-31 revision)
 
-The diagnostic bundle additionally carries the active `investigation` (goal, device binding, completed guided tests with structured observations, and session claim evidence). Importing a bundle structurally demotes EVERY investigation claim-evidence entry to `imported-external` — serialized scope fields are never trusted — and bundle-carried legacy validations bridge as `imported-external` too. Imported evidence never authorizes live operations.
+Bundle V3 additionally carries the canonical assessment and active investigation (goal, device binding, completed guided tests with structured observations, and session claim evidence). Importing structurally demotes every investigation claim-evidence entry to `imported-external`; serialized scope fields are never trusted. Imported evidence never authorizes live operations.
+
+The portable contract is published as [`public/bundle-v3.schema.json`](../public/bundle-v3.schema.json). The runtime codec remains authoritative and validates nested values plus byte/count budgets before any workspace mutation; the schema regression test keeps its required top-level fields, version, assessment, fingerprint, and transaction definitions aligned with serialized Bundle V3 output.
 
 Three report formats exist beyond the classic device report:
 

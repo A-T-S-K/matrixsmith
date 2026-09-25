@@ -23,4 +23,3 @@ Only Pillow, NumPy, and SciPy are required. The generated fixture corpus is
 programmatic and CC0-equivalent project test data. `portrait_photo.png` and
 `landscape_photo.png`, when present, are external public-domain NASA fixtures;
 their exact provenance is recorded in `fixtures/PROVENANCE.md`.
-

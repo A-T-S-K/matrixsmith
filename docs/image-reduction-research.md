@@ -81,27 +81,27 @@ Each required contact sheet shows:
 2. simulated circular LEDs with a small point-spread/glow;
 3. an apparent-size 32×16 preview.
 
-The benchmark uses an area-reduced linear-light image as a *measurement
-reference*, not as ground truth. This intentionally makes SSIM favor
+The benchmark uses an area-reduced linear-light image as a _measurement
+reference_, not as ground truth. This intentionally makes SSIM favor
 linear-area. Human ranking is based on recognizability, source faithfulness,
 cleanliness, hierarchy, and apparent-size usability. Candidate labels are also
 written to sidecar JSON so a future human study can hide method names.
 
 ## Candidate families tested
 
-| Family | Concrete candidates | Result at 32×16 |
-|---|---|---|
-| Conventional sampling | nearest, bilinear, bicubic, Lanczos, box/area | Necessary baselines. Area/bicubic remain good photo primitives; none is a sufficient artwork reducer. |
-| Correct color processing | sRGB filtering, linear-light filtering, RGB444 before vs after | Linear-light area is the defensible photo base. Quantize after reduction. |
-| Palette optimization | deterministic OKLab clustering, chroma-reserved semantic palette | Useful for flat artwork only after protecting small saturated brand colors. Ordinary area-weighted clustering discarded the orange arrow. |
-| Region coverage | area-downsampled semantic masks, winning region per LED | Clean and fast (~17 ms on the supplied logo), but can break corners/thin paths and is not the final answer. |
+| Family                              | Concrete candidates                                                                                                       | Result at 32×16                                                                                                                                                                  |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Conventional sampling               | nearest, bilinear, bicubic, Lanczos, box/area                                                                             | Necessary baselines. Area/bicubic remain good photo primitives; none is a sufficient artwork reducer.                                                                            |
+| Correct color processing            | sRGB filtering, linear-light filtering, RGB444 before vs after                                                            | Linear-light area is the defensible photo base. Quantize after reduction.                                                                                                        |
+| Palette optimization                | deterministic OKLab clustering, chroma-reserved semantic palette                                                          | Useful for flat artwork only after protecting small saturated brand colors. Ordinary area-weighted clustering discarded the orange arrow.                                        |
+| Region coverage                     | area-downsampled semantic masks, winning region per LED                                                                   | Clean and fast (~17 ms on the supplied logo), but can break corners/thin paths and is not the final answer.                                                                      |
 | Implicit/vector-like reconstruction | SDF region reconstruction, contour extraction, marching squares, RDP polygon simplification, supersampled rerasterization | SDF + grid fitting materially helped the logo. Contour/vector rerasterization ranked sixth: automatic tracing plus antialias coverage recreated gray ramps and did not beat SDF. |
-| Font-like grid fitting | subpixel translation/scale search, minimum represented component, symmetry term, hard semantic colors | The strongest artwork idea. It is analogous to hinting, but inferred hints are less reliable than author-provided font hints. |
-| Direct framebuffer optimization | deterministic coordinate descent over palette labels with color, edge, isolation, fragmentation, and symmetry terms | Computationally practical (~471 ms capped) but visually unsafe: it found high-metric false-orange/topology solutions. Reject current objective. |
-| Edge-aware abstraction | linear-area plus OKLab-lightness unsharp mask | Best portrait rank and best thin-icon rank; modest, cheap, and traceable. Aggressive cartoon abstraction was not justified. |
-| Dithering | none, Floyd–Steinberg, Jarvis/JJN, Bayer, deterministic blue-noise-like mask, edge-excluded FS | Mostly harmful at 512 individually visible RGB444 LEDs. Keep off except an explicit photo/gradient experiment. |
-| Composition | contain, center cover, foreground trim, gradient-saliency cover, seam carving, full stretch, 1.35× bounded stretch | Must be a separate stage. Bounded stretch helped the exact logo; simple saliency and seam carving failed semantically. |
-| Pixel-art handling | nearest versus smooth filters | Nearest/linear-area tied only because the fixture aligned favorably; nearest alone preserves authored blocks and palette by policy. |
+| Font-like grid fitting              | subpixel translation/scale search, minimum represented component, symmetry term, hard semantic colors                     | The strongest artwork idea. It is analogous to hinting, but inferred hints are less reliable than author-provided font hints.                                                    |
+| Direct framebuffer optimization     | deterministic coordinate descent over palette labels with color, edge, isolation, fragmentation, and symmetry terms       | Computationally practical (~471 ms capped) but visually unsafe: it found high-metric false-orange/topology solutions. Reject current objective.                                  |
+| Edge-aware abstraction              | linear-area plus OKLab-lightness unsharp mask                                                                             | Best portrait rank and best thin-icon rank; modest, cheap, and traceable. Aggressive cartoon abstraction was not justified.                                                      |
+| Dithering                           | none, Floyd–Steinberg, Jarvis/JJN, Bayer, deterministic blue-noise-like mask, edge-excluded FS                            | Mostly harmful at 512 individually visible RGB444 LEDs. Keep off except an explicit photo/gradient experiment.                                                                   |
+| Composition                         | contain, center cover, foreground trim, gradient-saliency cover, seam carving, full stretch, 1.35× bounded stretch        | Must be a separate stage. Bounded stretch helped the exact logo; simple saliency and seam carving failed semantically.                                                           |
+| Pixel-art handling                  | nearest versus smooth filters                                                                                             | Nearest/linear-area tied only because the fixture aligned favorably; nearest alone preserves authored blocks and palette by policy.                                              |
 
 Not promoted to serious runtime candidates:
 
@@ -123,20 +123,20 @@ The complete table is `research/image-reduction/results/benchmark.csv` (and
 JSON). Selected final-run rows follow. Ranks are human ranks within the named
 fixture, not a global score.
 
-| Method | Content | Composition | Colors | SSIM | Edge F1 | Topology score | Human rank | Runtime | Notes |
-|---|---|---:|---:|---:|---:|---:|---:|---:|---|
-| SDF controlled | supplied logo | max 1.35× + grid fit | 3 | 0.427 | 0.799 | 0.077 | 1 | 283 ms | Best visual result; low metric because composition intentionally differs from contain reference. |
-| SDF grid fit | supplied logo | contain | 3 | 0.797 | 0.885 | 0.083 | 2 | 268 ms | Best strict-composition artwork result. |
-| Controlled area | supplied logo | max 1.35× | 32 | 0.427 | 0.766 | 1.000 | 3 | ~8 ms | Good composition, still too many transition shades. |
-| Palette region | supplied logo | contain | 3 | 0.733 | 0.849 | 0.063 | 4 | 17 ms | Fast fallback; more fragmented by simple component metric. |
-| Edge enhanced | supplied logo | contain | 34 | 0.996 | 0.989 | 1.000 | 5 | ~9 ms | Metrics love it; human view still sees gray ramps. |
-| Framebuffer optimize | supplied logo | contain | 3 | 0.945 | 0.950 | 0.250 | 15 | 471 ms | Excellent-looking metrics, visibly wrong false-orange geometry. |
-| Edge enhanced | thin icon | contain | 26 | 0.995 | 0.993 | 1.000 | 1 | ~1.3 ms | Best line continuity. |
-| Nearest | pixel art | contain | 5 | 1.000 | 0.963 | 1.000 | 1 | ~0.1 ms | Exact authored palette/blocks. |
-| Edge enhanced | portrait | contain | 74 | 0.973 | 0.972 | 1.000 | 1 | ~2.1 ms | Best facial feature visibility. |
-| Linear area | portrait | contain | 70 | 0.977 | 0.955 | 1.000 | 4 | ~1.9 ms | Best simple/default photo primitive. |
-| Floyd–Steinberg | portrait | contain | 87 | 0.954 | 0.976 | 1.000 | 8 | ~6.4 ms | More edge energy, more visible noise. |
-| OKLab palette | portrait | contain | 8 | 0.932 | 0.954 | 1.000 | 12 | ~4.1 ms | Posterization removed identity cues. |
+| Method               | Content       |          Composition | Colors |  SSIM | Edge F1 | Topology score | Human rank | Runtime | Notes                                                                                            |
+| -------------------- | ------------- | -------------------: | -----: | ----: | ------: | -------------: | ---------: | ------: | ------------------------------------------------------------------------------------------------ |
+| SDF controlled       | supplied logo | max 1.35× + grid fit |      3 | 0.427 |   0.799 |          0.077 |          1 |  283 ms | Best visual result; low metric because composition intentionally differs from contain reference. |
+| SDF grid fit         | supplied logo |              contain |      3 | 0.797 |   0.885 |          0.083 |          2 |  268 ms | Best strict-composition artwork result.                                                          |
+| Controlled area      | supplied logo |            max 1.35× |     32 | 0.427 |   0.766 |          1.000 |          3 |   ~8 ms | Good composition, still too many transition shades.                                              |
+| Palette region       | supplied logo |              contain |      3 | 0.733 |   0.849 |          0.063 |          4 |   17 ms | Fast fallback; more fragmented by simple component metric.                                       |
+| Edge enhanced        | supplied logo |              contain |     34 | 0.996 |   0.989 |          1.000 |          5 |   ~9 ms | Metrics love it; human view still sees gray ramps.                                               |
+| Framebuffer optimize | supplied logo |              contain |      3 | 0.945 |   0.950 |          0.250 |         15 |  471 ms | Excellent-looking metrics, visibly wrong false-orange geometry.                                  |
+| Edge enhanced        | thin icon     |              contain |     26 | 0.995 |   0.993 |          1.000 |          1 | ~1.3 ms | Best line continuity.                                                                            |
+| Nearest              | pixel art     |              contain |      5 | 1.000 |   0.963 |          1.000 |          1 | ~0.1 ms | Exact authored palette/blocks.                                                                   |
+| Edge enhanced        | portrait      |              contain |     74 | 0.973 |   0.972 |          1.000 |          1 | ~2.1 ms | Best facial feature visibility.                                                                  |
+| Linear area          | portrait      |              contain |     70 | 0.977 |   0.955 |          1.000 |          4 | ~1.9 ms | Best simple/default photo primitive.                                                             |
+| Floyd–Steinberg      | portrait      |              contain |     87 | 0.954 |   0.976 |          1.000 |          8 | ~6.4 ms | More edge energy, more visible noise.                                                            |
+| OKLab palette        | portrait      |              contain |      8 | 0.932 |   0.954 |          1.000 |         12 | ~4.1 ms | Posterization removed identity cues.                                                             |
 
 The simple source classifier was correct on 12/19 corpus labels (63%). It
 systematically called thin-line and text fixtures “artwork,” called the cartoon
@@ -164,7 +164,7 @@ Useful metrics:
 Insufficient alone:
 
 - SSIM/MS-SSIM reward the same blur as the measurement reference;
-- component counts do not know *which* component is important and can be
+- component counts do not know _which_ component is important and can be
   unstable under color/foreground thresholds;
 - edge energy can be increased by false edges;
 - Hausdorff is dominated by one outlier;
@@ -179,23 +179,23 @@ optimization target.
 
 Assessment of human-rank-1 `sdf-controlled`:
 
-| Criterion | Result | Observation |
-|---|---|---|
-| Outer hexagon recognizable | Pass | Six-sided enclosure remains readable at LED and apparent size. |
-| Approximately symmetric | Pass with minor grid error | Mirrored mismatch is 3.5% of channel samples; the source itself has subpixel antialias asymmetry. |
-| Top/bottom corners survive | Pass | Both extremes are present; corner steps are intentionally optical rather than geometrically exact. |
-| Left/right arrows distinct | Pass | Separate stems and heads remain. |
-| Center orange dominant | Pass | Orange is protected during palette fitting and occupies the central hierarchy. |
-| Arrow stems connected | Pass | All three are continuous. |
-| Arrowheads recognizable | Pass | Each head is wider than its stem; the side heads are necessarily minimal. |
-| Three arrows separable | Pass | Black gaps separate the three regions. |
-| Center arrow centered | Pass | Paired grid-fit search keeps it centered. |
-| Gray border avoids random shades | Pass | One device-realizable gray, not a ramp. |
-| Orange contamination | Pass | Orange is confined to the center-arrow region in the winning result. |
-| Black remains black | Pass | Transparent source is composited to exact zero; output background is zero. |
-| False-color speckles | Pass | No off-palette colors; four “isolated” foreground detections are intentional one-pixel corner/head decisions, not false colors. |
-| Accidental merged structures | Pass | Stems/heads remain separated from each other and mostly from the enclosure. |
-| Important disconnected structures | Pass visually | The simple global topology score is pessimistic because it compares thresholded components without semantic identity. |
+| Criterion                         | Result                     | Observation                                                                                                                     |
+| --------------------------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| Outer hexagon recognizable        | Pass                       | Six-sided enclosure remains readable at LED and apparent size.                                                                  |
+| Approximately symmetric           | Pass with minor grid error | Mirrored mismatch is 3.5% of channel samples; the source itself has subpixel antialias asymmetry.                               |
+| Top/bottom corners survive        | Pass                       | Both extremes are present; corner steps are intentionally optical rather than geometrically exact.                              |
+| Left/right arrows distinct        | Pass                       | Separate stems and heads remain.                                                                                                |
+| Center orange dominant            | Pass                       | Orange is protected during palette fitting and occupies the central hierarchy.                                                  |
+| Arrow stems connected             | Pass                       | All three are continuous.                                                                                                       |
+| Arrowheads recognizable           | Pass                       | Each head is wider than its stem; the side heads are necessarily minimal.                                                       |
+| Three arrows separable            | Pass                       | Black gaps separate the three regions.                                                                                          |
+| Center arrow centered             | Pass                       | Paired grid-fit search keeps it centered.                                                                                       |
+| Gray border avoids random shades  | Pass                       | One device-realizable gray, not a ramp.                                                                                         |
+| Orange contamination              | Pass                       | Orange is confined to the center-arrow region in the winning result.                                                            |
+| Black remains black               | Pass                       | Transparent source is composited to exact zero; output background is zero.                                                      |
+| False-color speckles              | Pass                       | No off-palette colors; four “isolated” foreground detections are intentional one-pixel corner/head decisions, not false colors. |
+| Accidental merged structures      | Pass                       | Stems/heads remain separated from each other and mostly from the enclosure.                                                     |
+| Important disconnected structures | Pass visually              | The simple global topology score is pessimistic because it compares thresholded components without semantic identity.           |
 
 This is strong evidence for the representation, not permission to ship it. A
 larger real-logo set and blinded human study are still required.
@@ -284,7 +284,7 @@ pixel-art routes.
 12. **Trustworthy Auto?** Yes as a conservative router with confidence,
     non-destructive preview, and no hallucination. Low confidence falls back to
     photo-safe linear area or asks the user to choose Artwork/Photo/Pixel Art.
-13. **Default algorithm?** Default *architecture*, not one filter: confident
+13. **Default algorithm?** Default _architecture_, not one filter: confident
     artwork → SDF grid fit; confident pixel art → nearest; otherwise linear-area
     photo-safe reduction, no dithering, RGB444 at the end.
 14. **What remains Advanced/manual?** focal crop, contain/cover, optical stretch,

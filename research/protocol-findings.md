@@ -10,18 +10,18 @@ The earlier CoolLEDX hypothesis is retained as rejected evidence: classic bright
 
 ## Physical evidence
 
-| Fact | Result |
-|---|---|
-| BLE name / scanner address | `iLedHat` / `01:00:00:21:CC:99` |
-| service / characteristic | FFF0 / FFF1 |
-| properties | READ, NOTIFY, WRITE WITHOUT RESPONSE |
-| manufacturer company field | `AE 31` = `0x31AE` little-endian |
-| vendor identifier bytes | `5E EA 07 00 00 01`; semantics unknown, not called a MAC |
-| advertisement layout | height 16, width BE16 32, `colorModeRaw=3`, `firmwareRaw=30` |
-| initial `0x1F` response | 48-byte payload beginning `1F 01 CC` |
-| brightness TX / RX | `01 00 02 06 04 40 03` / identical echo |
-| physical result | panel visibly dimmed |
-| follow-up `0x1F` response | 48-byte payload beginning `1F 01 40` |
+| Fact                       | Result                                                       |
+| -------------------------- | ------------------------------------------------------------ |
+| BLE name / scanner address | `iLedHat` / `01:00:00:21:CC:99`                              |
+| service / characteristic   | FFF0 / FFF1                                                  |
+| properties                 | READ, NOTIFY, WRITE WITHOUT RESPONSE                         |
+| manufacturer company field | `AE 31` = `0x31AE` little-endian                             |
+| vendor identifier bytes    | `5E EA 07 00 00 01`; semantics unknown, not called a MAC     |
+| advertisement layout       | height 16, width BE16 32, `colorModeRaw=3`, `firmwareRaw=30` |
+| initial `0x1F` response    | 48-byte payload beginning `1F 01 CC`                         |
+| brightness TX / RX         | `01 00 02 06 04 40 03` / identical echo                      |
+| physical result            | panel visibly dimmed                                         |
+| follow-up `0x1F` response  | 48-byte payload beginning `1F 01 40`                         |
 
 Confirmed device-info prefix only: payload byte 0 is opcode `0x1F`, byte 1 is power state (`0x01` observed on), and byte 2 is raw brightness. All later bytes remain opaque and are preserved exactly. The parser intentionally accepts other response lengths with the same minimum prefix.
 
@@ -40,12 +40,12 @@ MatrixSmith shares only GATT constants, envelope encoding/decoding, and conserva
 
 ## CoolLEDUX direct commands in this branch
 
-| Operation | Opcode | iLedHat validation | Live status |
-|---|---:|---|---|
-| GetDeviceInfo | `1F` | verified structured response | explicit live query/probe |
-| SetBrightness | `04 level` | verified at `40`, observed initial `CC` | explicit live Control |
-| SetPower | `05 bool` | external-source confirmed, not iLedHat-tested | dry-run only |
-| Mirror | `0C bool` | external-source confirmed, not iLedHat-tested | not exposed live |
+| Operation     |     Opcode | iLedHat validation                            | Live status               |
+| ------------- | ---------: | --------------------------------------------- | ------------------------- |
+| GetDeviceInfo |       `1F` | verified structured response                  | explicit live query/probe |
+| SetBrightness | `04 level` | verified at `40`, observed initial `CC`       | explicit live Control     |
+| SetPower      |  `05 bool` | external-source confirmed, not iLedHat-tested | dry-run only              |
+| Mirror        |  `0C bool` | external-source confirmed, not iLedHat-tested | not exposed live          |
 
 Golden vectors:
 
@@ -62,14 +62,14 @@ The CoolLEDUX stored-program pipeline is now fully implemented and conformance-t
 
 Every content capability is classified **experimental + persistent** for this iLedHat until the guided hardware validations pass:
 
-| Capability | Offline status | iLedHat status |
-|---|---|---|
-| Static frame (tiled Graffiti) | conformance-verified | not tested — first physical step: **Validate static framebuffer** |
-| Pixel orientation / color encoding | deterministic 32×16 diagnostic pattern ready | not tested |
-| Rendered text / image | share the Graffiti pipeline | not tested (unlocked by static-frame pass) |
-| Animation | conformance-verified; two-frame diagnostic ready | not tested |
-| GIF | conformance-verified framing; upstream-tested only ≤8 columns | not tested |
-| Recovery | — | unknown; one observation: a long-ish inline power-button action displayed `reset` and restored the default scrolling `coolled` text; exact timing/class unknown; no automatic restoration is implemented or claimed |
+| Capability                         | Offline status                                                | iLedHat status                                                                                                                                                                                                      |
+| ---------------------------------- | ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Static frame (tiled Graffiti)      | conformance-verified                                          | not tested — first physical step: **Validate static framebuffer**                                                                                                                                                   |
+| Pixel orientation / color encoding | deterministic 32×16 diagnostic pattern ready                  | not tested                                                                                                                                                                                                          |
+| Rendered text / image              | share the Graffiti pipeline                                   | not tested (unlocked by static-frame pass)                                                                                                                                                                          |
+| Animation                          | conformance-verified; two-frame diagnostic ready              | not tested                                                                                                                                                                                                          |
+| GIF                                | conformance-verified framing; upstream-tested only ≤8 columns | not tested                                                                                                                                                                                                          |
+| Recovery                           | —                                                             | unknown; one observation: a long-ish inline power-button action displayed `reset` and restored the default scrolling `coolled` text; exact timing/class unknown; no automatic restoration is implemented or claimed |
 
 ## Rejected hypotheses
 
@@ -134,10 +134,10 @@ which is recorded separately and left intact.
 
 ### Graffiti static playback — REJECTED for this panel
 
-| Configuration | Initial render | Visible static hold | Then |
-| --- | --- | --- | --- |
-| mode=0, speed=0, stayTime=3 | correct | ~3.6 s | begins moving |
-| mode=0, speed=0, stayTime=0 | correct | ~1.0 s | begins moving |
+| Configuration               | Initial render | Visible static hold | Then          |
+| --------------------------- | -------------- | ------------------- | ------------- |
+| mode=0, speed=0, stayTime=3 | correct        | ~3.6 s              | begins moving |
+| mode=0, speed=0, stayTime=0 | correct        | ~1.0 s              | begins moving |
 
 Both justified configurations move, and there is no third justified
 configuration to try — upstream never documents the `stayTime` field and uses
@@ -146,7 +146,7 @@ defensible probe space. Graffiti is therefore **not a viable static-image
 route on this panel**, recorded as a conclusive rejection rather than an open
 question.
 
-This says nothing about what `stayTime` *means*. Only these two values were
+This says nothing about what `stayTime` _means_. Only these two values were
 tested; its units and semantics remain unknown, and 0xFF is still deliberately
 not probed.
 
@@ -161,10 +161,10 @@ not probed.
 
 ### Animation static — BOTH VARIANTS VIABLE
 
-| Variant | Visible static hold from T1 | Background | Tiles | Flicker/reset |
-| --- | --- | --- | --- | --- |
-| One frame | ~16.8 s | genuinely off | aligned | none |
-| Two identical frames | ~16.2 s | genuinely off | aligned | none |
+| Variant              | Visible static hold from T1 | Background    | Tiles   | Flicker/reset |
+| -------------------- | --------------------------- | ------------- | ------- | ------------- |
+| One frame            | ~16.8 s                     | genuinely off | aligned | none          |
+| Two identical frames | ~16.2 s                     | genuinely off | aligned | none          |
 
 Both pass the 15 s stability threshold. **Preferred static strategy:
 animation-single-frame**; animation-identical-frames is a verified fallback,
