@@ -2645,25 +2645,24 @@ main {
   }
 }
 
-@media (min-width: 60rem) {
+/* Group each column so optional sections cannot move the primary action
+   into the heading row or leave empty grid rows between related content. */
+.investigation-primary,
+.investigation-context {
+  display: grid;
+  gap: var(--section-gap);
+  min-width: 0;
+}
+
+@media (min-width: 75rem) {
   .view.investigate {
     grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
     align-items: start;
     column-gap: var(--s6);
   }
-  .view-title,
-  .goal-line,
-  .next-action {
-    grid-column: 1;
-  }
-  .know-strip,
-  .recent-result,
-  .previous-investigation,
-  .troubleshoot-link,
-  .troubleshoot-open {
-    grid-column: 2;
-  }
-  .secondary-section {
+  .view.investigate > .view-title,
+  .view.investigate > .goal-line,
+  .view.investigate > .secondary-section {
     grid-column: 1 / -1;
   }
 }
@@ -2916,18 +2915,19 @@ main {
   gap: var(--s3);
 }
 
-@media (min-width: 60rem) {
+@media (min-width: 75rem) {
   .view.create {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-columns: minmax(0, 2fr) minmax(14rem, 1fr);
     align-items: start;
     column-gap: var(--s6);
   }
-  .view-title,
-  .type-tabs,
-  .content-editor {
+  .view.create > .view-title {
+    grid-column: 1 / -1;
+  }
+  .view.create > .type-tabs {
     grid-column: 1;
   }
-  .view.create .secondary-section {
+  .view.create > .secondary-section {
     grid-column: 2;
     border-top: 0;
   }

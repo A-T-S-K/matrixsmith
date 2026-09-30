@@ -40,29 +40,33 @@ export function InvestigationView({
         <p class="goal-line">{snapshot.investigation.goalLabel}</p>
       )}
 
-      <StoppedInvestigation snapshot={snapshot} store={store} />
-      {snapshot.cycleWarning && (
-        <p class="cycle-warning" role="status">
-          MatrixSmith detected a recommendation loop and stopped advancing
-          automatically. {snapshot.cycleWarning}
-        </p>
-      )}
-      {snapshot.assessment.readiness === "needs-geometry" ? (
-        <GeometrySetup store={store} />
-      ) : snapshot.coreProgress?.complete ? (
-        snapshot.investigation ? (
-          <CoreComplete snapshot={snapshot} store={store} />
+      <div class="investigation-primary">
+        <StoppedInvestigation snapshot={snapshot} store={store} />
+        {snapshot.cycleWarning && (
+          <p class="cycle-warning" role="status">
+            MatrixSmith detected a recommendation loop and stopped advancing
+            automatically. {snapshot.cycleWarning}
+          </p>
+        )}
+        {snapshot.assessment.readiness === "needs-geometry" ? (
+          <GeometrySetup store={store} />
+        ) : snapshot.coreProgress?.complete ? (
+          snapshot.investigation ? (
+            <CoreComplete snapshot={snapshot} store={store} />
+          ) : (
+            <KnownCharacterized store={store} />
+          )
         ) : (
-          <KnownCharacterized store={store} />
-        )
-      ) : (
-        <NextAction snapshot={snapshot} store={store} />
-      )}
-      <CoreProgress snapshot={snapshot} />
-      <WhatWeKnow snapshot={snapshot} />
-      <RecentResult snapshot={snapshot} store={store} />
-      <PreviousInvestigation snapshot={snapshot} store={store} />
-      <TroubleshootEntry snapshot={snapshot} store={store} />
+          <NextAction snapshot={snapshot} store={store} />
+        )}
+        <CoreProgress snapshot={snapshot} />
+      </div>
+      <div class="investigation-context">
+        <WhatWeKnow snapshot={snapshot} />
+        <RecentResult snapshot={snapshot} store={store} />
+        <PreviousInvestigation snapshot={snapshot} store={store} />
+        <TroubleshootEntry snapshot={snapshot} store={store} />
+      </div>
 
       <details class="secondary-section">
         <summary>

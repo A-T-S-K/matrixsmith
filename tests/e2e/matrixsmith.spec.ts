@@ -176,6 +176,32 @@ for (const width of [320, 390, 768, 1024, 1280]) {
   });
 }
 
+for (const width of [1024, 1280, 1440, 1920]) {
+  test(`desktop workspace keeps primary content together at ${width}px`, async ({
+    page,
+  }, testInfo) => {
+    test.skip(testInfo.project.name !== "chromium", "Desktop layout sweep.");
+    await page.setViewportSize({ width, height: 1000 });
+    await connectKnown(page);
+    const create = await page.locator(".view.create").boundingBox();
+    const editor = await page.locator(".type-tabs").boundingBox();
+    expect(editor!.width).toBeGreaterThan(create!.width * 0.6);
+
+    await page.getByRole("button", { name: /Investigate$/ }).click();
+    const heading = await page
+      .getByRole("heading", { name: "Investigate", exact: true })
+      .boundingBox();
+    const action = await page.locator(".core-complete").boundingBox();
+    expect(action!.y).toBeGreaterThanOrEqual(heading!.y + heading!.height);
+    expect(action!.x).toBeCloseTo(heading!.x, 0);
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth - window.innerWidth,
+      ),
+    ).toBeLessThanOrEqual(1);
+  });
+}
+
 test("Browser Back closes overlays before navigating feature history", async ({
   page,
 }, testInfo) => {
