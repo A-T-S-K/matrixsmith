@@ -62,6 +62,11 @@ const types = {
 };
 const server = createServer((request, response) => {
   const url = new URL(request.url, "http://127.0.0.1");
+  // Cloudflare Pages canonicalizes index.html to the directory URL.
+  if (url.pathname === "/index.html") {
+    response.writeHead(308, { Location: "/" + url.search }).end();
+    return;
+  }
   if (url.pathname === "/__test/unresponsive") {
     response
       .writeHead(200, { "Content-Type": "text/html" })

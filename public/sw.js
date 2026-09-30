@@ -162,8 +162,20 @@ self.addEventListener("fetch", (event) => {
     (async () => {
       // A controlled page always gets the shell and assets of this build.
       const shell = await caches.open(SHELL_CACHE);
-      if (event.request.mode === "navigate")
-        return (await shell.match(OFFLINE_SHELL)) ?? fetch(event.request);
+      if (event.request.mode === "navigate") {
+        const cachedShell = await shell.match(OFFLINE_SHELL);
+        if (!cachedShell) return fetch(event.request);
+        // Pages redirects /index.html to /. A cached response retains that
+        // redirect history, which Chrome rejects for a navigation request.
+        // Rebuild only redirected shells, preserving their security headers.
+        return cachedShell.redirected
+          ? new Response(cachedShell.body, {
+              status: cachedShell.status,
+              statusText: cachedShell.statusText,
+              headers: cachedShell.headers,
+            })
+          : cachedShell;
+      }
       const assets = await caches.open(ASSET_CACHE);
       const cached =
         (await assets.match(event.request, { ignoreSearch: true })) ??

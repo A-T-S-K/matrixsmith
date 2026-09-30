@@ -36,6 +36,12 @@ test("built production shell navigates and reloads offline", async ({
     );
   });
   expect(cached.every(({ cached }) => cached)).toBe(true);
+  // Reload online first: the installed worker must serve a shell fetched
+  // through the host's /index.html redirect without a navigation error.
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await expect(
+    page.getByRole("heading", { name: /Make the display/i }),
+  ).toBeVisible();
   await context.setOffline(true);
   await page.reload({ waitUntil: "domcontentloaded" });
   expect(failures).toEqual([]);
