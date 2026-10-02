@@ -94,9 +94,9 @@ export function SendResult({
                       : "Not expected for this upload."}
               </p>
               <p>
-                Device readback:{" "}
+                Device-state verification:{" "}
                 {evidence.deviceStateVerified
-                  ? "Operation state verified by readback."
+                  ? "Matching response fulfilled the operation expectation."
                   : "Not verified."}
               </p>
               <p>

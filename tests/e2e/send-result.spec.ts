@@ -37,7 +37,7 @@ for (const width of [1280, 390]) {
       page.getByText("Protocol response: Not expected for this upload."),
     ).toBeVisible();
     await expect(
-      page.getByText("Device readback: Not verified."),
+      page.getByText("Device-state verification: Not verified."),
     ).toBeVisible();
     await details.press("Enter");
     await send.scrollIntoViewIfNeeded();

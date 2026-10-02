@@ -178,66 +178,72 @@ describe("TransmissionExecutor", () => {
     expect(transport.writeAttempts).toHaveLength(0);
   });
 
-  it("arms the response waiter before a synchronous fast notification", async () => {
-    const transport = await connectedFake();
-    const router = new NotificationRouter();
-    vi.useFakeTimers();
-    const fingerprint = knownIledHatFingerprint();
-    await transport.subscribe(COOLLEDX_ENDPOINT, (raw) => {
-      const decoded =
-        coolLedUxDriver.decodeNotification?.(raw, {
-          profile: iledHat31aeProfile,
-          fingerprint,
-          source: "live",
-        }) ?? null;
-      router.publish({
-        timestamp: new Date().toISOString(),
-        raw,
-        rawHex: "01 00 02 06 04 40 03",
-        decoded,
+  it.each([false, true])(
+    "arms a fast operation response (fulfills operation: %s)",
+    async (fulfillsOperation) => {
+      const transport = await connectedFake();
+      const router = new NotificationRouter();
+      vi.useFakeTimers();
+      const fingerprint = knownIledHatFingerprint();
+      await transport.subscribe(COOLLEDX_ENDPOINT, (raw) => {
+        const decoded =
+          coolLedUxDriver.decodeNotification?.(raw, {
+            profile: iledHat31aeProfile,
+            fingerprint,
+            source: "live",
+          }) ?? null;
+        router.publish({
+          timestamp: new Date().toISOString(),
+          raw,
+          rawHex: "01 00 02 06 04 40 03",
+          decoded,
+        });
       });
-    });
-    transport.notificationOnWrite = Uint8Array.of(
-      0x01,
-      0x00,
-      0x02,
-      0x06,
-      0x04,
-      0x40,
-      0x03,
-    );
-    const value = authorized(transport, [packet(0, 1)]);
-    const changed = prepareTransmission(
-      {
-        ...value.plan,
-        driverId: "coolledux",
-        validation: "verified",
-        responseExpectation: {
-          type: "notification",
-          opcode: 0x04,
-          kind: "command-echo",
-          required: true,
-          timeoutMs: 50,
-          fulfillsOperation: false,
+      transport.notificationOnWrite = Uint8Array.of(
+        0x01,
+        0x00,
+        0x02,
+        0x06,
+        0x04,
+        0x40,
+        0x03,
+      );
+      const value = authorized(transport, [packet(0, 1)]);
+      const changed = prepareTransmission(
+        {
+          ...value.plan,
+          driverId: "coolledux",
+          validation: "verified",
+          responseExpectation: {
+            type: "notification",
+            opcode: 0x04,
+            kind: "command-echo",
+            required: true,
+            timeoutMs: 50,
+            fulfillsOperation,
+          },
         },
-      },
-      value.targetBinding,
-    );
-    const withResponse: AuthorizedTransmission = {
-      ...value,
-      plan: changed,
-      targetBinding: changed.targetBinding,
-      digest: changed.digest,
-    };
-    const result = await new TransmissionExecutor(
-      transport,
-      new TraceRecorder(),
-      router,
-    ).execute(withResponse, coolLedUxDriver);
-    expect(result.protocolAcknowledged).toBe(true);
-    expect(result.responseTimedOut).toBe(false);
-    expect(vi.getTimerCount()).toBe(0);
-  });
+        value.targetBinding,
+      );
+      const withResponse: AuthorizedTransmission = {
+        ...value,
+        plan: changed,
+        targetBinding: changed.targetBinding,
+        digest: changed.digest,
+      };
+      const result = await new TransmissionExecutor(
+        transport,
+        new TraceRecorder(),
+        router,
+      ).execute(withResponse, coolLedUxDriver);
+      expect(result.protocolAcknowledged).toBe(true);
+      expect(result.responseTimedOut).toBe(false);
+      expect(result.deviceStateVerified).toBe(fulfillsOperation);
+      // Verification follows the declared response; there is no second readback.
+      expect(transport.writeAttempts).toHaveLength(1);
+      expect(vi.getTimerCount()).toBe(0);
+    },
+  );
 });
 
 afterEach(() => vi.useRealTimers());
