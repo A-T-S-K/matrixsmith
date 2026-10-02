@@ -208,8 +208,14 @@ export class ReportImportService {
     const bundle = createDiagnosticBundle({
       fingerprint,
       driverMatches: session.selection?.matches ?? [],
-      selectedDriver: driver?.id ?? null,
+      selectedDriver:
+        driver?.id ??
+        (session.source === "imported" ? profile?.driverId : null) ??
+        null,
       selectedProfile: profile?.id ?? null,
+      ...(profile?.id.startsWith("provisional:")
+        ? { provisionalProfile: profile }
+        : {}),
       capabilities: driver && profile ? driver.capabilities(profile) : [],
       trace: this.ports.protocolEvidence().getTrace().events,
       observations: this.ports.protocolEvidence().getObservations(),
@@ -235,6 +241,43 @@ export class ReportImportService {
     this.ports
       .identification()
       .applyFingerprint(bundle.fingerprint, "imported");
+    if (bundle.provisionalProfile) {
+      const profile = bundle.provisionalProfile;
+      const driver = this.ports
+        .identification()
+        .getRegistry()
+        .drivers.find((candidate) => candidate.id === profile.driverId);
+      this.ports
+        .connection()
+        .patchSession({
+          profile: {
+            ...profile,
+            metadata: { ...profile.metadata, historical: true },
+          },
+        });
+      if (driver)
+        this.ports.connection().patchSession({
+          selection: this.ports
+            .identification()
+            .getRegistry()
+            .resolve(
+              driver.id,
+              bundle.fingerprint,
+              "Historical imported geometry; no live authority.",
+            ),
+          profile: {
+            ...profile,
+            metadata: { ...profile.metadata, historical: true },
+          },
+          protocolResolution: {
+            driverId: driver.id,
+            probeId: "imported-geometry",
+            summary:
+              "Historical imported family and geometry; identify again on a live connection.",
+            source: "replay",
+          },
+        });
+    }
     this.ports.protocolEvidence().getTrace().importSerialized(bundle.trace);
     const captures = bundle.trace.filter(
       (event) =>

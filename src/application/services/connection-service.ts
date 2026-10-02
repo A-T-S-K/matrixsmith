@@ -492,7 +492,7 @@ export class ConnectionService {
     if (!fingerprint || !connectionId) return null;
     return {
       connectionId,
-      fingerprintKey: fingerprintIdentityKey(fingerprint),
+      fingerprintKey: `${fingerprintIdentityKey(fingerprint)}|geometry-revision:${this.session.geometryRevision}`,
       browserDeviceId: fingerprint.browserDeviceId ?? null,
     };
   }

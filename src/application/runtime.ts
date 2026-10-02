@@ -127,6 +127,12 @@ export class ApplicationRuntime {
     );
     this.enableDriverNotifications =
       this.connection.enableDriverNotifications.bind(this.connection);
+    this.geometryProposal = this.identification.geometryProposal.bind(
+      this.identification,
+    );
+    this.useReportedGeometry = this.diagnostics.useReportedGeometry.bind(
+      this.diagnostics,
+    );
     this.confirmProvisionalGeometry =
       this.diagnostics.confirmProvisionalGeometry.bind(this.diagnostics);
     this.diagnosticTools = this.diagnostics.diagnosticTools.bind(
@@ -304,6 +310,8 @@ export class ApplicationRuntime {
   readonly isNotificationActive: ConnectionService["isNotificationActive"];
   readonly enableNotifications: ConnectionService["enableNotifications"];
   readonly enableDriverNotifications: ConnectionService["enableDriverNotifications"];
+  readonly geometryProposal: IdentificationService["geometryProposal"];
+  readonly useReportedGeometry: DiagnosticsService["useReportedGeometry"];
   readonly confirmProvisionalGeometry: DiagnosticsService["confirmProvisionalGeometry"];
   readonly diagnosticTools: DiagnosticsService["diagnosticTools"];
   readonly runDiagnostic: DiagnosticsService["runDiagnostic"];

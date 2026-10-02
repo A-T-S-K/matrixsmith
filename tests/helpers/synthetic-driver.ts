@@ -320,6 +320,14 @@ export const syntheticDriver: MatrixDriver = {
       fields: { width: bytes[5]!, height: bytes[6]!, brightnessRaw: bytes[7]! },
     };
   },
+  // Authored Lumen info bytes encode horizontal columns and vertical rows in pixels.
+  interpretGeometry: (response) =>
+    response.family === "Synthetic Lumen" &&
+    response.kind === "device-info" &&
+    typeof response.fields.width === "number" &&
+    typeof response.fields.height === "number"
+      ? { width: response.fields.width, height: response.fields.height }
+      : null,
   responseMatches: notificationMatchesExpectation,
   claimEvidence: () => [],
 };

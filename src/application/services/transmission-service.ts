@@ -69,7 +69,7 @@ interface Ports {
   >;
   identification(): Pick<
     IdentificationService,
-    "getRegistry" | "_resolveProtocol" | "assessment"
+    "getRegistry" | "_resolveProtocol" | "_proposeGeometry" | "assessment"
   >;
 }
 export class TransmissionService {
@@ -82,6 +82,7 @@ export class TransmissionService {
       this.ports.connection().getTransport(),
       this.ports.protocolEvidence().getTrace(),
       this.ports.protocolEvidence().getNotificationRouter(),
+      () => this.ports.connection()._currentTargetBinding(),
     );
   }
   getPolicy() {
@@ -413,6 +414,8 @@ export class TransmissionService {
       );
     const connectionId = this.ports.connection().getTransport().connectionId;
     const fingerprint = session.fingerprint;
+    const selection = session.selection;
+    const geometryRevision = session.geometryRevision;
     if (!fingerprint)
       throw new Error(
         "The requested probe driver is not available for this connection.",
@@ -431,7 +434,12 @@ export class TransmissionService {
       throw new Error(
         "The requested probe driver is not available for this connection.",
       );
-    const profile = driver.resolveProfile(fingerprint);
+    // A repeated probe cannot replace already established reviewed or provisional geometry.
+    const profile =
+      session.selection?.selected?.id === driver.id && session.profile
+        ? session.profile
+        : driver.resolveProfile(fingerprint);
+    session.geometryProposal = null;
     const candidateContext = {
       fingerprint,
       endpoints: candidateEndpoints(fingerprint),
@@ -468,13 +476,23 @@ export class TransmissionService {
     if (!decision.allowed || !decision.authorized)
       throw new Error(decision.reasons.join(" "));
     await this.ports.connection().enableDriverNotifications(driver);
+    if (
+      connectionId !== this.ports.connection().getTransport().connectionId ||
+      session.fingerprint !== fingerprint ||
+      session.selection !== selection ||
+      session.geometryRevision !== geometryRevision
+    )
+      throw new Error(
+        "The probe belongs to a retired connection or changed target.",
+      );
     const startedAt = new Date().toISOString();
     const notificationStart = session.notifications.length;
     const sessionSource = session.source;
     let result: ExecutionResult;
+    let transaction: import("../../diagnostics/transactions").ProtocolTransaction;
     try {
       result = await this._executor.execute(decision.authorized, driver);
-      this.ports
+      transaction = this.ports
         .protocolEvidence()
         ._recordTransaction(
           decision.authorized.plan,
@@ -516,9 +534,16 @@ export class TransmissionService {
       : result.response
         ? profileProbe!.interpret(result.response)
         : null;
-    if (connectionId !== this.ports.connection().getTransport().connectionId)
-      throw new Error("The probe belongs to a retired connection.");
-    if (interpretation?.matched)
+    if (
+      connectionId !== this.ports.connection().getTransport().connectionId ||
+      session.fingerprint !== fingerprint ||
+      session.selection !== selection ||
+      session.geometryRevision !== geometryRevision
+    )
+      throw new Error(
+        "The probe belongs to a retired connection or changed target.",
+      );
+    if (interpretation?.matched) {
       this.ports
         .identification()
         ._resolveProtocol(
@@ -528,7 +553,11 @@ export class TransmissionService {
           interpretation.summary,
           "live-probe",
         );
-    else
+      if (transaction && !result.responseTimedOut && result.response)
+        this.ports
+          .identification()
+          ._proposeGeometry(driver, transaction, connectionId!);
+    } else
       this.ports
         .protocolEvidence()
         .getTrace()

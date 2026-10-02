@@ -35,6 +35,75 @@
     },
     "selectedDriver": { "type": ["string", "null"] },
     "selectedProfile": { "type": ["string", "null"] },
+    "provisionalProfile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "name",
+        "driverId",
+        "width",
+        "height",
+        "validation",
+        "evidence",
+        "metadata"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^provisional:"
+        },
+        "name": {
+          "type": "string"
+        },
+        "driverId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "width": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 512
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 512
+        },
+        "validation": {
+          "const": "experimental"
+        },
+        "evidence": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "metadata": {
+          "type": "object",
+          "additionalProperties": {
+            "anyOf": [
+              { "type": "string" },
+              { "type": "number" },
+              { "type": "boolean" },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            ]
+          },
+          "required": ["provisional", "geometrySource"],
+          "properties": {
+            "provisional": {
+              "const": true
+            },
+            "geometrySource": {
+              "enum": ["user-confirmed", "device-info"]
+            }
+          }
+        }
+      }
+    },
     "capabilities": {
       "type": "array",
       "items": { "$ref": "#/$defs/capability" }

@@ -99,7 +99,7 @@ export class ProtocolEvidenceService {
     sessionSource: ProtocolTransaction["sessionSource"] = this.ports
       .connection()
       .getSession().source,
-  ): void {
+  ): ProtocolTransaction {
     const session = this.ports.connection().getSession();
     const completedAt = result?.completedAt ?? new Date().toISOString();
     const endpoint = plan.packets[0]?.endpoint ?? null;
@@ -139,7 +139,7 @@ export class ProtocolEvidenceService {
             ? ("related-receipt" as const)
             : ("unrelated-concurrent" as const),
     }));
-    this._transactions.push({
+    const transaction: ProtocolTransaction = {
       id: transactionId(),
       startedAt,
       completedAt,
@@ -165,8 +165,10 @@ export class ProtocolEvidenceService {
       findings: result?.response ? [result.response.summary] : [],
       observationIds: [],
       diagnosticRunId: diagnosticRunIdValue,
-    });
+    };
+    this._transactions.push(transaction);
     this._trimTransactions();
+    return transaction;
   }
   _recordIncoming(
     packet: Uint8Array,

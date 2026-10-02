@@ -279,6 +279,65 @@ var require_validator_input = __commonJSMin((exports, module) => {
       },
       selectedDriver: { type: ["string", "null"] },
       selectedProfile: { type: ["string", "null"] },
+      provisionalProfile: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "id",
+          "name",
+          "driverId",
+          "width",
+          "height",
+          "validation",
+          "evidence",
+          "metadata",
+        ],
+        properties: {
+          id: {
+            type: "string",
+            pattern: "^provisional:",
+          },
+          name: { type: "string" },
+          driverId: {
+            type: "string",
+            minLength: 1,
+          },
+          width: {
+            type: "integer",
+            minimum: 1,
+            maximum: 512,
+          },
+          height: {
+            type: "integer",
+            minimum: 1,
+            maximum: 512,
+          },
+          validation: { const: "experimental" },
+          evidence: {
+            type: "array",
+            maxItems: 0,
+          },
+          metadata: {
+            type: "object",
+            additionalProperties: {
+              anyOf: [
+                { type: "string" },
+                { type: "number" },
+                { type: "boolean" },
+                {
+                  type: "array",
+                  items: { type: "string" },
+                },
+              ],
+            },
+            required: ["provisional", "geometrySource"],
+            properties: {
+              provisional: { const: true },
+              geometrySource: { enum: ["user-confirmed", "device-info"] },
+            },
+          },
+        },
+      },
       capabilities: {
         type: "array",
         items: { $ref: "#/$defs/capability" },
@@ -4010,6 +4069,7 @@ var require_validator_input = __commonJSMin((exports, module) => {
     dynamicProps: false,
     dynamicItems: false,
   };
+  const pattern5 = new RegExp("^provisional:", "u");
   function validate52(
     data,
     {
@@ -4273,42 +4333,926 @@ var require_validator_input = __commonJSMin((exports, module) => {
                             var valid1 = _errs14 === errors;
                           } else var valid1 = true;
                           if (valid1) {
-                            if (data.capabilities !== void 0) {
-                              let data9 = data.capabilities;
+                            if (data.provisionalProfile !== void 0) {
+                              let data9 = data.provisionalProfile;
                               const _errs16 = errors;
                               if (errors === _errs16) {
-                                if (Array.isArray(data9)) {
-                                  const len1 = data9.length;
-                                  for (let i1 = 0; i1 < len1; i1++) {
-                                    const _errs18 = errors;
-                                    if (
-                                      !validate59(data9[i1], {
-                                        instancePath:
-                                          instancePath + "/capabilities/" + i1,
-                                        parentData: data9,
-                                        parentDataProperty: i1,
-                                        rootData,
-                                        dynamicAnchors,
-                                      })
-                                    ) {
-                                      vErrors =
-                                        vErrors === null
-                                          ? validate59.errors
-                                          : vErrors.concat(validate59.errors);
-                                      errors = vErrors.length;
+                                if (
+                                  data9 &&
+                                  typeof data9 == "object" &&
+                                  !Array.isArray(data9)
+                                ) {
+                                  let missing1;
+                                  let valid3 = true;
+                                  for (missing1 of schema19.properties
+                                    .provisionalProfile.required) {
+                                    valid3 = data9[missing1] !== void 0;
+                                    if (!valid3) {
+                                      validate52.errors = [
+                                        {
+                                          instancePath:
+                                            instancePath +
+                                            "/provisionalProfile",
+                                          schemaPath:
+                                            "#/properties/provisionalProfile/required",
+                                          keyword: "required",
+                                          params: { missingProperty: missing1 },
+                                          message:
+                                            "must have required property '" +
+                                            missing1 +
+                                            "'",
+                                        },
+                                      ];
+                                      return false;
                                     }
-                                    if (!(_errs18 === errors)) break;
+                                  }
+                                  if (valid3) {
+                                    const _errs18 = errors;
+                                    for (const key1 in data9)
+                                      if (!(
+                                        key1 === "id" ||
+                                        key1 === "name" ||
+                                        key1 === "driverId" ||
+                                        key1 === "width" ||
+                                        key1 === "height" ||
+                                        key1 === "validation" ||
+                                        key1 === "evidence" ||
+                                        key1 === "metadata"
+                                      )) {
+                                        validate52.errors = [
+                                          {
+                                            instancePath:
+                                              instancePath +
+                                              "/provisionalProfile",
+                                            schemaPath:
+                                              "#/properties/provisionalProfile/additionalProperties",
+                                            keyword: "additionalProperties",
+                                            params: {
+                                              additionalProperty: key1,
+                                            },
+                                            message:
+                                              "must NOT have additional properties",
+                                          },
+                                        ];
+                                        return false;
+                                      }
+                                    if (_errs18 === errors) {
+                                      if (data9.id !== void 0) {
+                                        let data10 = data9.id;
+                                        const _errs19 = errors;
+                                        if (errors === _errs19) {
+                                          if (typeof data10 === "string") {
+                                            if (!pattern5.test(data10)) {
+                                              validate52.errors = [
+                                                {
+                                                  instancePath:
+                                                    instancePath +
+                                                    "/provisionalProfile/id",
+                                                  schemaPath:
+                                                    "#/properties/provisionalProfile/properties/id/pattern",
+                                                  keyword: "pattern",
+                                                  params: {
+                                                    pattern: "^provisional:",
+                                                  },
+                                                  message:
+                                                    'must match pattern "^provisional:"',
+                                                },
+                                              ];
+                                              return false;
+                                            }
+                                          } else {
+                                            validate52.errors = [
+                                              {
+                                                instancePath:
+                                                  instancePath +
+                                                  "/provisionalProfile/id",
+                                                schemaPath:
+                                                  "#/properties/provisionalProfile/properties/id/type",
+                                                keyword: "type",
+                                                params: { type: "string" },
+                                                message: "must be string",
+                                              },
+                                            ];
+                                            return false;
+                                          }
+                                        }
+                                        var valid4 = _errs19 === errors;
+                                      } else var valid4 = true;
+                                      if (valid4) {
+                                        if (data9.name !== void 0) {
+                                          const _errs21 = errors;
+                                          if (typeof data9.name !== "string") {
+                                            validate52.errors = [
+                                              {
+                                                instancePath:
+                                                  instancePath +
+                                                  "/provisionalProfile/name",
+                                                schemaPath:
+                                                  "#/properties/provisionalProfile/properties/name/type",
+                                                keyword: "type",
+                                                params: { type: "string" },
+                                                message: "must be string",
+                                              },
+                                            ];
+                                            return false;
+                                          }
+                                          var valid4 = _errs21 === errors;
+                                        } else var valid4 = true;
+                                        if (valid4) {
+                                          if (data9.driverId !== void 0) {
+                                            let data12 = data9.driverId;
+                                            const _errs23 = errors;
+                                            if (errors === _errs23) {
+                                              if (typeof data12 === "string") {
+                                                if (func2(data12) < 1) {
+                                                  validate52.errors = [
+                                                    {
+                                                      instancePath:
+                                                        instancePath +
+                                                        "/provisionalProfile/driverId",
+                                                      schemaPath:
+                                                        "#/properties/provisionalProfile/properties/driverId/minLength",
+                                                      keyword: "minLength",
+                                                      params: { limit: 1 },
+                                                      message:
+                                                        "must NOT have fewer than 1 characters",
+                                                    },
+                                                  ];
+                                                  return false;
+                                                }
+                                              } else {
+                                                validate52.errors = [
+                                                  {
+                                                    instancePath:
+                                                      instancePath +
+                                                      "/provisionalProfile/driverId",
+                                                    schemaPath:
+                                                      "#/properties/provisionalProfile/properties/driverId/type",
+                                                    keyword: "type",
+                                                    params: { type: "string" },
+                                                    message: "must be string",
+                                                  },
+                                                ];
+                                                return false;
+                                              }
+                                            }
+                                            var valid4 = _errs23 === errors;
+                                          } else var valid4 = true;
+                                          if (valid4) {
+                                            if (data9.width !== void 0) {
+                                              let data13 = data9.width;
+                                              const _errs25 = errors;
+                                              if (!(
+                                                typeof data13 == "number" &&
+                                                !(data13 % 1) &&
+                                                !isNaN(data13) &&
+                                                isFinite(data13)
+                                              )) {
+                                                validate52.errors = [
+                                                  {
+                                                    instancePath:
+                                                      instancePath +
+                                                      "/provisionalProfile/width",
+                                                    schemaPath:
+                                                      "#/properties/provisionalProfile/properties/width/type",
+                                                    keyword: "type",
+                                                    params: { type: "integer" },
+                                                    message: "must be integer",
+                                                  },
+                                                ];
+                                                return false;
+                                              }
+                                              if (errors === _errs25) {
+                                                if (
+                                                  typeof data13 == "number" &&
+                                                  isFinite(data13)
+                                                ) {
+                                                  if (
+                                                    data13 > 512 ||
+                                                    isNaN(data13)
+                                                  ) {
+                                                    validate52.errors = [
+                                                      {
+                                                        instancePath:
+                                                          instancePath +
+                                                          "/provisionalProfile/width",
+                                                        schemaPath:
+                                                          "#/properties/provisionalProfile/properties/width/maximum",
+                                                        keyword: "maximum",
+                                                        params: {
+                                                          comparison: "<=",
+                                                          limit: 512,
+                                                        },
+                                                        message:
+                                                          "must be <= 512",
+                                                      },
+                                                    ];
+                                                    return false;
+                                                  } else if (
+                                                    data13 < 1 ||
+                                                    isNaN(data13)
+                                                  ) {
+                                                    validate52.errors = [
+                                                      {
+                                                        instancePath:
+                                                          instancePath +
+                                                          "/provisionalProfile/width",
+                                                        schemaPath:
+                                                          "#/properties/provisionalProfile/properties/width/minimum",
+                                                        keyword: "minimum",
+                                                        params: {
+                                                          comparison: ">=",
+                                                          limit: 1,
+                                                        },
+                                                        message: "must be >= 1",
+                                                      },
+                                                    ];
+                                                    return false;
+                                                  }
+                                                }
+                                              }
+                                              var valid4 = _errs25 === errors;
+                                            } else var valid4 = true;
+                                            if (valid4) {
+                                              if (data9.height !== void 0) {
+                                                let data14 = data9.height;
+                                                const _errs27 = errors;
+                                                if (!(
+                                                  typeof data14 == "number" &&
+                                                  !(data14 % 1) &&
+                                                  !isNaN(data14) &&
+                                                  isFinite(data14)
+                                                )) {
+                                                  validate52.errors = [
+                                                    {
+                                                      instancePath:
+                                                        instancePath +
+                                                        "/provisionalProfile/height",
+                                                      schemaPath:
+                                                        "#/properties/provisionalProfile/properties/height/type",
+                                                      keyword: "type",
+                                                      params: {
+                                                        type: "integer",
+                                                      },
+                                                      message:
+                                                        "must be integer",
+                                                    },
+                                                  ];
+                                                  return false;
+                                                }
+                                                if (errors === _errs27) {
+                                                  if (
+                                                    typeof data14 == "number" &&
+                                                    isFinite(data14)
+                                                  ) {
+                                                    if (
+                                                      data14 > 512 ||
+                                                      isNaN(data14)
+                                                    ) {
+                                                      validate52.errors = [
+                                                        {
+                                                          instancePath:
+                                                            instancePath +
+                                                            "/provisionalProfile/height",
+                                                          schemaPath:
+                                                            "#/properties/provisionalProfile/properties/height/maximum",
+                                                          keyword: "maximum",
+                                                          params: {
+                                                            comparison: "<=",
+                                                            limit: 512,
+                                                          },
+                                                          message:
+                                                            "must be <= 512",
+                                                        },
+                                                      ];
+                                                      return false;
+                                                    } else if (
+                                                      data14 < 1 ||
+                                                      isNaN(data14)
+                                                    ) {
+                                                      validate52.errors = [
+                                                        {
+                                                          instancePath:
+                                                            instancePath +
+                                                            "/provisionalProfile/height",
+                                                          schemaPath:
+                                                            "#/properties/provisionalProfile/properties/height/minimum",
+                                                          keyword: "minimum",
+                                                          params: {
+                                                            comparison: ">=",
+                                                            limit: 1,
+                                                          },
+                                                          message:
+                                                            "must be >= 1",
+                                                        },
+                                                      ];
+                                                      return false;
+                                                    }
+                                                  }
+                                                }
+                                                var valid4 = _errs27 === errors;
+                                              } else var valid4 = true;
+                                              if (valid4) {
+                                                if (
+                                                  data9.validation !== void 0
+                                                ) {
+                                                  const _errs29 = errors;
+                                                  if (
+                                                    "experimental" !==
+                                                    data9.validation
+                                                  ) {
+                                                    validate52.errors = [
+                                                      {
+                                                        instancePath:
+                                                          instancePath +
+                                                          "/provisionalProfile/validation",
+                                                        schemaPath:
+                                                          "#/properties/provisionalProfile/properties/validation/const",
+                                                        keyword: "const",
+                                                        params: {
+                                                          allowedValue:
+                                                            "experimental",
+                                                        },
+                                                        message:
+                                                          "must be equal to constant",
+                                                      },
+                                                    ];
+                                                    return false;
+                                                  }
+                                                  var valid4 =
+                                                    _errs29 === errors;
+                                                } else var valid4 = true;
+                                                if (valid4) {
+                                                  if (
+                                                    data9.evidence !== void 0
+                                                  ) {
+                                                    let data16 = data9.evidence;
+                                                    const _errs30 = errors;
+                                                    if (errors === _errs30) {
+                                                      if (
+                                                        Array.isArray(data16)
+                                                      ) {
+                                                        if (data16.length > 0) {
+                                                          validate52.errors = [
+                                                            {
+                                                              instancePath:
+                                                                instancePath +
+                                                                "/provisionalProfile/evidence",
+                                                              schemaPath:
+                                                                "#/properties/provisionalProfile/properties/evidence/maxItems",
+                                                              keyword:
+                                                                "maxItems",
+                                                              params: {
+                                                                limit: 0,
+                                                              },
+                                                              message:
+                                                                "must NOT have more than 0 items",
+                                                            },
+                                                          ];
+                                                          return false;
+                                                        }
+                                                      } else {
+                                                        validate52.errors = [
+                                                          {
+                                                            instancePath:
+                                                              instancePath +
+                                                              "/provisionalProfile/evidence",
+                                                            schemaPath:
+                                                              "#/properties/provisionalProfile/properties/evidence/type",
+                                                            keyword: "type",
+                                                            params: {
+                                                              type: "array",
+                                                            },
+                                                            message:
+                                                              "must be array",
+                                                          },
+                                                        ];
+                                                        return false;
+                                                      }
+                                                    }
+                                                    var valid4 =
+                                                      _errs30 === errors;
+                                                  } else var valid4 = true;
+                                                  if (valid4) {
+                                                    if (
+                                                      data9.metadata !== void 0
+                                                    ) {
+                                                      let data17 =
+                                                        data9.metadata;
+                                                      const _errs32 = errors;
+                                                      if (errors === _errs32) {
+                                                        if (
+                                                          data17 &&
+                                                          typeof data17 ==
+                                                            "object" &&
+                                                          !Array.isArray(data17)
+                                                        ) {
+                                                          let missing2;
+                                                          if (
+                                                            (data17.provisional ===
+                                                              void 0 &&
+                                                              (missing2 =
+                                                                "provisional")) ||
+                                                            (data17.geometrySource ===
+                                                              void 0 &&
+                                                              (missing2 =
+                                                                "geometrySource"))
+                                                          ) {
+                                                            validate52.errors =
+                                                              [
+                                                                {
+                                                                  instancePath:
+                                                                    instancePath +
+                                                                    "/provisionalProfile/metadata",
+                                                                  schemaPath:
+                                                                    "#/properties/provisionalProfile/properties/metadata/required",
+                                                                  keyword:
+                                                                    "required",
+                                                                  params: {
+                                                                    missingProperty:
+                                                                      missing2,
+                                                                  },
+                                                                  message:
+                                                                    "must have required property '" +
+                                                                    missing2 +
+                                                                    "'",
+                                                                },
+                                                              ];
+                                                            return false;
+                                                          } else {
+                                                            const _errs34 =
+                                                              errors;
+                                                            for (const key2 in data17)
+                                                              if (!(
+                                                                key2 ===
+                                                                  "provisional" ||
+                                                                key2 ===
+                                                                  "geometrySource"
+                                                              )) {
+                                                                let data18 =
+                                                                  data17[key2];
+                                                                const _errs35 =
+                                                                  errors;
+                                                                const _errs36 =
+                                                                  errors;
+                                                                let valid6 = false;
+                                                                const _errs37 =
+                                                                  errors;
+                                                                if (
+                                                                  typeof data18 !==
+                                                                  "string"
+                                                                ) {
+                                                                  const err0 = {
+                                                                    instancePath:
+                                                                      instancePath +
+                                                                      "/provisionalProfile/metadata/" +
+                                                                      key2
+                                                                        .replace(
+                                                                          /~/g,
+                                                                          "~0",
+                                                                        )
+                                                                        .replace(
+                                                                          /\//g,
+                                                                          "~1",
+                                                                        ),
+                                                                    schemaPath:
+                                                                      "#/properties/provisionalProfile/properties/metadata/additionalProperties/anyOf/0/type",
+                                                                    keyword:
+                                                                      "type",
+                                                                    params: {
+                                                                      type: "string",
+                                                                    },
+                                                                    message:
+                                                                      "must be string",
+                                                                  };
+                                                                  if (
+                                                                    vErrors ===
+                                                                    null
+                                                                  )
+                                                                    vErrors = [
+                                                                      err0,
+                                                                    ];
+                                                                  else
+                                                                    vErrors.push(
+                                                                      err0,
+                                                                    );
+                                                                  errors++;
+                                                                }
+                                                                var _valid0 =
+                                                                  _errs37 ===
+                                                                  errors;
+                                                                valid6 =
+                                                                  valid6 ||
+                                                                  _valid0;
+                                                                const _errs39 =
+                                                                  errors;
+                                                                if (!(
+                                                                  typeof data18 ==
+                                                                    "number" &&
+                                                                  isFinite(
+                                                                    data18,
+                                                                  )
+                                                                )) {
+                                                                  const err1 = {
+                                                                    instancePath:
+                                                                      instancePath +
+                                                                      "/provisionalProfile/metadata/" +
+                                                                      key2
+                                                                        .replace(
+                                                                          /~/g,
+                                                                          "~0",
+                                                                        )
+                                                                        .replace(
+                                                                          /\//g,
+                                                                          "~1",
+                                                                        ),
+                                                                    schemaPath:
+                                                                      "#/properties/provisionalProfile/properties/metadata/additionalProperties/anyOf/1/type",
+                                                                    keyword:
+                                                                      "type",
+                                                                    params: {
+                                                                      type: "number",
+                                                                    },
+                                                                    message:
+                                                                      "must be number",
+                                                                  };
+                                                                  if (
+                                                                    vErrors ===
+                                                                    null
+                                                                  )
+                                                                    vErrors = [
+                                                                      err1,
+                                                                    ];
+                                                                  else
+                                                                    vErrors.push(
+                                                                      err1,
+                                                                    );
+                                                                  errors++;
+                                                                }
+                                                                var _valid0 =
+                                                                  _errs39 ===
+                                                                  errors;
+                                                                valid6 =
+                                                                  valid6 ||
+                                                                  _valid0;
+                                                                const _errs41 =
+                                                                  errors;
+                                                                if (
+                                                                  typeof data18 !==
+                                                                  "boolean"
+                                                                ) {
+                                                                  const err2 = {
+                                                                    instancePath:
+                                                                      instancePath +
+                                                                      "/provisionalProfile/metadata/" +
+                                                                      key2
+                                                                        .replace(
+                                                                          /~/g,
+                                                                          "~0",
+                                                                        )
+                                                                        .replace(
+                                                                          /\//g,
+                                                                          "~1",
+                                                                        ),
+                                                                    schemaPath:
+                                                                      "#/properties/provisionalProfile/properties/metadata/additionalProperties/anyOf/2/type",
+                                                                    keyword:
+                                                                      "type",
+                                                                    params: {
+                                                                      type: "boolean",
+                                                                    },
+                                                                    message:
+                                                                      "must be boolean",
+                                                                  };
+                                                                  if (
+                                                                    vErrors ===
+                                                                    null
+                                                                  )
+                                                                    vErrors = [
+                                                                      err2,
+                                                                    ];
+                                                                  else
+                                                                    vErrors.push(
+                                                                      err2,
+                                                                    );
+                                                                  errors++;
+                                                                }
+                                                                var _valid0 =
+                                                                  _errs41 ===
+                                                                  errors;
+                                                                valid6 =
+                                                                  valid6 ||
+                                                                  _valid0;
+                                                                const _errs43 =
+                                                                  errors;
+                                                                if (
+                                                                  errors ===
+                                                                  _errs43
+                                                                ) {
+                                                                  if (
+                                                                    Array.isArray(
+                                                                      data18,
+                                                                    )
+                                                                  ) {
+                                                                    const len1 =
+                                                                      data18.length;
+                                                                    for (
+                                                                      let i1 = 0;
+                                                                      i1 < len1;
+                                                                      i1++
+                                                                    ) {
+                                                                      const _errs45 =
+                                                                        errors;
+                                                                      if (
+                                                                        typeof data18[
+                                                                          i1
+                                                                        ] !==
+                                                                        "string"
+                                                                      ) {
+                                                                        const err3 =
+                                                                          {
+                                                                            instancePath:
+                                                                              instancePath +
+                                                                              "/provisionalProfile/metadata/" +
+                                                                              key2
+                                                                                .replace(
+                                                                                  /~/g,
+                                                                                  "~0",
+                                                                                )
+                                                                                .replace(
+                                                                                  /\//g,
+                                                                                  "~1",
+                                                                                ) +
+                                                                              "/" +
+                                                                              i1,
+                                                                            schemaPath:
+                                                                              "#/properties/provisionalProfile/properties/metadata/additionalProperties/anyOf/3/items/type",
+                                                                            keyword:
+                                                                              "type",
+                                                                            params:
+                                                                              {
+                                                                                type: "string",
+                                                                              },
+                                                                            message:
+                                                                              "must be string",
+                                                                          };
+                                                                        if (
+                                                                          vErrors ===
+                                                                          null
+                                                                        )
+                                                                          vErrors =
+                                                                            [
+                                                                              err3,
+                                                                            ];
+                                                                        else
+                                                                          vErrors.push(
+                                                                            err3,
+                                                                          );
+                                                                        errors++;
+                                                                      }
+                                                                      if (
+                                                                        !(
+                                                                          _errs45 ===
+                                                                          errors
+                                                                        )
+                                                                      )
+                                                                        break;
+                                                                    }
+                                                                  } else {
+                                                                    const err4 =
+                                                                      {
+                                                                        instancePath:
+                                                                          instancePath +
+                                                                          "/provisionalProfile/metadata/" +
+                                                                          key2
+                                                                            .replace(
+                                                                              /~/g,
+                                                                              "~0",
+                                                                            )
+                                                                            .replace(
+                                                                              /\//g,
+                                                                              "~1",
+                                                                            ),
+                                                                        schemaPath:
+                                                                          "#/properties/provisionalProfile/properties/metadata/additionalProperties/anyOf/3/type",
+                                                                        keyword:
+                                                                          "type",
+                                                                        params:
+                                                                          {
+                                                                            type: "array",
+                                                                          },
+                                                                        message:
+                                                                          "must be array",
+                                                                      };
+                                                                    if (
+                                                                      vErrors ===
+                                                                      null
+                                                                    )
+                                                                      vErrors =
+                                                                        [err4];
+                                                                    else
+                                                                      vErrors.push(
+                                                                        err4,
+                                                                      );
+                                                                    errors++;
+                                                                  }
+                                                                }
+                                                                var _valid0 =
+                                                                  _errs43 ===
+                                                                  errors;
+                                                                valid6 =
+                                                                  valid6 ||
+                                                                  _valid0;
+                                                                if (!valid6) {
+                                                                  const err5 = {
+                                                                    instancePath:
+                                                                      instancePath +
+                                                                      "/provisionalProfile/metadata/" +
+                                                                      key2
+                                                                        .replace(
+                                                                          /~/g,
+                                                                          "~0",
+                                                                        )
+                                                                        .replace(
+                                                                          /\//g,
+                                                                          "~1",
+                                                                        ),
+                                                                    schemaPath:
+                                                                      "#/properties/provisionalProfile/properties/metadata/additionalProperties/anyOf",
+                                                                    keyword:
+                                                                      "anyOf",
+                                                                    params: {},
+                                                                    message:
+                                                                      "must match a schema in anyOf",
+                                                                  };
+                                                                  if (
+                                                                    vErrors ===
+                                                                    null
+                                                                  )
+                                                                    vErrors = [
+                                                                      err5,
+                                                                    ];
+                                                                  else
+                                                                    vErrors.push(
+                                                                      err5,
+                                                                    );
+                                                                  errors++;
+                                                                  validate52.errors =
+                                                                    vErrors;
+                                                                  return false;
+                                                                } else {
+                                                                  errors =
+                                                                    _errs36;
+                                                                  if (
+                                                                    vErrors !==
+                                                                    null
+                                                                  ) {
+                                                                    if (_errs36)
+                                                                      vErrors.length =
+                                                                        _errs36;
+                                                                    else
+                                                                      vErrors =
+                                                                        null;
+                                                                  }
+                                                                }
+                                                                if (
+                                                                  !(
+                                                                    _errs35 ===
+                                                                    errors
+                                                                  )
+                                                                )
+                                                                  break;
+                                                              }
+                                                            if (
+                                                              _errs34 === errors
+                                                            ) {
+                                                              if (
+                                                                data17.provisional !==
+                                                                void 0
+                                                              ) {
+                                                                const _errs47 =
+                                                                  errors;
+                                                                if (
+                                                                  true !==
+                                                                  data17.provisional
+                                                                ) {
+                                                                  validate52.errors =
+                                                                    [
+                                                                      {
+                                                                        instancePath:
+                                                                          instancePath +
+                                                                          "/provisionalProfile/metadata/provisional",
+                                                                        schemaPath:
+                                                                          "#/properties/provisionalProfile/properties/metadata/properties/provisional/const",
+                                                                        keyword:
+                                                                          "const",
+                                                                        params:
+                                                                          {
+                                                                            allowedValue: true,
+                                                                          },
+                                                                        message:
+                                                                          "must be equal to constant",
+                                                                      },
+                                                                    ];
+                                                                  return false;
+                                                                }
+                                                                var valid8 =
+                                                                  _errs47 ===
+                                                                  errors;
+                                                              } else
+                                                                var valid8 = true;
+                                                              if (valid8) {
+                                                                if (
+                                                                  data17.geometrySource !==
+                                                                  void 0
+                                                                ) {
+                                                                  let data21 =
+                                                                    data17.geometrySource;
+                                                                  const _errs48 =
+                                                                    errors;
+                                                                  if (!(
+                                                                    data21 ===
+                                                                      "user-confirmed" ||
+                                                                    data21 ===
+                                                                      "device-info"
+                                                                  )) {
+                                                                    validate52.errors =
+                                                                      [
+                                                                        {
+                                                                          instancePath:
+                                                                            instancePath +
+                                                                            "/provisionalProfile/metadata/geometrySource",
+                                                                          schemaPath:
+                                                                            "#/properties/provisionalProfile/properties/metadata/properties/geometrySource/enum",
+                                                                          keyword:
+                                                                            "enum",
+                                                                          params:
+                                                                            {
+                                                                              allowedValues:
+                                                                                schema19
+                                                                                  .properties
+                                                                                  .provisionalProfile
+                                                                                  .properties
+                                                                                  .metadata
+                                                                                  .properties
+                                                                                  .geometrySource
+                                                                                  .enum,
+                                                                            },
+                                                                          message:
+                                                                            "must be equal to one of the allowed values",
+                                                                        },
+                                                                      ];
+                                                                    return false;
+                                                                  }
+                                                                  var valid8 =
+                                                                    _errs48 ===
+                                                                    errors;
+                                                                } else
+                                                                  var valid8 = true;
+                                                              }
+                                                            }
+                                                          }
+                                                        } else {
+                                                          validate52.errors = [
+                                                            {
+                                                              instancePath:
+                                                                instancePath +
+                                                                "/provisionalProfile/metadata",
+                                                              schemaPath:
+                                                                "#/properties/provisionalProfile/properties/metadata/type",
+                                                              keyword: "type",
+                                                              params: {
+                                                                type: "object",
+                                                              },
+                                                              message:
+                                                                "must be object",
+                                                            },
+                                                          ];
+                                                          return false;
+                                                        }
+                                                      }
+                                                      var valid4 =
+                                                        _errs32 === errors;
+                                                    } else var valid4 = true;
+                                                  }
+                                                }
+                                              }
+                                            }
+                                          }
+                                        }
+                                      }
+                                    }
                                   }
                                 } else {
                                   validate52.errors = [
                                     {
                                       instancePath:
-                                        instancePath + "/capabilities",
+                                        instancePath + "/provisionalProfile",
                                       schemaPath:
-                                        "#/properties/capabilities/type",
+                                        "#/properties/provisionalProfile/type",
                                       keyword: "type",
-                                      params: { type: "array" },
-                                      message: "must be array",
+                                      params: { type: "object" },
+                                      message: "must be object",
                                     },
                                   ];
                                   return false;
@@ -4317,125 +5261,127 @@ var require_validator_input = __commonJSMin((exports, module) => {
                               var valid1 = _errs16 === errors;
                             } else var valid1 = true;
                             if (valid1) {
-                              if (data.assessment !== void 0) {
-                                const _errs19 = errors;
-                                if (
-                                  !validate61(data.assessment, {
-                                    instancePath: instancePath + "/assessment",
-                                    parentData: data,
-                                    parentDataProperty: "assessment",
-                                    rootData,
-                                    dynamicAnchors,
-                                  })
-                                ) {
-                                  vErrors =
-                                    vErrors === null
-                                      ? validate61.errors
-                                      : vErrors.concat(validate61.errors);
-                                  errors = vErrors.length;
+                              if (data.capabilities !== void 0) {
+                                let data22 = data.capabilities;
+                                const _errs49 = errors;
+                                if (errors === _errs49) {
+                                  if (Array.isArray(data22)) {
+                                    const len2 = data22.length;
+                                    for (let i2 = 0; i2 < len2; i2++) {
+                                      const _errs51 = errors;
+                                      if (
+                                        !validate59(data22[i2], {
+                                          instancePath:
+                                            instancePath +
+                                            "/capabilities/" +
+                                            i2,
+                                          parentData: data22,
+                                          parentDataProperty: i2,
+                                          rootData,
+                                          dynamicAnchors,
+                                        })
+                                      ) {
+                                        vErrors =
+                                          vErrors === null
+                                            ? validate59.errors
+                                            : vErrors.concat(validate59.errors);
+                                        errors = vErrors.length;
+                                      }
+                                      if (!(_errs51 === errors)) break;
+                                    }
+                                  } else {
+                                    validate52.errors = [
+                                      {
+                                        instancePath:
+                                          instancePath + "/capabilities",
+                                        schemaPath:
+                                          "#/properties/capabilities/type",
+                                        keyword: "type",
+                                        params: { type: "array" },
+                                        message: "must be array",
+                                      },
+                                    ];
+                                    return false;
+                                  }
                                 }
-                                var valid1 = _errs19 === errors;
+                                var valid1 = _errs49 === errors;
                               } else var valid1 = true;
                               if (valid1) {
-                                if (data.trace !== void 0) {
-                                  let data12 = data.trace;
-                                  const _errs20 = errors;
-                                  if (errors === _errs20) {
-                                    if (Array.isArray(data12)) {
-                                      if (data12.length > 5e4) {
+                                if (data.assessment !== void 0) {
+                                  const _errs52 = errors;
+                                  if (
+                                    !validate61(data.assessment, {
+                                      instancePath:
+                                        instancePath + "/assessment",
+                                      parentData: data,
+                                      parentDataProperty: "assessment",
+                                      rootData,
+                                      dynamicAnchors,
+                                    })
+                                  ) {
+                                    vErrors =
+                                      vErrors === null
+                                        ? validate61.errors
+                                        : vErrors.concat(validate61.errors);
+                                    errors = vErrors.length;
+                                  }
+                                  var valid1 = _errs52 === errors;
+                                } else var valid1 = true;
+                                if (valid1) {
+                                  if (data.trace !== void 0) {
+                                    let data25 = data.trace;
+                                    const _errs53 = errors;
+                                    if (errors === _errs53) {
+                                      if (Array.isArray(data25)) {
+                                        if (data25.length > 5e4) {
+                                          validate52.errors = [
+                                            {
+                                              instancePath:
+                                                instancePath + "/trace",
+                                              schemaPath:
+                                                "#/properties/trace/maxItems",
+                                              keyword: "maxItems",
+                                              params: { limit: 5e4 },
+                                              message:
+                                                "must NOT have more than 50000 items",
+                                            },
+                                          ];
+                                          return false;
+                                        } else {
+                                          const len3 = data25.length;
+                                          for (let i3 = 0; i3 < len3; i3++) {
+                                            let data26 = data25[i3];
+                                            const _errs55 = errors;
+                                            if (!(
+                                              data26 &&
+                                              typeof data26 == "object" &&
+                                              !Array.isArray(data26)
+                                            )) {
+                                              validate52.errors = [
+                                                {
+                                                  instancePath:
+                                                    instancePath +
+                                                    "/trace/" +
+                                                    i3,
+                                                  schemaPath:
+                                                    "#/properties/trace/items/type",
+                                                  keyword: "type",
+                                                  params: { type: "object" },
+                                                  message: "must be object",
+                                                },
+                                              ];
+                                              return false;
+                                            }
+                                            if (!(_errs55 === errors)) break;
+                                          }
+                                        }
+                                      } else {
                                         validate52.errors = [
                                           {
                                             instancePath:
                                               instancePath + "/trace",
                                             schemaPath:
-                                              "#/properties/trace/maxItems",
-                                            keyword: "maxItems",
-                                            params: { limit: 5e4 },
-                                            message:
-                                              "must NOT have more than 50000 items",
-                                          },
-                                        ];
-                                        return false;
-                                      } else {
-                                        const len2 = data12.length;
-                                        for (let i2 = 0; i2 < len2; i2++) {
-                                          let data13 = data12[i2];
-                                          const _errs22 = errors;
-                                          if (!(
-                                            data13 &&
-                                            typeof data13 == "object" &&
-                                            !Array.isArray(data13)
-                                          )) {
-                                            validate52.errors = [
-                                              {
-                                                instancePath:
-                                                  instancePath + "/trace/" + i2,
-                                                schemaPath:
-                                                  "#/properties/trace/items/type",
-                                                keyword: "type",
-                                                params: { type: "object" },
-                                                message: "must be object",
-                                              },
-                                            ];
-                                            return false;
-                                          }
-                                          if (!(_errs22 === errors)) break;
-                                        }
-                                      }
-                                    } else {
-                                      validate52.errors = [
-                                        {
-                                          instancePath: instancePath + "/trace",
-                                          schemaPath: "#/properties/trace/type",
-                                          keyword: "type",
-                                          params: { type: "array" },
-                                          message: "must be array",
-                                        },
-                                      ];
-                                      return false;
-                                    }
-                                  }
-                                  var valid1 = _errs20 === errors;
-                                } else var valid1 = true;
-                                if (valid1) {
-                                  if (data.observations !== void 0) {
-                                    let data14 = data.observations;
-                                    const _errs24 = errors;
-                                    if (errors === _errs24) {
-                                      if (Array.isArray(data14)) {
-                                        const len3 = data14.length;
-                                        for (let i3 = 0; i3 < len3; i3++) {
-                                          let data15 = data14[i3];
-                                          const _errs26 = errors;
-                                          if (!(
-                                            data15 &&
-                                            typeof data15 == "object" &&
-                                            !Array.isArray(data15)
-                                          )) {
-                                            validate52.errors = [
-                                              {
-                                                instancePath:
-                                                  instancePath +
-                                                  "/observations/" +
-                                                  i3,
-                                                schemaPath:
-                                                  "#/properties/observations/items/type",
-                                                keyword: "type",
-                                                params: { type: "object" },
-                                                message: "must be object",
-                                              },
-                                            ];
-                                            return false;
-                                          }
-                                          if (!(_errs26 === errors)) break;
-                                        }
-                                      } else {
-                                        validate52.errors = [
-                                          {
-                                            instancePath:
-                                              instancePath + "/observations",
-                                            schemaPath:
-                                              "#/properties/observations/type",
+                                              "#/properties/trace/type",
                                             keyword: "type",
                                             params: { type: "array" },
                                             message: "must be array",
@@ -4444,157 +5390,151 @@ var require_validator_input = __commonJSMin((exports, module) => {
                                         return false;
                                       }
                                     }
-                                    var valid1 = _errs24 === errors;
+                                    var valid1 = _errs53 === errors;
                                   } else var valid1 = true;
                                   if (valid1) {
-                                    if (data.advertisementEvidence !== void 0) {
-                                      let data16 = data.advertisementEvidence;
-                                      const _errs28 = errors;
-                                      if (
-                                        !(
-                                          data16 &&
-                                          typeof data16 == "object" &&
-                                          !Array.isArray(data16)
-                                        ) &&
-                                        data16 !== null
-                                      ) {
-                                        validate52.errors = [
-                                          {
-                                            instancePath:
-                                              instancePath +
-                                              "/advertisementEvidence",
-                                            schemaPath:
-                                              "#/properties/advertisementEvidence/type",
-                                            keyword: "type",
-                                            params: {
-                                              type: schema19.properties
-                                                .advertisementEvidence.type,
+                                    if (data.observations !== void 0) {
+                                      let data27 = data.observations;
+                                      const _errs57 = errors;
+                                      if (errors === _errs57) {
+                                        if (Array.isArray(data27)) {
+                                          const len4 = data27.length;
+                                          for (let i4 = 0; i4 < len4; i4++) {
+                                            let data28 = data27[i4];
+                                            const _errs59 = errors;
+                                            if (!(
+                                              data28 &&
+                                              typeof data28 == "object" &&
+                                              !Array.isArray(data28)
+                                            )) {
+                                              validate52.errors = [
+                                                {
+                                                  instancePath:
+                                                    instancePath +
+                                                    "/observations/" +
+                                                    i4,
+                                                  schemaPath:
+                                                    "#/properties/observations/items/type",
+                                                  keyword: "type",
+                                                  params: { type: "object" },
+                                                  message: "must be object",
+                                                },
+                                              ];
+                                              return false;
+                                            }
+                                            if (!(_errs59 === errors)) break;
+                                          }
+                                        } else {
+                                          validate52.errors = [
+                                            {
+                                              instancePath:
+                                                instancePath + "/observations",
+                                              schemaPath:
+                                                "#/properties/observations/type",
+                                              keyword: "type",
+                                              params: { type: "array" },
+                                              message: "must be array",
                                             },
-                                            message: "must be object,null",
-                                          },
-                                        ];
-                                        return false;
+                                          ];
+                                          return false;
+                                        }
                                       }
-                                      var valid1 = _errs28 === errors;
+                                      var valid1 = _errs57 === errors;
                                     } else var valid1 = true;
                                     if (valid1) {
-                                      if (data.transactions !== void 0) {
-                                        let data17 = data.transactions;
-                                        const _errs30 = errors;
-                                        if (errors === _errs30) {
-                                          if (Array.isArray(data17)) {
-                                            if (data17.length > 1e4) {
+                                      if (
+                                        data.advertisementEvidence !== void 0
+                                      ) {
+                                        let data29 = data.advertisementEvidence;
+                                        const _errs61 = errors;
+                                        if (
+                                          !(
+                                            data29 &&
+                                            typeof data29 == "object" &&
+                                            !Array.isArray(data29)
+                                          ) &&
+                                          data29 !== null
+                                        ) {
+                                          validate52.errors = [
+                                            {
+                                              instancePath:
+                                                instancePath +
+                                                "/advertisementEvidence",
+                                              schemaPath:
+                                                "#/properties/advertisementEvidence/type",
+                                              keyword: "type",
+                                              params: {
+                                                type: schema19.properties
+                                                  .advertisementEvidence.type,
+                                              },
+                                              message: "must be object,null",
+                                            },
+                                          ];
+                                          return false;
+                                        }
+                                        var valid1 = _errs61 === errors;
+                                      } else var valid1 = true;
+                                      if (valid1) {
+                                        if (data.transactions !== void 0) {
+                                          let data30 = data.transactions;
+                                          const _errs63 = errors;
+                                          if (errors === _errs63) {
+                                            if (Array.isArray(data30)) {
+                                              if (data30.length > 1e4) {
+                                                validate52.errors = [
+                                                  {
+                                                    instancePath:
+                                                      instancePath +
+                                                      "/transactions",
+                                                    schemaPath:
+                                                      "#/properties/transactions/maxItems",
+                                                    keyword: "maxItems",
+                                                    params: { limit: 1e4 },
+                                                    message:
+                                                      "must NOT have more than 10000 items",
+                                                  },
+                                                ];
+                                                return false;
+                                              } else {
+                                                const len5 = data30.length;
+                                                for (
+                                                  let i5 = 0;
+                                                  i5 < len5;
+                                                  i5++
+                                                ) {
+                                                  const _errs65 = errors;
+                                                  if (
+                                                    !validate63(data30[i5], {
+                                                      instancePath:
+                                                        instancePath +
+                                                        "/transactions/" +
+                                                        i5,
+                                                      parentData: data30,
+                                                      parentDataProperty: i5,
+                                                      rootData,
+                                                      dynamicAnchors,
+                                                    })
+                                                  ) {
+                                                    vErrors =
+                                                      vErrors === null
+                                                        ? validate63.errors
+                                                        : vErrors.concat(
+                                                            validate63.errors,
+                                                          );
+                                                    errors = vErrors.length;
+                                                  }
+                                                  if (!(_errs65 === errors))
+                                                    break;
+                                                }
+                                              }
+                                            } else {
                                               validate52.errors = [
                                                 {
                                                   instancePath:
                                                     instancePath +
                                                     "/transactions",
                                                   schemaPath:
-                                                    "#/properties/transactions/maxItems",
-                                                  keyword: "maxItems",
-                                                  params: { limit: 1e4 },
-                                                  message:
-                                                    "must NOT have more than 10000 items",
-                                                },
-                                              ];
-                                              return false;
-                                            } else {
-                                              const len4 = data17.length;
-                                              for (
-                                                let i4 = 0;
-                                                i4 < len4;
-                                                i4++
-                                              ) {
-                                                const _errs32 = errors;
-                                                if (
-                                                  !validate63(data17[i4], {
-                                                    instancePath:
-                                                      instancePath +
-                                                      "/transactions/" +
-                                                      i4,
-                                                    parentData: data17,
-                                                    parentDataProperty: i4,
-                                                    rootData,
-                                                    dynamicAnchors,
-                                                  })
-                                                ) {
-                                                  vErrors =
-                                                    vErrors === null
-                                                      ? validate63.errors
-                                                      : vErrors.concat(
-                                                          validate63.errors,
-                                                        );
-                                                  errors = vErrors.length;
-                                                }
-                                                if (!(_errs32 === errors))
-                                                  break;
-                                              }
-                                            }
-                                          } else {
-                                            validate52.errors = [
-                                              {
-                                                instancePath:
-                                                  instancePath +
-                                                  "/transactions",
-                                                schemaPath:
-                                                  "#/properties/transactions/type",
-                                                keyword: "type",
-                                                params: { type: "array" },
-                                                message: "must be array",
-                                              },
-                                            ];
-                                            return false;
-                                          }
-                                        }
-                                        var valid1 = _errs30 === errors;
-                                      } else var valid1 = true;
-                                      if (valid1) {
-                                        if (data.diagnosticRuns !== void 0) {
-                                          let data19 = data.diagnosticRuns;
-                                          const _errs33 = errors;
-                                          if (errors === _errs33) {
-                                            if (Array.isArray(data19)) {
-                                              const len5 = data19.length;
-                                              for (
-                                                let i5 = 0;
-                                                i5 < len5;
-                                                i5++
-                                              ) {
-                                                let data20 = data19[i5];
-                                                const _errs35 = errors;
-                                                if (!(
-                                                  data20 &&
-                                                  typeof data20 == "object" &&
-                                                  !Array.isArray(data20)
-                                                )) {
-                                                  validate52.errors = [
-                                                    {
-                                                      instancePath:
-                                                        instancePath +
-                                                        "/diagnosticRuns/" +
-                                                        i5,
-                                                      schemaPath:
-                                                        "#/properties/diagnosticRuns/items/type",
-                                                      keyword: "type",
-                                                      params: {
-                                                        type: "object",
-                                                      },
-                                                      message: "must be object",
-                                                    },
-                                                  ];
-                                                  return false;
-                                                }
-                                                if (!(_errs35 === errors))
-                                                  break;
-                                              }
-                                            } else {
-                                              validate52.errors = [
-                                                {
-                                                  instancePath:
-                                                    instancePath +
-                                                    "/diagnosticRuns",
-                                                  schemaPath:
-                                                    "#/properties/diagnosticRuns/type",
+                                                    "#/properties/transactions/type",
                                                   keyword: "type",
                                                   params: { type: "array" },
                                                   message: "must be array",
@@ -4603,416 +5543,46 @@ var require_validator_input = __commonJSMin((exports, module) => {
                                               return false;
                                             }
                                           }
-                                          var valid1 = _errs33 === errors;
+                                          var valid1 = _errs63 === errors;
                                         } else var valid1 = true;
                                         if (valid1) {
-                                          if (
-                                            data.contentCompilations !== void 0
-                                          ) {
-                                            let data21 =
-                                              data.contentCompilations;
-                                            const _errs37 = errors;
-                                            if (errors === _errs37) {
-                                              if (Array.isArray(data21)) {
-                                                const len6 = data21.length;
+                                          if (data.diagnosticRuns !== void 0) {
+                                            let data32 = data.diagnosticRuns;
+                                            const _errs66 = errors;
+                                            if (errors === _errs66) {
+                                              if (Array.isArray(data32)) {
+                                                const len6 = data32.length;
                                                 for (
                                                   let i6 = 0;
                                                   i6 < len6;
                                                   i6++
                                                 ) {
-                                                  let data22 = data21[i6];
-                                                  const _errs39 = errors;
-                                                  if (errors === _errs39) {
-                                                    if (
-                                                      data22 &&
-                                                      typeof data22 ==
-                                                        "object" &&
-                                                      !Array.isArray(data22)
-                                                    ) {
-                                                      if (
-                                                        data22.originalContent !==
-                                                        void 0
-                                                      ) {
-                                                        const _errs41 = errors;
-                                                        if (
-                                                          "gif" !==
-                                                          data22.originalContent
-                                                        ) {
-                                                          validate52.errors = [
-                                                            {
-                                                              instancePath:
-                                                                instancePath +
-                                                                "/contentCompilations/" +
-                                                                i6 +
-                                                                "/originalContent",
-                                                              schemaPath:
-                                                                "#/properties/contentCompilations/items/properties/originalContent/const",
-                                                              keyword: "const",
-                                                              params: {
-                                                                allowedValue:
-                                                                  "gif",
-                                                              },
-                                                              message:
-                                                                "must be equal to constant",
-                                                            },
-                                                          ];
-                                                          return false;
-                                                        }
-                                                        var valid9 =
-                                                          _errs41 === errors;
-                                                      } else var valid9 = true;
-                                                      if (valid9) {
-                                                        if (
-                                                          data22.deliveryBackend !==
-                                                          void 0
-                                                        ) {
-                                                          const _errs42 =
-                                                            errors;
-                                                          if (
-                                                            "local-gif-raster-animation" !==
-                                                            data22.deliveryBackend
-                                                          ) {
-                                                            validate52.errors =
-                                                              [
-                                                                {
-                                                                  instancePath:
-                                                                    instancePath +
-                                                                    "/contentCompilations/" +
-                                                                    i6 +
-                                                                    "/deliveryBackend",
-                                                                  schemaPath:
-                                                                    "#/properties/contentCompilations/items/properties/deliveryBackend/const",
-                                                                  keyword:
-                                                                    "const",
-                                                                  params: {
-                                                                    allowedValue:
-                                                                      "local-gif-raster-animation",
-                                                                  },
-                                                                  message:
-                                                                    "must be equal to constant",
-                                                                },
-                                                              ];
-                                                            return false;
-                                                          }
-                                                          var valid9 =
-                                                            _errs42 === errors;
-                                                        } else
-                                                          var valid9 = true;
-                                                        if (valid9) {
-                                                          if (
-                                                            data22.totalDurationMs !==
-                                                            void 0
-                                                          ) {
-                                                            let data25 =
-                                                              data22.totalDurationMs;
-                                                            const _errs43 =
-                                                              errors;
-                                                            if (!(
-                                                              typeof data25 ==
-                                                                "number" &&
-                                                              !(data25 % 1) &&
-                                                              !isNaN(data25) &&
-                                                              isFinite(data25)
-                                                            )) {
-                                                              validate52.errors =
-                                                                [
-                                                                  {
-                                                                    instancePath:
-                                                                      instancePath +
-                                                                      "/contentCompilations/" +
-                                                                      i6 +
-                                                                      "/totalDurationMs",
-                                                                    schemaPath:
-                                                                      "#/properties/contentCompilations/items/properties/totalDurationMs/type",
-                                                                    keyword:
-                                                                      "type",
-                                                                    params: {
-                                                                      type: "integer",
-                                                                    },
-                                                                    message:
-                                                                      "must be integer",
-                                                                  },
-                                                                ];
-                                                              return false;
-                                                            }
-                                                            if (
-                                                              errors === _errs43
-                                                            ) {
-                                                              if (
-                                                                typeof data25 ==
-                                                                  "number" &&
-                                                                isFinite(data25)
-                                                              ) {
-                                                                if (
-                                                                  data25 < 1 ||
-                                                                  isNaN(data25)
-                                                                ) {
-                                                                  validate52.errors =
-                                                                    [
-                                                                      {
-                                                                        instancePath:
-                                                                          instancePath +
-                                                                          "/contentCompilations/" +
-                                                                          i6 +
-                                                                          "/totalDurationMs",
-                                                                        schemaPath:
-                                                                          "#/properties/contentCompilations/items/properties/totalDurationMs/minimum",
-                                                                        keyword:
-                                                                          "minimum",
-                                                                        params:
-                                                                          {
-                                                                            comparison:
-                                                                              ">=",
-                                                                            limit: 1,
-                                                                          },
-                                                                        message:
-                                                                          "must be >= 1",
-                                                                      },
-                                                                    ];
-                                                                  return false;
-                                                                }
-                                                              }
-                                                            }
-                                                            var valid9 =
-                                                              _errs43 ===
-                                                              errors;
-                                                          } else
-                                                            var valid9 = true;
-                                                          if (valid9) {
-                                                            if (
-                                                              data22.sourceRepetition !==
-                                                              void 0
-                                                            ) {
-                                                              let data26 =
-                                                                data22.sourceRepetition;
-                                                              const _errs45 =
-                                                                errors;
-                                                              const _errs46 =
-                                                                errors;
-                                                              let valid10 = false;
-                                                              const _errs47 =
-                                                                errors;
-                                                              if (!(
-                                                                typeof data26 ==
-                                                                  "number" &&
-                                                                !(data26 % 1) &&
-                                                                !isNaN(
-                                                                  data26,
-                                                                ) &&
-                                                                isFinite(data26)
-                                                              )) {
-                                                                const err0 = {
-                                                                  instancePath:
-                                                                    instancePath +
-                                                                    "/contentCompilations/" +
-                                                                    i6 +
-                                                                    "/sourceRepetition",
-                                                                  schemaPath:
-                                                                    "#/properties/contentCompilations/items/properties/sourceRepetition/anyOf/0/type",
-                                                                  keyword:
-                                                                    "type",
-                                                                  params: {
-                                                                    type: "integer",
-                                                                  },
-                                                                  message:
-                                                                    "must be integer",
-                                                                };
-                                                                if (
-                                                                  vErrors ===
-                                                                  null
-                                                                )
-                                                                  vErrors = [
-                                                                    err0,
-                                                                  ];
-                                                                else
-                                                                  vErrors.push(
-                                                                    err0,
-                                                                  );
-                                                                errors++;
-                                                              }
-                                                              if (
-                                                                errors ===
-                                                                _errs47
-                                                              ) {
-                                                                if (
-                                                                  typeof data26 ==
-                                                                    "number" &&
-                                                                  isFinite(
-                                                                    data26,
-                                                                  )
-                                                                ) {
-                                                                  if (
-                                                                    data26 <
-                                                                      0 ||
-                                                                    isNaN(
-                                                                      data26,
-                                                                    )
-                                                                  ) {
-                                                                    const err1 =
-                                                                      {
-                                                                        instancePath:
-                                                                          instancePath +
-                                                                          "/contentCompilations/" +
-                                                                          i6 +
-                                                                          "/sourceRepetition",
-                                                                        schemaPath:
-                                                                          "#/properties/contentCompilations/items/properties/sourceRepetition/anyOf/0/minimum",
-                                                                        keyword:
-                                                                          "minimum",
-                                                                        params:
-                                                                          {
-                                                                            comparison:
-                                                                              ">=",
-                                                                            limit: 0,
-                                                                          },
-                                                                        message:
-                                                                          "must be >= 0",
-                                                                      };
-                                                                    if (
-                                                                      vErrors ===
-                                                                      null
-                                                                    )
-                                                                      vErrors =
-                                                                        [err1];
-                                                                    else
-                                                                      vErrors.push(
-                                                                        err1,
-                                                                      );
-                                                                    errors++;
-                                                                  }
-                                                                }
-                                                              }
-                                                              var _valid0 =
-                                                                _errs47 ===
-                                                                errors;
-                                                              valid10 =
-                                                                valid10 ||
-                                                                _valid0;
-                                                              const _errs49 =
-                                                                errors;
-                                                              if (!(
-                                                                data26 ===
-                                                                  "infinite" ||
-                                                                data26 ===
-                                                                  "unknown"
-                                                              )) {
-                                                                const err2 = {
-                                                                  instancePath:
-                                                                    instancePath +
-                                                                    "/contentCompilations/" +
-                                                                    i6 +
-                                                                    "/sourceRepetition",
-                                                                  schemaPath:
-                                                                    "#/properties/contentCompilations/items/properties/sourceRepetition/anyOf/1/enum",
-                                                                  keyword:
-                                                                    "enum",
-                                                                  params: {
-                                                                    allowedValues:
-                                                                      schema19
-                                                                        .properties
-                                                                        .contentCompilations
-                                                                        .items
-                                                                        .properties
-                                                                        .sourceRepetition
-                                                                        .anyOf[1]
-                                                                        .enum,
-                                                                  },
-                                                                  message:
-                                                                    "must be equal to one of the allowed values",
-                                                                };
-                                                                if (
-                                                                  vErrors ===
-                                                                  null
-                                                                )
-                                                                  vErrors = [
-                                                                    err2,
-                                                                  ];
-                                                                else
-                                                                  vErrors.push(
-                                                                    err2,
-                                                                  );
-                                                                errors++;
-                                                              }
-                                                              var _valid0 =
-                                                                _errs49 ===
-                                                                errors;
-                                                              valid10 =
-                                                                valid10 ||
-                                                                _valid0;
-                                                              if (!valid10) {
-                                                                const err3 = {
-                                                                  instancePath:
-                                                                    instancePath +
-                                                                    "/contentCompilations/" +
-                                                                    i6 +
-                                                                    "/sourceRepetition",
-                                                                  schemaPath:
-                                                                    "#/properties/contentCompilations/items/properties/sourceRepetition/anyOf",
-                                                                  keyword:
-                                                                    "anyOf",
-                                                                  params: {},
-                                                                  message:
-                                                                    "must match a schema in anyOf",
-                                                                };
-                                                                if (
-                                                                  vErrors ===
-                                                                  null
-                                                                )
-                                                                  vErrors = [
-                                                                    err3,
-                                                                  ];
-                                                                else
-                                                                  vErrors.push(
-                                                                    err3,
-                                                                  );
-                                                                errors++;
-                                                                validate52.errors =
-                                                                  vErrors;
-                                                                return false;
-                                                              } else {
-                                                                errors =
-                                                                  _errs46;
-                                                                if (
-                                                                  vErrors !==
-                                                                  null
-                                                                ) {
-                                                                  if (_errs46)
-                                                                    vErrors.length =
-                                                                      _errs46;
-                                                                  else
-                                                                    vErrors =
-                                                                      null;
-                                                                }
-                                                              }
-                                                              var valid9 =
-                                                                _errs45 ===
-                                                                errors;
-                                                            } else
-                                                              var valid9 = true;
-                                                          }
-                                                        }
-                                                      }
-                                                    } else {
-                                                      validate52.errors = [
-                                                        {
-                                                          instancePath:
-                                                            instancePath +
-                                                            "/contentCompilations/" +
-                                                            i6,
-                                                          schemaPath:
-                                                            "#/properties/contentCompilations/items/type",
-                                                          keyword: "type",
-                                                          params: {
-                                                            type: "object",
-                                                          },
-                                                          message:
-                                                            "must be object",
+                                                  let data33 = data32[i6];
+                                                  const _errs68 = errors;
+                                                  if (!(
+                                                    data33 &&
+                                                    typeof data33 == "object" &&
+                                                    !Array.isArray(data33)
+                                                  )) {
+                                                    validate52.errors = [
+                                                      {
+                                                        instancePath:
+                                                          instancePath +
+                                                          "/diagnosticRuns/" +
+                                                          i6,
+                                                        schemaPath:
+                                                          "#/properties/diagnosticRuns/items/type",
+                                                        keyword: "type",
+                                                        params: {
+                                                          type: "object",
                                                         },
-                                                      ];
-                                                      return false;
-                                                    }
+                                                        message:
+                                                          "must be object",
+                                                      },
+                                                    ];
+                                                    return false;
                                                   }
-                                                  if (!(_errs39 === errors))
+                                                  if (!(_errs68 === errors))
                                                     break;
                                                 }
                                               } else {
@@ -5020,9 +5590,9 @@ var require_validator_input = __commonJSMin((exports, module) => {
                                                   {
                                                     instancePath:
                                                       instancePath +
-                                                      "/contentCompilations",
+                                                      "/diagnosticRuns",
                                                     schemaPath:
-                                                      "#/properties/contentCompilations/type",
+                                                      "#/properties/diagnosticRuns/type",
                                                     keyword: "type",
                                                     params: { type: "array" },
                                                     message: "must be array",
@@ -5031,50 +5601,436 @@ var require_validator_input = __commonJSMin((exports, module) => {
                                                 return false;
                                               }
                                             }
-                                            var valid1 = _errs37 === errors;
+                                            var valid1 = _errs66 === errors;
                                           } else var valid1 = true;
                                           if (valid1) {
                                             if (
-                                              data.importedEvidence !== void 0
+                                              data.contentCompilations !==
+                                              void 0
                                             ) {
-                                              let data27 =
-                                                data.importedEvidence;
-                                              const _errs50 = errors;
-                                              if (errors === _errs50) {
-                                                if (Array.isArray(data27)) {
-                                                  const len7 = data27.length;
+                                              let data34 =
+                                                data.contentCompilations;
+                                              const _errs70 = errors;
+                                              if (errors === _errs70) {
+                                                if (Array.isArray(data34)) {
+                                                  const len7 = data34.length;
                                                   for (
                                                     let i7 = 0;
                                                     i7 < len7;
                                                     i7++
                                                   ) {
-                                                    let data28 = data27[i7];
-                                                    const _errs52 = errors;
-                                                    if (!(
-                                                      data28 &&
-                                                      typeof data28 ==
-                                                        "object" &&
-                                                      !Array.isArray(data28)
-                                                    )) {
-                                                      validate52.errors = [
-                                                        {
-                                                          instancePath:
-                                                            instancePath +
-                                                            "/importedEvidence/" +
-                                                            i7,
-                                                          schemaPath:
-                                                            "#/properties/importedEvidence/items/type",
-                                                          keyword: "type",
-                                                          params: {
-                                                            type: "object",
+                                                    let data35 = data34[i7];
+                                                    const _errs72 = errors;
+                                                    if (errors === _errs72) {
+                                                      if (
+                                                        data35 &&
+                                                        typeof data35 ==
+                                                          "object" &&
+                                                        !Array.isArray(data35)
+                                                      ) {
+                                                        if (
+                                                          data35.originalContent !==
+                                                          void 0
+                                                        ) {
+                                                          const _errs74 =
+                                                            errors;
+                                                          if (
+                                                            "gif" !==
+                                                            data35.originalContent
+                                                          ) {
+                                                            validate52.errors =
+                                                              [
+                                                                {
+                                                                  instancePath:
+                                                                    instancePath +
+                                                                    "/contentCompilations/" +
+                                                                    i7 +
+                                                                    "/originalContent",
+                                                                  schemaPath:
+                                                                    "#/properties/contentCompilations/items/properties/originalContent/const",
+                                                                  keyword:
+                                                                    "const",
+                                                                  params: {
+                                                                    allowedValue:
+                                                                      "gif",
+                                                                  },
+                                                                  message:
+                                                                    "must be equal to constant",
+                                                                },
+                                                              ];
+                                                            return false;
+                                                          }
+                                                          var valid15 =
+                                                            _errs74 === errors;
+                                                        } else
+                                                          var valid15 = true;
+                                                        if (valid15) {
+                                                          if (
+                                                            data35.deliveryBackend !==
+                                                            void 0
+                                                          ) {
+                                                            const _errs75 =
+                                                              errors;
+                                                            if (
+                                                              "local-gif-raster-animation" !==
+                                                              data35.deliveryBackend
+                                                            ) {
+                                                              validate52.errors =
+                                                                [
+                                                                  {
+                                                                    instancePath:
+                                                                      instancePath +
+                                                                      "/contentCompilations/" +
+                                                                      i7 +
+                                                                      "/deliveryBackend",
+                                                                    schemaPath:
+                                                                      "#/properties/contentCompilations/items/properties/deliveryBackend/const",
+                                                                    keyword:
+                                                                      "const",
+                                                                    params: {
+                                                                      allowedValue:
+                                                                        "local-gif-raster-animation",
+                                                                    },
+                                                                    message:
+                                                                      "must be equal to constant",
+                                                                  },
+                                                                ];
+                                                              return false;
+                                                            }
+                                                            var valid15 =
+                                                              _errs75 ===
+                                                              errors;
+                                                          } else
+                                                            var valid15 = true;
+                                                          if (valid15) {
+                                                            if (
+                                                              data35.totalDurationMs !==
+                                                              void 0
+                                                            ) {
+                                                              let data38 =
+                                                                data35.totalDurationMs;
+                                                              const _errs76 =
+                                                                errors;
+                                                              if (!(
+                                                                typeof data38 ==
+                                                                  "number" &&
+                                                                !(data38 % 1) &&
+                                                                !isNaN(
+                                                                  data38,
+                                                                ) &&
+                                                                isFinite(data38)
+                                                              )) {
+                                                                validate52.errors =
+                                                                  [
+                                                                    {
+                                                                      instancePath:
+                                                                        instancePath +
+                                                                        "/contentCompilations/" +
+                                                                        i7 +
+                                                                        "/totalDurationMs",
+                                                                      schemaPath:
+                                                                        "#/properties/contentCompilations/items/properties/totalDurationMs/type",
+                                                                      keyword:
+                                                                        "type",
+                                                                      params: {
+                                                                        type: "integer",
+                                                                      },
+                                                                      message:
+                                                                        "must be integer",
+                                                                    },
+                                                                  ];
+                                                                return false;
+                                                              }
+                                                              if (
+                                                                errors ===
+                                                                _errs76
+                                                              ) {
+                                                                if (
+                                                                  typeof data38 ==
+                                                                    "number" &&
+                                                                  isFinite(
+                                                                    data38,
+                                                                  )
+                                                                ) {
+                                                                  if (
+                                                                    data38 <
+                                                                      1 ||
+                                                                    isNaN(
+                                                                      data38,
+                                                                    )
+                                                                  ) {
+                                                                    validate52.errors =
+                                                                      [
+                                                                        {
+                                                                          instancePath:
+                                                                            instancePath +
+                                                                            "/contentCompilations/" +
+                                                                            i7 +
+                                                                            "/totalDurationMs",
+                                                                          schemaPath:
+                                                                            "#/properties/contentCompilations/items/properties/totalDurationMs/minimum",
+                                                                          keyword:
+                                                                            "minimum",
+                                                                          params:
+                                                                            {
+                                                                              comparison:
+                                                                                ">=",
+                                                                              limit: 1,
+                                                                            },
+                                                                          message:
+                                                                            "must be >= 1",
+                                                                        },
+                                                                      ];
+                                                                    return false;
+                                                                  }
+                                                                }
+                                                              }
+                                                              var valid15 =
+                                                                _errs76 ===
+                                                                errors;
+                                                            } else
+                                                              var valid15 = true;
+                                                            if (valid15) {
+                                                              if (
+                                                                data35.sourceRepetition !==
+                                                                void 0
+                                                              ) {
+                                                                let data39 =
+                                                                  data35.sourceRepetition;
+                                                                const _errs78 =
+                                                                  errors;
+                                                                const _errs79 =
+                                                                  errors;
+                                                                let valid16 = false;
+                                                                const _errs80 =
+                                                                  errors;
+                                                                if (!(
+                                                                  typeof data39 ==
+                                                                    "number" &&
+                                                                  !(
+                                                                    data39 % 1
+                                                                  ) &&
+                                                                  !isNaN(
+                                                                    data39,
+                                                                  ) &&
+                                                                  isFinite(
+                                                                    data39,
+                                                                  )
+                                                                )) {
+                                                                  const err6 = {
+                                                                    instancePath:
+                                                                      instancePath +
+                                                                      "/contentCompilations/" +
+                                                                      i7 +
+                                                                      "/sourceRepetition",
+                                                                    schemaPath:
+                                                                      "#/properties/contentCompilations/items/properties/sourceRepetition/anyOf/0/type",
+                                                                    keyword:
+                                                                      "type",
+                                                                    params: {
+                                                                      type: "integer",
+                                                                    },
+                                                                    message:
+                                                                      "must be integer",
+                                                                  };
+                                                                  if (
+                                                                    vErrors ===
+                                                                    null
+                                                                  )
+                                                                    vErrors = [
+                                                                      err6,
+                                                                    ];
+                                                                  else
+                                                                    vErrors.push(
+                                                                      err6,
+                                                                    );
+                                                                  errors++;
+                                                                }
+                                                                if (
+                                                                  errors ===
+                                                                  _errs80
+                                                                ) {
+                                                                  if (
+                                                                    typeof data39 ==
+                                                                      "number" &&
+                                                                    isFinite(
+                                                                      data39,
+                                                                    )
+                                                                  ) {
+                                                                    if (
+                                                                      data39 <
+                                                                        0 ||
+                                                                      isNaN(
+                                                                        data39,
+                                                                      )
+                                                                    ) {
+                                                                      const err7 =
+                                                                        {
+                                                                          instancePath:
+                                                                            instancePath +
+                                                                            "/contentCompilations/" +
+                                                                            i7 +
+                                                                            "/sourceRepetition",
+                                                                          schemaPath:
+                                                                            "#/properties/contentCompilations/items/properties/sourceRepetition/anyOf/0/minimum",
+                                                                          keyword:
+                                                                            "minimum",
+                                                                          params:
+                                                                            {
+                                                                              comparison:
+                                                                                ">=",
+                                                                              limit: 0,
+                                                                            },
+                                                                          message:
+                                                                            "must be >= 0",
+                                                                        };
+                                                                      if (
+                                                                        vErrors ===
+                                                                        null
+                                                                      )
+                                                                        vErrors =
+                                                                          [
+                                                                            err7,
+                                                                          ];
+                                                                      else
+                                                                        vErrors.push(
+                                                                          err7,
+                                                                        );
+                                                                      errors++;
+                                                                    }
+                                                                  }
+                                                                }
+                                                                var _valid1 =
+                                                                  _errs80 ===
+                                                                  errors;
+                                                                valid16 =
+                                                                  valid16 ||
+                                                                  _valid1;
+                                                                const _errs82 =
+                                                                  errors;
+                                                                if (!(
+                                                                  data39 ===
+                                                                    "infinite" ||
+                                                                  data39 ===
+                                                                    "unknown"
+                                                                )) {
+                                                                  const err8 = {
+                                                                    instancePath:
+                                                                      instancePath +
+                                                                      "/contentCompilations/" +
+                                                                      i7 +
+                                                                      "/sourceRepetition",
+                                                                    schemaPath:
+                                                                      "#/properties/contentCompilations/items/properties/sourceRepetition/anyOf/1/enum",
+                                                                    keyword:
+                                                                      "enum",
+                                                                    params: {
+                                                                      allowedValues:
+                                                                        schema19
+                                                                          .properties
+                                                                          .contentCompilations
+                                                                          .items
+                                                                          .properties
+                                                                          .sourceRepetition
+                                                                          .anyOf[1]
+                                                                          .enum,
+                                                                    },
+                                                                    message:
+                                                                      "must be equal to one of the allowed values",
+                                                                  };
+                                                                  if (
+                                                                    vErrors ===
+                                                                    null
+                                                                  )
+                                                                    vErrors = [
+                                                                      err8,
+                                                                    ];
+                                                                  else
+                                                                    vErrors.push(
+                                                                      err8,
+                                                                    );
+                                                                  errors++;
+                                                                }
+                                                                var _valid1 =
+                                                                  _errs82 ===
+                                                                  errors;
+                                                                valid16 =
+                                                                  valid16 ||
+                                                                  _valid1;
+                                                                if (!valid16) {
+                                                                  const err9 = {
+                                                                    instancePath:
+                                                                      instancePath +
+                                                                      "/contentCompilations/" +
+                                                                      i7 +
+                                                                      "/sourceRepetition",
+                                                                    schemaPath:
+                                                                      "#/properties/contentCompilations/items/properties/sourceRepetition/anyOf",
+                                                                    keyword:
+                                                                      "anyOf",
+                                                                    params: {},
+                                                                    message:
+                                                                      "must match a schema in anyOf",
+                                                                  };
+                                                                  if (
+                                                                    vErrors ===
+                                                                    null
+                                                                  )
+                                                                    vErrors = [
+                                                                      err9,
+                                                                    ];
+                                                                  else
+                                                                    vErrors.push(
+                                                                      err9,
+                                                                    );
+                                                                  errors++;
+                                                                  validate52.errors =
+                                                                    vErrors;
+                                                                  return false;
+                                                                } else {
+                                                                  errors =
+                                                                    _errs79;
+                                                                  if (
+                                                                    vErrors !==
+                                                                    null
+                                                                  ) {
+                                                                    if (_errs79)
+                                                                      vErrors.length =
+                                                                        _errs79;
+                                                                    else
+                                                                      vErrors =
+                                                                        null;
+                                                                  }
+                                                                }
+                                                                var valid15 =
+                                                                  _errs78 ===
+                                                                  errors;
+                                                              } else
+                                                                var valid15 = true;
+                                                            }
+                                                          }
+                                                        }
+                                                      } else {
+                                                        validate52.errors = [
+                                                          {
+                                                            instancePath:
+                                                              instancePath +
+                                                              "/contentCompilations/" +
+                                                              i7,
+                                                            schemaPath:
+                                                              "#/properties/contentCompilations/items/type",
+                                                            keyword: "type",
+                                                            params: {
+                                                              type: "object",
+                                                            },
+                                                            message:
+                                                              "must be object",
                                                           },
-                                                          message:
-                                                            "must be object",
-                                                        },
-                                                      ];
-                                                      return false;
+                                                        ];
+                                                        return false;
+                                                      }
                                                     }
-                                                    if (!(_errs52 === errors))
+                                                    if (!(_errs72 === errors))
                                                       break;
                                                   }
                                                 } else {
@@ -5082,9 +6038,9 @@ var require_validator_input = __commonJSMin((exports, module) => {
                                                     {
                                                       instancePath:
                                                         instancePath +
-                                                        "/importedEvidence",
+                                                        "/contentCompilations",
                                                       schemaPath:
-                                                        "#/properties/importedEvidence/type",
+                                                        "#/properties/contentCompilations/type",
                                                       keyword: "type",
                                                       params: { type: "array" },
                                                       message: "must be array",
@@ -5093,43 +6049,112 @@ var require_validator_input = __commonJSMin((exports, module) => {
                                                   return false;
                                                 }
                                               }
-                                              var valid1 = _errs50 === errors;
+                                              var valid1 = _errs70 === errors;
                                             } else var valid1 = true;
                                             if (valid1) {
                                               if (
-                                                data.investigation !== void 0
+                                                data.importedEvidence !== void 0
                                               ) {
-                                                let data29 = data.investigation;
-                                                const _errs54 = errors;
-                                                if (
-                                                  !(
-                                                    data29 &&
-                                                    typeof data29 == "object" &&
-                                                    !Array.isArray(data29)
-                                                  ) &&
-                                                  data29 !== null
-                                                ) {
-                                                  validate52.errors = [
-                                                    {
-                                                      instancePath:
-                                                        instancePath +
-                                                        "/investigation",
-                                                      schemaPath:
-                                                        "#/properties/investigation/type",
-                                                      keyword: "type",
-                                                      params: {
-                                                        type: schema19
-                                                          .properties
-                                                          .investigation.type,
+                                                let data40 =
+                                                  data.importedEvidence;
+                                                const _errs83 = errors;
+                                                if (errors === _errs83) {
+                                                  if (Array.isArray(data40)) {
+                                                    const len8 = data40.length;
+                                                    for (
+                                                      let i8 = 0;
+                                                      i8 < len8;
+                                                      i8++
+                                                    ) {
+                                                      let data41 = data40[i8];
+                                                      const _errs85 = errors;
+                                                      if (!(
+                                                        data41 &&
+                                                        typeof data41 ==
+                                                          "object" &&
+                                                        !Array.isArray(data41)
+                                                      )) {
+                                                        validate52.errors = [
+                                                          {
+                                                            instancePath:
+                                                              instancePath +
+                                                              "/importedEvidence/" +
+                                                              i8,
+                                                            schemaPath:
+                                                              "#/properties/importedEvidence/items/type",
+                                                            keyword: "type",
+                                                            params: {
+                                                              type: "object",
+                                                            },
+                                                            message:
+                                                              "must be object",
+                                                          },
+                                                        ];
+                                                        return false;
+                                                      }
+                                                      if (!(_errs85 === errors))
+                                                        break;
+                                                    }
+                                                  } else {
+                                                    validate52.errors = [
+                                                      {
+                                                        instancePath:
+                                                          instancePath +
+                                                          "/importedEvidence",
+                                                        schemaPath:
+                                                          "#/properties/importedEvidence/type",
+                                                        keyword: "type",
+                                                        params: {
+                                                          type: "array",
+                                                        },
+                                                        message:
+                                                          "must be array",
                                                       },
-                                                      message:
-                                                        "must be object,null",
-                                                    },
-                                                  ];
-                                                  return false;
+                                                    ];
+                                                    return false;
+                                                  }
                                                 }
-                                                var valid1 = _errs54 === errors;
+                                                var valid1 = _errs83 === errors;
                                               } else var valid1 = true;
+                                              if (valid1) {
+                                                if (
+                                                  data.investigation !== void 0
+                                                ) {
+                                                  let data42 =
+                                                    data.investigation;
+                                                  const _errs87 = errors;
+                                                  if (
+                                                    !(
+                                                      data42 &&
+                                                      typeof data42 ==
+                                                        "object" &&
+                                                      !Array.isArray(data42)
+                                                    ) &&
+                                                    data42 !== null
+                                                  ) {
+                                                    validate52.errors = [
+                                                      {
+                                                        instancePath:
+                                                          instancePath +
+                                                          "/investigation",
+                                                        schemaPath:
+                                                          "#/properties/investigation/type",
+                                                        keyword: "type",
+                                                        params: {
+                                                          type: schema19
+                                                            .properties
+                                                            .investigation.type,
+                                                        },
+                                                        message:
+                                                          "must be object,null",
+                                                      },
+                                                    ];
+                                                    return false;
+                                                  }
+                                                  var valid1 =
+                                                    _errs87 === errors;
+                                                } else var valid1 = true;
+                                              }
                                             }
                                           }
                                         }

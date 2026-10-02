@@ -12,6 +12,9 @@ export class ApplicationState {
   profile: DeviceProfile | null = null;
   source: "live" | "imported" | "fake" | "replay" = "live";
   readonly notifications: NotificationRecord[] = [];
+  geometryRevision = 0;
+  geometryProposal:
+    import("./services/identification-service").GeometryProposal | null = null;
   protocolResolution: {
     readonly driverId: string;
     readonly probeId: string;
@@ -72,6 +75,7 @@ export class ApplicationState {
     this.profile = null;
     this.notifications.length = 0;
     this.protocolResolution = null;
+    this.geometryProposal = null;
     this.validatedRasterStrategy = null;
     this.authority.disableExperimentalTx();
     this.authority.consumePersistentConfirmation();

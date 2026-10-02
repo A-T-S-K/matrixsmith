@@ -496,7 +496,7 @@ describe("test-only third-family contracts", () => {
         /cannot perform live probes/,
       );
       expect(() => imported.plan({ type: "GetDeviceInfo" })).toThrow(
-        /non-ambiguous driver and profile/,
+        /live connected physical target/,
       );
     } finally {
       await runtime.dispose();

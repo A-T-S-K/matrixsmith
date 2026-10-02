@@ -1,3 +1,4 @@
+import { validateGeometry } from "../../domain/device/geometry";
 import { fingerprintIdentityKey } from "../../investigation/device-identity";
 import type { DeviceFingerprint } from "../../core/device";
 import type { GattEndpoint } from "../../core/device";
@@ -16,6 +17,18 @@ import type { MatrixDriver } from "../../drivers/types";
 import type { ConnectionService } from "./connection-service";
 import type { InvestigationService } from "./investigation-service";
 import type { ProtocolEvidenceService } from "./protocol-evidence-service";
+export interface GeometryProposal {
+  readonly id: string;
+  readonly width: number;
+  readonly height: number;
+  readonly driverId: string;
+  readonly transactionId: string;
+  readonly recordedAt: string;
+  readonly connectionId: string;
+  readonly fingerprintKey: string;
+  readonly browserDeviceId: string | null;
+  readonly rationale: string;
+}
 interface Ports {
   connection(): Pick<
     ConnectionService,
@@ -63,7 +76,10 @@ export class IdentificationService {
           width: session.profile.width,
           height: session.profile.height,
         },
-        geometrySource: "user-confirmed",
+        geometrySource:
+          session.profile.metadata.geometrySource === "device-info"
+            ? "device-info"
+            : "user-confirmed",
         identificationEvidence: (
           probe?.establishesClaims ?? [
             driver.identificationClaimId ?? "transport.bluetooth",
@@ -114,6 +130,72 @@ export class IdentificationService {
         }),
       ),
     };
+  }
+  geometryProposal(): GeometryProposal | null {
+    const session = this.ports.connection().getSession();
+    const proposal = session.geometryProposal;
+    const transport = this.ports.connection().getTransport();
+    return proposal &&
+      session.source === "live" &&
+      transport.state === "connected" &&
+      proposal.connectionId === transport.connectionId &&
+      session.fingerprint &&
+      proposal.fingerprintKey === fingerprintIdentityKey(session.fingerprint) &&
+      proposal.browserDeviceId ===
+        (session.fingerprint.browserDeviceId ?? null) &&
+      proposal.driverId === session.selection?.selected?.id &&
+      proposal.driverId === session.protocolResolution?.driverId
+      ? proposal
+      : null;
+  }
+  _proposeGeometry(
+    driver: MatrixDriver,
+    transaction: import("../../diagnostics/transactions").ProtocolTransaction,
+    connectionId: string,
+  ): void {
+    const session = this.ports.connection().getSession();
+    session.geometryProposal = null;
+    if (
+      session.source !== "live" ||
+      transaction.sessionSource !== "live" ||
+      transaction.source !== "probe" ||
+      transaction.error ||
+      transaction.responseTimedOut ||
+      !transaction.protocolAcknowledged ||
+      !transaction.decodedResponse ||
+      !transaction.packets.some(
+        (packet) => packet.relation === "matched-response",
+      ) ||
+      this.ports.connection().getTransport().connectionId !== connectionId ||
+      !session.fingerprint ||
+      session.selection?.selected?.id !== driver.id
+    )
+      return;
+    const interpreted = driver.interpretGeometry?.(transaction.decodedResponse);
+    if (!interpreted) return;
+    try {
+      const geometry = validateGeometry(interpreted.width, interpreted.height);
+      session.geometryProposal = Object.freeze({
+        ...geometry,
+        id: transaction.id,
+        transactionId: transaction.id,
+        driverId: driver.id,
+        recordedAt: transaction.completedAt,
+        connectionId,
+        fingerprintKey: fingerprintIdentityKey(session.fingerprint),
+        browserDeviceId: session.fingerprint.browserDeviceId ?? null,
+        rationale: `${driver.family} interpreted the correlated identification response as pixel dimensions.`,
+      });
+    } catch {
+      this.ports
+        .protocolEvidence()
+        .getTrace()
+        .record("geometry.proposal.rejected", {
+          driverId: driver.id,
+          transactionId: transaction.id,
+          reason: "Reported dimensions failed application geometry limits.",
+        });
+    }
   }
   familyReadiness(): import("../../domain/device/assessment").FamilyReadiness {
     const session = this.ports.connection().getSession();
@@ -209,6 +291,11 @@ export class IdentificationService {
     fingerprint: DeviceFingerprint,
     source: ApplicationState["source"],
   ): void {
+    if (fingerprint.manuallyConfirmedGeometry)
+      validateGeometry(
+        fingerprint.manuallyConfirmedGeometry.width,
+        fingerprint.manuallyConfirmedGeometry.height,
+      );
     const session = this.ports.connection().getSession();
     this.ports.connection().patchSession({ fingerprint: fingerprint });
     this.ports.connection().patchSession({ source: source });

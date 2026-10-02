@@ -193,6 +193,11 @@ export interface MatrixDriver {
   endpoints(profile: DeviceProfile): readonly GattEndpoint[];
   /** Identification probes that do not require a reviewed physical-product profile. */
   familyProbes?(context: CandidateContext): readonly FamilyProbeDefinition[];
+  /** Interpret pixel dimensions only from an application-eligible identification response.
+   * Field semantics, units and orientation belong entirely to this driver. */
+  interpretGeometry?(
+    response: DecodedNotification,
+  ): import("../domain/device/target").Geometry | null;
   probes?(context: DriverContext): readonly DriverProbe[];
   /** Application-ready operation descriptions; presentation code never reconstructs availability. */
   operations(context: OperationalContext): readonly OperationDefinition[];

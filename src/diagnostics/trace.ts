@@ -57,7 +57,8 @@ export type TraceEventType =
   | "advertisement.observed"
   | "connection.quarantined"
   | "connection.unexpected-disconnect.handled"
-  | "device.provisional-target.created";
+  | "device.provisional-target.created"
+  | "geometry.proposal.rejected";
 
 export interface TraceEvent {
   readonly timestamp: string;

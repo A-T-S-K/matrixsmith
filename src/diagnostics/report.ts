@@ -89,7 +89,7 @@ export function reportDataFromBundle(bundle: DiagnosticBundle): ReportData {
     createdAt: bundle.createdAt,
     matrixsmithVersion: bundle.matrixsmithVersion,
     fingerprint: bundle.fingerprint,
-    profile: null,
+    profile: bundle.provisionalProfile ?? null,
     selectedDriver: bundle.selectedDriver,
     driverMatches: bundle.driverMatches,
     capabilities: bundle.capabilities,
@@ -267,7 +267,18 @@ function fingerprintText(data: ReportData, identifiers: boolean): string {
     `- Transport: ${f.transportKind}`,
     `- Browser opaque device ID: ${identifiers ? (f.browserDeviceId ?? "not recorded") : "omitted"}`,
     `- Live-session geometry: ${f.manuallyConfirmedGeometry ? `${f.manuallyConfirmedGeometry.width}×${f.manuallyConfirmedGeometry.height} (manually confirmed)` : "unknown"}`,
-    `- Physical/profile geometry: ${data.profile ? `${data.profile.width}×${data.profile.height} (${data.profile.id})` : "unknown"}`,
+    `- Profile geometry: ${data.profile ? `${data.profile.width}×${data.profile.height} (${data.profile.id})` : "unknown"}`,
+    ...(data.profile?.metadata.provisional
+      ? [
+          `- Geometry source: ${data.profile.metadata.geometrySource} (provisional; ${data.liveConnected ? "current session" : "historical, non-authorizing"})`,
+          ...(data.profile.metadata.geometryTransactionId
+            ? [
+                `- Geometry response: ${data.profile.metadata.geometryTransactionId}, recorded ${data.profile.metadata.geometryRecordedAt}; driver ${data.profile.driverId}`,
+              ]
+            : []),
+          "- Geometry alone does not verify physical rendering or authorize content sends.",
+        ]
+      : []),
     `- Captured/profile advertisement geometry: ${advertisedGeometry ?? "not embedded in this session"}`,
   ];
   return rows.join("\n");

@@ -1,3 +1,4 @@
+import { validateGeometry } from "../../domain/device/geometry";
 import type {
   DiagnosticRun,
   DiagnosticStepResult,
@@ -17,7 +18,10 @@ interface Ports {
     ConnectionService,
     "getSession" | "patchSession" | "getConnectionState" | "setConnectionState"
   >;
-  identification(): Pick<IdentificationService, "deviceTarget" | "getRegistry">;
+  identification(): Pick<
+    IdentificationService,
+    "deviceTarget" | "getRegistry" | "geometryProposal"
+  >;
   protocolEvidence(): Pick<
     ProtocolEvidenceService,
     "getTrace" | "getTransactions"
@@ -43,32 +47,56 @@ export class DiagnosticsService {
     width: number,
     height: number,
   ): import("../../core/device").DeviceProfile {
+    return this.adoptGeometry(width, height, "user-confirmed");
+  }
+  useReportedGeometry(
+    proposalId: string,
+  ): import("../../core/device").DeviceProfile {
+    const proposal = this.ports.identification().geometryProposal();
+    if (!proposal || proposal.id !== proposalId)
+      throw new Error(
+        "This reported size has expired. Identify display again on the current connection.",
+      );
+    return this.adoptGeometry(proposal.width, proposal.height, "device-info", {
+      geometryTransactionId: proposal.transactionId,
+      geometryRecordedAt: proposal.recordedAt,
+      geometryConnectionId: proposal.connectionId,
+      geometryFingerprintKey: proposal.fingerprintKey,
+      geometryBrowserDeviceId: proposal.browserDeviceId ?? "",
+      geometryRationale: proposal.rationale,
+    });
+  }
+  private adoptGeometry(
+    width: number,
+    height: number,
+    source: "user-confirmed" | "device-info",
+    provenance: import("../../core/device").DeviceProfile["metadata"] = {},
+  ): import("../../core/device").DeviceProfile {
     const session = this.ports.connection().getSession();
     const fingerprint = session.fingerprint;
     const driver = session.selection?.selected;
-    if (!fingerprint || !driver || !session.protocolResolution)
-      throw new Error(
-        "Identify the protocol family before confirming geometry.",
-      );
     if (
-      !Number.isInteger(width) ||
-      !Number.isInteger(height) ||
-      width < 1 ||
-      height < 1 ||
-      width > 512 ||
-      height > 512 ||
-      width * height > 65_536
-    ) {
+      !fingerprint ||
+      !driver ||
+      !session.protocolResolution ||
+      session.source !== "live" ||
+      session.protocolResolution.driverId !== driver.id ||
+      this.ports.connection().getConnectionState().value !== "connected"
+    )
       throw new Error(
-        "Display geometry is outside the supported 1..512 dimension and 65,536-pixel budget.",
+        "Identify the protocol family on the current live connection before using geometry.",
       );
-    }
-    const geometry = { width, height };
+    const geometry = validateGeometry(width, height);
+    if (session.profile && !session.profile.id.startsWith("provisional:"))
+      throw new Error(
+        "Reviewed profile geometry is retained. A conflicting reported size is evidence to investigate, not a replacement model match.",
+      );
+    const { manuallyConfirmedGeometry: _manual, ...base } = fingerprint;
     this.ports.connection().patchSession({
-      fingerprint: {
-        ...fingerprint,
-        manuallyConfirmedGeometry: geometry,
-      },
+      fingerprint:
+        source === "user-confirmed"
+          ? { ...base, manuallyConfirmedGeometry: geometry }
+          : base,
     });
     const profile: import("../../core/device").DeviceProfile = {
       id: `provisional:${driver.id}:${width}x${height}`,
@@ -78,9 +106,13 @@ export class DiagnosticsService {
       height,
       validation: "experimental",
       evidence: [],
-      metadata: { provisional: true, geometrySource: "user-confirmed" },
+      metadata: { provisional: true, geometrySource: source, ...provenance },
     };
-    this.ports.connection().patchSession({ profile: profile });
+    session.geometryRevision += 1;
+    session.consumePersistentConfirmation();
+    this.ports
+      .connection()
+      .patchSession({ profile, validatedRasterStrategy: null });
     this.ports.investigation()._reconcileDeviceBoundary();
     const target = this.ports.identification().deviceTarget();
     const connectionState = this.ports.connection().getConnectionState();
@@ -95,7 +127,8 @@ export class DiagnosticsService {
         driverId: driver.id,
         width,
         height,
-        geometrySource: "user-confirmed",
+        geometrySource: source,
+        ...provenance,
       });
     return profile;
   }

@@ -1020,6 +1020,17 @@ function deviceText(device: DeviceReportContext): string {
   return [
     `- Name: ${device.fingerprint?.name ?? "unknown"}`,
     `- Profile: ${profile ? `${profile.id} (${profile.width}×${profile.height}, driver ${profile.driverId})` : "unresolved"}`,
+    ...(profile?.metadata.provisional
+      ? [
+          `- Geometry source: ${profile.metadata.geometrySource} (provisional; ${device.liveConnected ? "current session" : "historical, non-authorizing"})`,
+          ...(profile.metadata.geometryTransactionId
+            ? [
+                `- Geometry response: ${profile.metadata.geometryTransactionId}, recorded ${profile.metadata.geometryRecordedAt}; driver ${profile.driverId}`,
+              ]
+            : []),
+          "- Geometry does not establish a reviewed model match, physical rendering or send authorization.",
+        ]
+      : []),
     `- Session: ${device.liveConnected ? "live physical connection" : "not live"}`,
     ...(profile?.quirks
       ? [

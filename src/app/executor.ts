@@ -70,6 +70,8 @@ export class TransmissionExecutor {
     private readonly transport: MatrixTransport,
     private readonly trace: TraceRecorder,
     private readonly notifications?: NotificationRouter,
+    private readonly targetBinding: () => TargetBinding | null = () =>
+      currentTargetBinding(transport),
   ) {}
 
   async execute(
@@ -135,7 +137,7 @@ export class TransmissionExecutor {
                 );
                 if (
                   sameBindingOrNull(
-                    currentTargetBinding(this.transport),
+                    this.targetBinding(),
                     authorized.targetBinding,
                   )
                 )
@@ -282,7 +284,7 @@ export class TransmissionExecutor {
   }
 
   #verifyAuthorization(authorized: AuthorizedTransmission): void {
-    const current = currentTargetBinding(this.transport);
+    const current = this.targetBinding();
     if (!current || !sameBinding(current, authorized.targetBinding))
       throw new Error(
         "Authorization belongs to a different connection or physical target.",

@@ -1,7 +1,8 @@
 import validateStructure from "./generated/bundle-validator.js";
 import { redactIdentifyingText } from "./shareable-text";
 import type { Capability } from "../core/capabilities";
-import type { DeviceFingerprint } from "../core/device";
+import { geometryErrors } from "../domain/device/geometry";
+import type { DeviceProfile, DeviceFingerprint } from "../core/device";
 import type { ManualObservation } from "../core/evidence";
 import type { DriverMatch } from "../drivers/types";
 import type { Investigation } from "../investigation/investigation";
@@ -56,6 +57,8 @@ export interface DiagnosticBundle {
   readonly driverMatches: readonly DriverMatch[];
   readonly selectedDriver: string | null;
   readonly selectedProfile: string | null;
+  /** Historical snapshot only; cannot restore live family or execution authority. */
+  readonly provisionalProfile?: DeviceProfile;
   readonly capabilities: readonly Capability[];
   readonly assessment: DeviceAssessment;
   readonly trace: readonly Record<string, unknown>[];
@@ -72,6 +75,8 @@ export interface CreateBundleInput {
   readonly driverMatches: readonly DriverMatch[];
   readonly selectedDriver: string | null;
   readonly selectedProfile: string | null;
+  /** Historical snapshot only; cannot restore live family or execution authority. */
+  readonly provisionalProfile?: DeviceProfile;
   readonly capabilities: readonly Capability[];
   readonly trace: readonly TraceEvent[];
   readonly observations: readonly ManualObservation[];
@@ -107,6 +112,9 @@ export function createDiagnosticBundle(
     driverMatches: structuredClone(input.driverMatches),
     selectedDriver: input.selectedDriver,
     selectedProfile: input.selectedProfile,
+    ...(input.provisionalProfile
+      ? { provisionalProfile: structuredClone(input.provisionalProfile) }
+      : {}),
     capabilities: structuredClone(input.capabilities),
     assessment: structuredClone(input.assessment ?? fallbackAssessment),
     trace: input.trace.map(serializeTraceEvent),
@@ -287,6 +295,77 @@ function validateBundle(value: unknown, e: BundleValidationIssue[]): void {
   array(value.driverMatches, "$.driverMatches", e, match);
   nullableStr(value.selectedDriver, "$.selectedDriver", e);
   nullableStr(value.selectedProfile, "$.selectedProfile", e);
+  if (
+    value.provisionalProfile !== undefined &&
+    object(value.provisionalProfile, "$.provisionalProfile", e)
+  ) {
+    const profile = value.provisionalProfile;
+    const path = "$.provisionalProfile";
+    if (
+      Object.keys(
+        geometryErrors(profile.width as number, profile.height as number),
+      ).length
+    )
+      add(
+        e,
+        path,
+        "invalid_value",
+        "Provisional geometry exceeds the supported dimension or pixel budget.",
+      );
+    if (
+      profile.id !==
+        `provisional:${profile.driverId}:${profile.width}x${profile.height}` ||
+      profile.id !== value.selectedProfile ||
+      profile.driverId !== value.selectedDriver
+    )
+      add(
+        e,
+        path,
+        "invalid_value",
+        "Provisional profile does not match the selected geometry and driver.",
+      );
+    if (object(profile.metadata, `${path}.metadata`, e)) {
+      if (profile.metadata.geometrySource === "device-info") {
+        for (const key of [
+          "geometryTransactionId",
+          "geometryConnectionId",
+          "geometryFingerprintKey",
+          "geometryRationale",
+        ])
+          str(profile.metadata[key], `${path}.metadata.${key}`, e);
+        iso(
+          profile.metadata.geometryRecordedAt,
+          `${path}.metadata.geometryRecordedAt`,
+          e,
+        );
+        const metadata = profile.metadata;
+        const transactions = value.transactions as O[];
+        if (
+          !transactions.some(
+            (tx) =>
+              tx.id === metadata.geometryTransactionId &&
+              tx.driverId === profile.driverId &&
+              tx.source === "probe" &&
+              !tx.error &&
+              !tx.responseTimedOut &&
+              tx.protocolAcknowledged === true &&
+              tx.completedAt === metadata.geometryRecordedAt &&
+              tx.sessionSource === "live" &&
+              tx.decodedResponse !== null &&
+              (tx.packets as O[]).some(
+                (packet) => packet.relation === "matched-response",
+              ),
+          )
+        )
+          add(
+            e,
+            path,
+            "invalid_value",
+            "Reported geometry needs its original successful identification transaction.",
+          );
+      }
+    }
+  }
   array(value.capabilities, "$.capabilities", e, capability);
   assessment(value.assessment, "$.assessment", e);
   const trace = array(value.trace, "$.trace", e, traceEvent);
@@ -360,16 +439,20 @@ function fingerprint(v: unknown, p: string, e: BundleValidationIssue[]): void {
     v.manuallyConfirmedGeometry !== undefined &&
     object(v.manuallyConfirmedGeometry, `${p}.manuallyConfirmedGeometry`, e)
   ) {
-    positive(
-      v.manuallyConfirmedGeometry.width,
-      `${p}.manuallyConfirmedGeometry.width`,
-      e,
-    );
-    positive(
-      v.manuallyConfirmedGeometry.height,
-      `${p}.manuallyConfirmedGeometry.height`,
-      e,
-    );
+    if (
+      Object.keys(
+        geometryErrors(
+          v.manuallyConfirmedGeometry.width as number,
+          v.manuallyConfirmedGeometry.height as number,
+        ),
+      ).length
+    )
+      add(
+        e,
+        `${p}.manuallyConfirmedGeometry`,
+        "invalid_value",
+        "Manual geometry exceeds the supported dimension or pixel budget.",
+      );
   }
   if (v.advertisementObservation !== undefined)
     jsonObject(v.advertisementObservation, `${p}.advertisementObservation`, e);
