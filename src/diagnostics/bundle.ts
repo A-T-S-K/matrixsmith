@@ -273,7 +273,16 @@ function redactBundle(source: DiagnosticBundle): DiagnosticBundle {
     [
       source.fingerprint.browserDeviceId ?? "",
       source.fingerprint.name ?? "",
+      source.fingerprint.manufacturerDataHex ?? "",
       source.investigation?.deviceName ?? "",
+      ...[
+        "geometryBrowserDeviceId",
+        "geometryFingerprintKey",
+        "geometryConnectionId",
+      ].flatMap((key) => {
+        const value = source.provisionalProfile?.metadata[key];
+        return typeof value === "string" ? [value] : [];
+      }),
     ],
   );
 }

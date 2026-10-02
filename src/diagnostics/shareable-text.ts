@@ -17,9 +17,22 @@ export function redactIdentifyingText<T>(
     "warnings",
     "name",
     "deviceName",
+    "geometryRationale",
   ]);
   const redact = (text: string): string =>
     sensitive.reduce((result, id) => result.replaceAll(id, "[redacted]"), text);
+  // Geometry binding provenance is useful only within this output. Never export
+  // its original identifying fingerprint or originating connection key.
+  const geometryAliases = new Map<string, string>();
+  const geometryAlias = (value: unknown): string => {
+    const key = String(value);
+    if (!geometryAliases.has(key))
+      geometryAliases.set(
+        key,
+        `[redacted geometry key ${geometryAliases.size + 1}]`,
+      );
+    return geometryAliases.get(key)!;
+  };
   function visit(input: unknown, key = ""): unknown {
     if (typeof input === "string")
       return textKeys.has(key) ? redact(input) : input;
@@ -28,7 +41,15 @@ export function redactIdentifyingText<T>(
       const record = input as Record<string, unknown>;
       const result: Record<string, unknown> = {};
       for (const [name, entry] of Object.entries(record)) {
-        if (name === "browserDeviceId") continue;
+        if (name === "browserDeviceId" || name === "geometryBrowserDeviceId")
+          continue;
+        if (
+          name === "geometryFingerprintKey" ||
+          name === "geometryConnectionId"
+        ) {
+          result[name] = geometryAlias(entry);
+          continue;
+        }
         result[name] = name === "physicalDeviceKey" ? null : visit(entry, name);
       }
       if ("physicalDeviceKey" in record && "deviceIdentityBasis" in record) {

@@ -13,6 +13,9 @@ export function reportPrivacyLabel(includeIdentifiers: boolean): string {
 
 const identifyingKeys = new Set([
   "browserDeviceId",
+  "geometryBrowserDeviceId",
+  "geometryFingerprintKey",
+  "geometryConnectionId",
   "deviceName",
   "physicalDeviceKey",
   "fingerprintKey",
@@ -40,6 +43,7 @@ const textKeys = new Set([
   "base",
   "whatMatrixSmithDoes",
   "whyRelevant",
+  "geometryRationale",
 ]);
 
 /** Collect known identities before projecting, including their explanatory repeats. */
@@ -106,7 +110,12 @@ export function projectReportPrivacy<T>(
     for (const [name, entry] of Object.entries(value)) {
       if (identifyingKeys.has(name) || name === "advertisementEvidence") {
         if (name === "physicalDeviceKey") result[name] = null;
-        else if (name === "fingerprintKey" || name === "fingerprintShapeKey")
+        else if (
+          name === "fingerprintKey" ||
+          name === "fingerprintShapeKey" ||
+          name === "geometryFingerprintKey" ||
+          name === "geometryConnectionId"
+        )
           result[name] = bindingAlias(entry);
         else if (
           name === "rawAdvertisementHex" ||

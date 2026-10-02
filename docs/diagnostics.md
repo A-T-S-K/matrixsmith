@@ -104,8 +104,13 @@ still validate. It contains experimental geometry and empty profile evidence,
 using existing profile metadata for manual/reported source and response provenance.
 Validation checks geometry limits, selected driver/profile consistency and the
 original successful correlated identification transaction for reported dimensions.
-Both shareable and full archives retain inspectable source metadata; identifying
-strings still follow normal privacy projection. Import restores only historical
+Both archive modes retain dimensions, source, driver, transaction linkage and
+timestamps. Shareable JSON omits the geometry browser device ID and replaces
+geometry fingerprint/connection keys with output-local aliases; known identifiers
+repeated in interpretation rationale are redacted. Default Markdown projections
+apply the same policy and preserve equality between repeated binding keys. Full
+local archives retain the original provenance, and privacy projection never mutates
+the source archive or live state. Import restores only historical
 geometry, including when that driver is absent locally. It never creates an eligible
 proposal, a current family claim, an unlock or confirmation. A live connection
 always requires new identification and explicit adoption.
