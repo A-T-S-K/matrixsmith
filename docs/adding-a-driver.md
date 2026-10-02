@@ -116,3 +116,21 @@ iLedHat profile ID; adding an entry to `profiles()` alone is insufficient. See
 `tests/drivers/second-profile-contract.test.ts` and
 `tests/drivers/synthetic-family-contract.test.ts` for software-only injection
 examples. Neither fixture is hardware evidence or production support.
+
+## Optional sourced geometry
+
+`interpretGeometry(response)` may return `{ width, height }` in pixels, or `null`.
+Keep field names, units, orientation and documented interpretation in the driver.
+Do not assume every decoder's width/height fields represent pixel dimensions.
+The application calls this only after successful family identification using the
+exact correlated transaction response. It owns dimension/pixel-budget validation,
+connection/device/family eligibility and explicit adoption. Notifications, external
+captures, rejected interpretations and historical transactions cannot seed a live
+proposal. No production driver opts in in this slice; Synthetic Lumen contributes
+authored software vectors solely through the development/test registry.
+
+Reported adoption stores `geometrySource: "device-info"` and transaction/time/driver
+and originating connection/device metadata on the experimental provisional profile.
+Manual entry stores `geometrySource: "user-confirmed"` and only that path populates
+`manuallyConfirmedGeometry`. Neither path establishes physical or capability claims.
+A conflicting response remains inspectable without replacing reviewed geometry.

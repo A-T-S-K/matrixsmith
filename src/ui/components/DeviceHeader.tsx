@@ -145,8 +145,13 @@ function protocolProblem(
   ) {
     return {
       label: "Protocol needs confirmation",
-      ...(snapshot.connection === "connected"
-        ? { action: { label: "Identify", run: () => void store.identify() } }
+      ...(snapshot.connection === "connected" && snapshot.view !== "diagnose"
+        ? {
+            action: {
+              label: "Identify display",
+              run: () => store.setView("diagnose"),
+            },
+          }
         : {}),
     };
   }

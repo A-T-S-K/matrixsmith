@@ -22,31 +22,33 @@ export function DeveloperTools({
         Open protocol workbench
       </button>
       <ul class="test-list">
-        {snapshot.diagnosticTools.map((tool) => (
-          <li key={tool.id}>
-            <div class="test-line">
-              <div>
-                <strong>{tool.label}</strong>
-                <small>
-                  {tool.kind} · {tool.validation}
-                </small>
+        {snapshot.diagnosticTools
+          .filter((tool) => tool.kind !== "identify")
+          .map((tool) => (
+            <li key={tool.id}>
+              <div class="test-line">
+                <div>
+                  <strong>{tool.label}</strong>
+                  <small>
+                    {tool.kind} · {tool.validation}
+                  </small>
+                </div>
+                <UnavailableAction
+                  class="secondary small"
+                  available={tool.available && snapshot.busy === null}
+                  reason={
+                    snapshot.busy ??
+                    tool.unavailableReason ??
+                    "This tool is unavailable."
+                  }
+                  onClick={() => void store.runDiagnostic(tool.id)}
+                >
+                  Run
+                </UnavailableAction>
               </div>
-              <UnavailableAction
-                class="secondary small"
-                available={tool.available && snapshot.busy === null}
-                reason={
-                  snapshot.busy ??
-                  tool.unavailableReason ??
-                  "This tool is unavailable."
-                }
-                onClick={() => void store.runDiagnostic(tool.id)}
-              >
-                Run
-              </UnavailableAction>
-            </div>
-            <p class="fineprint">{tool.purpose}</p>
-          </li>
-        ))}
+              <p class="fineprint">{tool.purpose}</p>
+            </li>
+          ))}
       </ul>
       {snapshot.diagnosticRuns.length > 0 && (
         <div class="run-list">

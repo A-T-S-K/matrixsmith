@@ -16,9 +16,8 @@ Browser navigation changes presentation state only. Home keeps a connected displ
 Home also exposes **Diagnose / identify**, **Explore unknown BLE** with an
 **Optional service UUIDs** field, **Open diagnostic report**, and **Import external
 capture**. The workspace calls its primary surfaces **Create** and **Investigate**;
-the secondary **Protocol workbench** link opens a view titled **Develop**. Workbench
-section selection currently stays in component state: selecting GATT does not
-change the Transactions URL, and returning to the view starts at Transactions.
+the secondary **Protocol workbench** link opens the Protocol workbench. Workbench
+sections have explicit routes, retained separately in each workspace.
 
 ## Known display
 
@@ -51,13 +50,23 @@ remains a separate experimental workbench capability.
 ## Unknown display
 
 1. Connect and enumerate browser-authorized GATT evidence.
-2. Run one driver-contributed, bounded, read-only family probe.
-3. If the family is identified but geometry is unavailable, confirm width and height explicitly.
-4. MatrixSmith creates a provisional target; it inherits no reviewed product-profile evidence.
-5. Run only the family tests and actions marked executable for that target.
+2. Choose **Identify display** in Investigate for one contributed, bounded, read-only family probe. Other views link to this flow; Investigate has one identification execution button.
+3. If a driver interprets eligible correlated response dimensions, review **Display reported W×H pixels** and explicitly choose **Use reported size**, or enter dimensions manually. No response adopts itself or overwrites draft text.
+4. Manual width and height start blank. Use pixel columns and rows from the product specification, label, seller documentation, or counted LEDs. Raw partial edits remain text; field-associated errors preserve both fields. Dimensions must be integers from 1 to 512, with at most 65,536 pixels.
+5. Either path creates experimental provisional geometry, without a reviewed model match, physical rendering evidence, experimental permission, or send authorization. Source, limitations, and canonical operation reasons remain visible.
+6. Run only contributed applicable tests. If no tests apply, Investigate explains the limit and directly offers **Open Protocol workbench** and **Open report**; it does not promise tests or offer an unavailable refresh.
 
-The geometry form currently starts at 32×16; those defaults are not device
-evidence. The resulting provisional profile has no reviewed profile evidence.
+Unsubmitted manual text is owned by the presentation connection owner and captured
+with workspace UI state. It survives view navigation and live/offline switches.
+The same browser-authorized device with the same fingerprint shape retains text
+across reconnects; anonymous targets use connection identity. A different device
+starts blank. Every reconnect expires response proposals and requires a new live
+identification; UI capture/restore never contains a proposal or execution authority.
+Changing geometry consumes confirmations, invalidates prepared target bindings,
+clears the validated raster strategy, and reconciles investigation evidence. Content
+owners invalidate affected previews and pending sends while retaining valid text.
+Reviewed profile geometry remains intact even when a response conflicts; the
+reported discrepancy links to inspectable transaction evidence.
 
 The UI renders application-provided actions. It never branches on driver IDs or reconstructs availability.
 
@@ -79,9 +88,9 @@ The workflow stages are About, Transfer, timed observation or questions, Result,
 Bundle V3 validates fully and enforces resource budgets before application mutation. Live and offline workspaces stay separate.
 
 Opening a bundle retains an already-connected live workspace, with **Return to
-live display** on Home. Returning retires the offline runtime; the report must
-be reopened to review it again. An offline-only report has no live-workspace
-factory, so Home explains that starting a live connection requires a reload.
+live display** on Home. Returning retains the offline workspace and its UI; Home
+can reopen it. Starting a live connection from offline explicitly creates or
+activates a separate live runtime. Imported evidence never gains live authority.
 
 ## Accessibility
 

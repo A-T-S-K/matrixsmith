@@ -54,7 +54,7 @@ interface Ports {
   noticeStore(): Pick<NoticeStore, "getBusy" | "getError" | "getInfo">;
   connectionStore(): Pick<
     ConnectionStore,
-    "getPreviouslyAuthorized" | "getLastImport"
+    "getPreviouslyAuthorized" | "getLastImport" | "getGeometryDraft"
   >;
   contentSendStore(): Pick<
     ContentSendStore,
@@ -238,6 +238,12 @@ export class SnapshotStore {
         payloadHex: info?.payloadHex ?? null,
       },
       capabilities,
+      geometryDraft: this.ports.connectionStore().getGeometryDraft(),
+      geometryProposal: this.ports
+        .workspaceStore()
+        .getController()
+        .geometryProposal(),
+      geometryProfile: profile,
       assessment,
       recommended: recommendedFromAssessment(assessment),
       diagnosticTools: this.ports

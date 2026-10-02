@@ -1,3 +1,4 @@
+import { geometryErrors, fingerprintIdentityKey } from "./dependencies";
 import { INPUT_LIMITS } from "./dependencies";
 import type { GattEndpoint } from "./dependencies";
 
@@ -44,13 +45,81 @@ export class ConnectionStore {
       "authorizedDevices"
     >,
   ) {}
+  private geometryDraft = {
+    targetKey: "",
+    width: "",
+    height: "",
+    errors: {} as import("../../domain/device/geometry").GeometryErrors,
+  };
+  getGeometryDraft() {
+    const workspace = this.ports.workspaceStore().getController();
+    const fingerprint = workspace.session.fingerprint;
+    if (fingerprint) {
+      // Stable authorized device retains text across reconnects; anonymous targets do not.
+      const key = `${fingerprint.browserDeviceId ?? workspace.transport.connectionId}:${fingerprintIdentityKey(fingerprint)}`;
+      if (key !== this.geometryDraft.targetKey)
+        this.geometryDraft = {
+          targetKey: key,
+          width: "",
+          height: "",
+          errors: {},
+        };
+    }
+    return this.geometryDraft;
+  }
+  updateGeometryDraft(field: "width" | "height", value: string): void {
+    this.geometryDraft = {
+      ...this.getGeometryDraft(),
+      [field]: value,
+      errors: {},
+    };
+    this.ports.snapshotStore()._emit();
+  }
+  submitGeometryDraft(): void {
+    const draft = this.getGeometryDraft();
+    const parse = (raw: string) => (/^\d+$/.test(raw) ? Number(raw) : NaN);
+    const width = parse(draft.width),
+      height = parse(draft.height);
+    const errors = geometryErrors(width, height);
+    this.geometryDraft = { ...draft, errors };
+    if (Object.keys(errors).length) {
+      this.ports.snapshotStore()._emit();
+      return;
+    }
+    this.confirmProvisionalGeometry(width, height);
+  }
+  useReportedGeometry(proposalId: string): void {
+    try {
+      this.ports
+        .workspaceStore()
+        .getController()
+        .useReportedGeometry(proposalId);
+      this.ports
+        .noticeStore()
+        .setInfo(
+          "Reported dimensions adopted as provisional geometry. Physical rendering and content sending remain unconfirmed.",
+        );
+      this.ports.navigationStore().setViewState("diagnose");
+    } catch (error) {
+      this.ports
+        .noticeStore()
+        .setError(error instanceof Error ? error.message : String(error));
+    }
+    this.ports.snapshotStore()._emit();
+  }
   captureContext() {
-    return { lastImport: this._lastImport };
+    return { lastImport: this._lastImport, geometryDraft: this.geometryDraft };
   }
   restoreContext(
     state: ReturnType<ConnectionStore["captureContext"]> | null,
   ): void {
     this._lastImport = state?.lastImport ?? null;
+    this.geometryDraft = state?.geometryDraft ?? {
+      targetKey: "",
+      width: "",
+      height: "",
+      errors: {},
+    };
   }
   getPreviouslyAuthorized(): Readonly<
     ConnectionStore["_previouslyAuthorized"]
@@ -211,7 +280,7 @@ export class ConnectionStore {
       this.ports
         .noticeStore()
         .setInfo(
-          `Display size confirmed as ${width}×${height}. Bounded family tests are now available.`,
+          `Manual dimensions saved as ${width}×${height} pixels, provisional. Physical rendering and content sending remain unconfirmed.`,
         );
       this.ports.navigationStore().setViewState("diagnose");
     } catch (error) {

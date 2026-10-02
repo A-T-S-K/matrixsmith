@@ -45,15 +45,20 @@ test("unknown display can identify its family and become provisional", async ({
     page.getByRole("heading", { name: "Investigate" }),
   ).toBeVisible();
   await page
-    .getByRole("button", { name: /safe identification|identify/i })
+    .getByRole("button", { name: "Identify display", exact: true })
     .first()
     .click();
   await expect(
-    page.getByRole("heading", { name: "Confirm the display size" }),
+    page.getByRole("heading", { name: "Establish the display size" }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Use 32×16" }).click();
   await expect(
-    page.getByText(/Bounded family tests are now available/i),
+    page.getByRole("textbox", { name: "Width (pixels)" }),
+  ).toHaveValue("");
+  await page.getByRole("textbox", { name: "Width (pixels)" }).fill("32");
+  await page.getByRole("textbox", { name: "Height (pixels)" }).fill("16");
+  await page.getByRole("button", { name: "Use these dimensions" }).click();
+  await expect(
+    page.getByText(/Manual dimensions saved as 32×16 pixels, provisional/i),
   ).toBeVisible();
 });
 

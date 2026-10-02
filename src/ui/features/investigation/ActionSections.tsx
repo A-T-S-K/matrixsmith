@@ -13,6 +13,9 @@ export function NextAction({
   store: PresentationStore;
 }): JSX.Element {
   const next = snapshot.nextTest;
+  const identify = snapshot.diagnosticTools.find(
+    (tool) => tool.kind === "identify",
+  );
   // An unanswered measurement on the current milestone outranks the engine's
   // next suggestion. Advancing past a question nobody answered would read as
   // though the short measurement had counted.
@@ -55,22 +58,63 @@ export function NextAction({
       <p>{snapshot.recommended.description}</p>
       <div class="next-action-cta">
         {snapshot.recommended.action === "identify" && (
-          <button
+          <UnavailableAction
             class="primary"
             onClick={() => void store.identify()}
-            disabled={snapshot.busy !== null}
+            available={
+              snapshot.busy === null &&
+              snapshot.liveConnected &&
+              Boolean(identify?.available)
+            }
+            reason={
+              snapshot.busy ??
+              identify?.unavailableReason ??
+              "No bounded identification probe is contributed for this display. Use Protocol workbench to inspect the evidence."
+            }
           >
-            Run safe identification
-          </button>
+            Identify display
+          </UnavailableAction>
         )}
-        {snapshot.recommended.action === "checks" && (
-          <button
-            class="primary"
-            onClick={() => void store.refreshInfo()}
-            disabled={snapshot.busy !== null}
-          >
-            Refresh device info
-          </button>
+        {snapshot.recommended.action === "checks" &&
+          snapshot.diagnosticTools.some(
+            (tool) => tool.available && tool.workflow === "refresh-device-info",
+          ) && (
+            <button
+              class="primary"
+              onClick={() => void store.refreshInfo()}
+              disabled={snapshot.busy !== null}
+            >
+              Refresh device info
+            </button>
+          )}
+        {(snapshot.recommended.action === "checks" ||
+          (snapshot.recommended.action === "identify" &&
+            !identify?.available)) && (
+          <>
+            <p>
+              {snapshot.guidedTests.length === 0
+                ? "This family contributes no applicable bounded tests for these dimensions."
+                : "No further applicable test is recommended. Review the available tests and their restrictions."}{" "}
+              Protocol workbench and reports can help investigate the remaining
+              limits.
+            </p>
+            <button
+              class={
+                snapshot.diagnosticTools.some(
+                  (tool) =>
+                    tool.available && tool.workflow === "refresh-device-info",
+                )
+                  ? "secondary"
+                  : "primary"
+              }
+              onClick={() => store.setView("develop")}
+            >
+              Open Protocol workbench
+            </button>
+            <button class="secondary" onClick={() => store.openReport()}>
+              Open report
+            </button>
+          </>
         )}
       </div>
     </section>
@@ -175,10 +219,7 @@ export function WhatWeKnow({
             <strong>{snapshot.rasterStrategyLabel}</strong>.
           </>
         ) : (
-          <>
-            No working way to show a still image yet — that is what these tests
-            determine.
-          </>
+          <>Physical still-image rendering has not been established.</>
         )}
       </p>
     </section>

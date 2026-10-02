@@ -2,6 +2,7 @@ import type { JSX } from "preact";
 import type { AppSnapshot, PresentationStore } from "../../presentation/store";
 import {
   GeometrySetup,
+  GeometryOutcome,
   KnownCharacterized,
   CoreProgress,
   CoreComplete,
@@ -40,6 +41,7 @@ export function InvestigationView({
           Read-only recorded evidence. Connect a display explicitly to begin a
           separate live session.
         </p>
+        <GeometryOutcome snapshot={snapshot} store={store} />
         <WhatWeKnow snapshot={snapshot} />
         <CompletedTests snapshot={snapshot} store={store} />
         <SupportMap snapshot={snapshot} />
@@ -63,7 +65,7 @@ export function InvestigationView({
           </p>
         )}
         {snapshot.assessment.readiness === "needs-geometry" ? (
-          <GeometrySetup store={store} />
+          <GeometrySetup store={store} snapshot={snapshot} />
         ) : snapshot.coreProgress?.complete ? (
           snapshot.investigation ? (
             <CoreComplete snapshot={snapshot} store={store} />
@@ -72,6 +74,9 @@ export function InvestigationView({
           )
         ) : (
           <NextAction snapshot={snapshot} store={store} />
+        )}
+        {snapshot.assessment.readiness !== "needs-geometry" && (
+          <GeometryOutcome snapshot={snapshot} store={store} />
         )}
         <CoreProgress snapshot={snapshot} />
       </div>

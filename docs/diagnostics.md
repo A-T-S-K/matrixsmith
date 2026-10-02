@@ -9,6 +9,7 @@ Markdown previews, copy, and downloads are supervised separately. Nothing is upl
 schemaVersion (3), privacy, matrixsmithVersion, createdAt
 fingerprint
 driverMatches, selectedDriver, selectedProfile
+provisionalProfile? — historical geometry snapshot with scalar source metadata
 capabilities
 assessment
 trace
@@ -97,3 +98,14 @@ Stored-program receipts decode structurally (`program-announce-receipt`, `progra
 - Scoped test reports include a "Physical timing" section: T0 (final host-accepted write), T1 (full raster visible), T2 (movement/observation end), render latency, and visible static hold — measured by the MatrixSmith timer and kept distinct from per-packet transport timing.
 - A characterized channel permutation is flagged as ENCODER CORRECTION REQUIRED with the observed vs emitted maps, an explicit instruction to fix the driver/profile in code, and a reminder that normal image/text sending stays gated until re-verification.
 - Abandoned tests (transfer completed, observation stopped) keep their transactions and partial observations and still produce a test report.
+
+The optional `provisionalProfile` remains Bundle V3: older V3 bundles without it
+still validate. It contains experimental geometry and empty profile evidence,
+using existing profile metadata for manual/reported source and response provenance.
+Validation checks geometry limits, selected driver/profile consistency and the
+original successful correlated identification transaction for reported dimensions.
+Both shareable and full archives retain inspectable source metadata; identifying
+strings still follow normal privacy projection. Import restores only historical
+geometry, including when that driver is absent locally. It never creates an eligible
+proposal, a current family claim, an unlock or confirmation. A live connection
+always requires new identification and explicit adoption.

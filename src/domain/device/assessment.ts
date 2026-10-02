@@ -371,18 +371,27 @@ function readiness(
       readiness: "needs-geometry",
       summary: "Protocol identified. Confirm the display geometry to continue.",
     };
-  if (available.some(({ availability }) => availability === "available"))
+  if (
+    available.some(({ availability }) => availability === "available") &&
+    (input.target.kind !== "provisional" ||
+      available.some(
+        (capability) =>
+          ["static-frame", "text", "animation", "gif"].includes(
+            capability.id,
+          ) && capability.availability === "available",
+      ))
+  )
     return {
       readiness: "ready",
       summary:
         input.target.kind === "profile-resolved"
           ? "This model is ready for normal use."
-          : "This provisional display is ready for bounded testing.",
+          : "This provisional target has an evidenced content path; its reviewed model match remains unconfirmed.",
     };
   return {
     readiness: "limited",
     summary:
-      "The display is identified, but more evidence is needed before normal use.",
+      "The display is identified, but more evidence is needed before normal use. Geometry alone does not establish content support.",
   };
 }
 
@@ -435,7 +444,7 @@ export function assessDevice(input: AssessmentInput): DeviceAssessment {
       {
         id: "identify-family",
         operationId: null,
-        label: "Identify this display",
+        label: "Identify display",
         capabilityId: null,
         availability: input.live ? "available" : "blocked",
         confidence: "verified",

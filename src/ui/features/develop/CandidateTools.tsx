@@ -32,8 +32,8 @@ export function CandidateSection({
             </div>
             <p>{candidate.summary}</p>
             {candidate.canIdentify ? (
-              <button class="primary" onClick={() => void store.identify()}>
-                Run safe identification
+              <button class="primary" onClick={() => store.setView("diagnose")}>
+                Identify display
               </button>
             ) : candidate.evidence.basis === "candidate" ? (
               <p class="notice">
@@ -85,9 +85,13 @@ export function ToolSection({
                 tool.unavailableReason ??
                 "This tool is unavailable."
               }
-              onClick={() => void store.runDiagnostic(tool.id)}
+              onClick={() =>
+                tool.kind === "identify"
+                  ? store.setView("diagnose")
+                  : void store.runDiagnostic(tool.id)
+              }
             >
-              Run
+              {tool.kind === "identify" ? "Identify display" : "Run"}
             </UnavailableAction>
           </article>
         ))}

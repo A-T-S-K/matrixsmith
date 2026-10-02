@@ -208,6 +208,15 @@ export class PresentationStore {
     this.refreshInfo = this.connectionStore.refreshInfo.bind(
       this.connectionStore,
     );
+    this.updateGeometryDraft = this.connectionStore.updateGeometryDraft.bind(
+      this.connectionStore,
+    );
+    this.submitGeometryDraft = this.connectionStore.submitGeometryDraft.bind(
+      this.connectionStore,
+    );
+    this.useReportedGeometry = this.connectionStore.useReportedGeometry.bind(
+      this.connectionStore,
+    );
     this.confirmProvisionalGeometry =
       this.connectionStore.confirmProvisionalGeometry.bind(
         this.connectionStore,
@@ -395,6 +404,9 @@ export class PresentationStore {
   readonly identify: ConnectionStore["identify"];
   readonly runDiagnostic: ConnectionStore["runDiagnostic"];
   readonly refreshInfo: ConnectionStore["refreshInfo"];
+  readonly updateGeometryDraft: ConnectionStore["updateGeometryDraft"];
+  readonly submitGeometryDraft: ConnectionStore["submitGeometryDraft"];
+  readonly useReportedGeometry: ConnectionStore["useReportedGeometry"];
   readonly confirmProvisionalGeometry: ConnectionStore["confirmProvisionalGeometry"];
   readonly applyBrightness: ConnectionStore["applyBrightness"];
   readonly readCharacteristic: ConnectionStore["readCharacteristic"];

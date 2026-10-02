@@ -108,6 +108,15 @@ export interface AppSnapshot {
   };
   readonly capabilities: readonly Capability[];
   /** Canonical source for every readiness badge, gate, action, and report projection. */
+  readonly geometryDraft: {
+    readonly width: string;
+    readonly height: string;
+    readonly errors: import("../../domain/device/geometry").GeometryErrors;
+  };
+  readonly geometryProposal:
+    | import("../../application/services/identification-service").GeometryProposal
+    | null;
+  readonly geometryProfile: import("../../core/device").DeviceProfile | null;
   readonly assessment: DeviceAssessment;
   readonly recommended: {
     readonly title: string;

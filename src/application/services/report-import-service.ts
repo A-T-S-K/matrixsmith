@@ -247,14 +247,12 @@ export class ReportImportService {
         .identification()
         .getRegistry()
         .drivers.find((candidate) => candidate.id === profile.driverId);
-      this.ports
-        .connection()
-        .patchSession({
-          profile: {
-            ...profile,
-            metadata: { ...profile.metadata, historical: true },
-          },
-        });
+      this.ports.connection().patchSession({
+        profile: {
+          ...profile,
+          metadata: { ...profile.metadata, historical: true },
+        },
+      });
       if (driver)
         this.ports.connection().patchSession({
           selection: this.ports

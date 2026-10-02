@@ -224,7 +224,7 @@ describe("markdown report generator", () => {
       capabilities: [],
       assessment: ambiguousAssessment,
     });
-    expect(ambiguous).toContain("Identify this display");
+    expect(ambiguous).toContain("Identify display");
   });
 
   it("generates a complete report from an imported bundle", async () => {
