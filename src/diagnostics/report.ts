@@ -1,3 +1,9 @@
+import {
+  projectReportPrivacy,
+  reportPrivacyLabel,
+  REPORT_REVIEW_WARNING,
+} from "./report-privacy";
+import { gifProvenanceText } from "./content-evidence";
 import type { Capability } from "../core/capabilities";
 import type { DeviceFingerprint, DeviceProfile } from "../core/device";
 import type { DriverMatch } from "../drivers/types";
@@ -48,6 +54,7 @@ export const DEFAULT_REPORT_OPTIONS: ReportOptions = Object.freeze({
 });
 
 export interface ReportData {
+  readonly privacyContext?: import("./report-privacy").ReportPrivacyContext;
   readonly createdAt: string;
   readonly matrixsmithVersion: string;
   readonly fingerprint: DeviceFingerprint;
@@ -95,6 +102,7 @@ export function reportDataFromBundle(bundle: DiagnosticBundle): ReportData {
     importedEvidence: bundle.importedEvidence ?? [],
     liveConnected: false,
     source: "imported diagnostic bundle",
+    privacyContext: bundle.investigation ?? undefined,
     assessment: bundle.assessment,
   };
 }
@@ -103,13 +111,20 @@ export function generateMarkdownReport(
   data: ReportData,
   options: ReportOptions = DEFAULT_REPORT_OPTIONS,
 ): string {
+  const projected = projectReportPrivacy(
+    { data, options },
+    options.includeIdentifiers,
+  );
+  data = projected.data;
+  options = projected.options;
   const lines: string[] = [
     "# MatrixSmith Device Report",
     "",
     `- Generated: ${data.createdAt}`,
     `- MatrixSmith: ${data.matrixsmithVersion}`,
     `- Session source: ${data.source}`,
-    `- Identifying information: ${options.includeIdentifiers ? "included by user choice" : "excluded by default"}`,
+    `- Identifying information: ${reportPrivacyLabel(options.includeIdentifiers)}`,
+    REPORT_REVIEW_WARNING,
     "",
   ];
   section(lines, "Goal / question", options.goal.trim() || "Not provided.");
@@ -165,10 +180,12 @@ export function generateMarkdownReport(
       ),
     );
   const facts = evidenceGroups(data);
-  section(lines, "Verified facts", listOrNone(facts.verified));
-  section(lines, "Inferred facts", listOrNone(facts.inferred));
-  section(lines, "Unknowns", listOrNone(facts.unknowns));
-  section(lines, "Rejected hypotheses", listOrNone(facts.rejected));
+  if (options.includeEvidence) {
+    section(lines, "Verified facts", listOrNone(facts.verified));
+    section(lines, "Inferred facts", listOrNone(facts.inferred));
+    section(lines, "Unknowns", listOrNone(facts.unknowns));
+    section(lines, "Rejected hypotheses", listOrNone(facts.rejected));
+  }
   const assessment = reportAssessment(data);
   const recommended = assessment.recommendedActionId
     ? assessment.actions.find(({ id }) => id === assessment.recommendedActionId)
@@ -185,11 +202,12 @@ export function generateMarkdownReport(
     "Reproduction environment",
     `- Transport: ${data.fingerprint.transportKind}\n- Profile: ${data.profile?.id ?? "not available"}\n- Browser/device identifiers: ${options.includeIdentifiers ? (data.fingerprint.browserDeviceId ?? "not recorded") : "omitted"}`,
   );
-  section(
-    lines,
-    "Protocol transcript",
-    transcript(data.transactions, options.includeRawPacketHex),
-  );
+  if (options.includeTransactions)
+    section(
+      lines,
+      "Protocol transcript",
+      transcript(data.transactions, options.includeRawPacketHex),
+    );
   if (options.includeRawTrace)
     section(
       lines,
@@ -310,7 +328,13 @@ function driverText(data: ReportData): string {
         );
         const state =
           match.driverId === data.selectedDriver
-            ? "VERIFIED ON THIS SESSION"
+            ? data.source === "live" &&
+              data.liveConnected &&
+              data.protocolResolution?.source === "live-probe"
+              ? "Identified by current live probe"
+              : data.source === "live"
+                ? "Selected profile / driver match"
+                : "Imported / replayed evidence"
             : profileRejections.length > 0
               ? "Protocol hypothesis rejected for this profile (static transport shape remains compatible)"
               : match.score <= 0
@@ -343,13 +367,12 @@ function deviceStateText(data: ReportData): string {
     ? Object.entries(last.fields)
         .map(([key, value]) => `- ${key}: ${String(value)}`)
         .join("\n")
-    : "No verified device-state readback recorded.";
+    : "No device information received in the recorded transactions.";
 }
 function labelCapability(value: Capability): string {
   if (value.validation === "rejected") return "Rejected";
-  if (value.validation === "verified" && value.live) return "Verified live";
   if (value.validation === "verified")
-    return "Verified (dry-run only this session)";
+    return "Verified capability evidence (see scope)";
   if (value.validation === "experimental")
     return value.live
       ? "Experimental / gated"
@@ -399,6 +422,7 @@ function compilationText(
               `- Frames: ${record.frameCount}${record.frameDelaysMs ? `; delays ${record.frameDelaysMs.join("/")} ms` : ""}`,
             ]
           : []),
+        ...gifProvenanceText(record),
         ...(record.sourceDimensions
           ? [
               `- Source image: ${record.sourceDimensions}${record.fitMode ? `; fit mode ${record.fitMode}` : ""}`,

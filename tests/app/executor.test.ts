@@ -1,4 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { deferred } from "../helpers/deferred-gatt";
+import type { TransportReceipt } from "../../src/application/ports/transport";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { TransmissionExecutor } from "../../src/app/executor";
 import {
   packetHex,
@@ -179,6 +181,7 @@ describe("TransmissionExecutor", () => {
   it("arms the response waiter before a synchronous fast notification", async () => {
     const transport = await connectedFake();
     const router = new NotificationRouter();
+    vi.useFakeTimers();
     const fingerprint = knownIledHatFingerprint();
     await transport.subscribe(COOLLEDX_ENDPOINT, (raw) => {
       const decoded =
@@ -233,5 +236,93 @@ describe("TransmissionExecutor", () => {
     ).execute(withResponse, coolLedUxDriver);
     expect(result.protocolAcknowledged).toBe(true);
     expect(result.responseTimedOut).toBe(false);
+    expect(vi.getTimerCount()).toBe(0);
   });
 });
+
+afterEach(() => vi.useRealTimers());
+it.each(["timeout", "reset", "write-failure", "indeterminate"])(
+  "supervises %s while host acceptance is pending",
+  async (scenario) => {
+    vi.useFakeTimers();
+    const transport = await connectedFake();
+    const router = new NotificationRouter();
+    const arm = vi.spyOn(router, "arm");
+    const matches = vi.fn(() => false);
+    const pending = deferred<TransportReceipt>();
+    vi.spyOn(transport, "write").mockReturnValue(pending.promise);
+    const base = authorized(transport, [packet(0, 1)], 5000);
+    const plan = prepareTransmission(
+      {
+        ...base.plan,
+        responseExpectation: {
+          type: "notification",
+          opcode: 4,
+          kind: "command-echo",
+          required: true,
+          timeoutMs: 1500,
+          fulfillsOperation: false,
+        },
+      },
+      base.targetBinding,
+    );
+    const execution = new TransmissionExecutor(
+      transport,
+      new TraceRecorder(),
+      router,
+    ).execute(
+      { ...base, plan, digest: plan.digest },
+      { ...coolLedUxDriver, responseMatches: matches },
+    );
+    const outcome = execution.then(
+      (value) => value,
+      (error: unknown) => error,
+    );
+    if (scenario === "reset") router.reset("Disconnected during write");
+    else await vi.advanceTimersByTimeAsync(1500);
+    if (scenario === "indeterminate") await vi.advanceTimersByTimeAsync(3500);
+    if (scenario === "write-failure")
+      pending.reject(new Error("Primary write failure"));
+    else
+      pending.resolve({
+        acceptedAt: new Date().toISOString(),
+        endpoint: COOLLEDX_ENDPOINT,
+        writeMode: "without-response",
+        byteLength: 1,
+      });
+    const result = await outcome;
+    if (scenario === "timeout")
+      expect(result).toMatchObject({
+        responseTimedOut: true,
+        hostAccepted: true,
+      });
+    else
+      expect(result).toEqual(
+        expect.objectContaining({
+          message:
+            scenario === "reset"
+              ? "Disconnected during write"
+              : scenario === "indeterminate"
+                ? expect.stringMatching(/write may still complete/)
+                : "Primary write failure",
+        }),
+      );
+    expect(vi.getTimerCount()).toBe(0);
+    // reset after cleanup must not reject or change the settled armed outcome.
+    router.publish({
+      timestamp: new Date().toISOString(),
+      raw: new Uint8Array(),
+      rawHex: "",
+      decoded: {
+        family: "CoolLEDUX",
+        kind: "command-echo",
+        summary: "cleanup check",
+        payloadHex: "",
+        fields: {},
+      },
+    });
+    expect(matches).not.toHaveBeenCalled();
+    router.reset("after cleanup");
+    expect(arm).toHaveBeenCalledTimes(1);
+  },
+);

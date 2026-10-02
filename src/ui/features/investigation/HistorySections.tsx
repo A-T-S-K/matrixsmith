@@ -29,6 +29,8 @@ export function PreviousInvestigation({
         </div>
         <button
           class="secondary small"
+          disabled={Boolean(snapshot.busy)}
+          title={snapshot.busy ?? undefined}
           onClick={() => store.resumeStoredInvestigation()}
         >
           Resume
@@ -58,6 +60,8 @@ export function PreviousInvestigation({
         )}
         <button
           class="text-action quiet-action"
+          disabled={Boolean(snapshot.busy)}
+          title={snapshot.busy ?? undefined}
           onClick={() => store.forgetLocalHistory()}
         >
           Forget this history

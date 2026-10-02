@@ -29,3 +29,21 @@ Automated tests use fixtures, fake transports, or the development simulator. The
 ## Reviewing a failure
 
 Reproduce the specific failure before changing code or baselines. Distinguish application defects from fixture/server problems. Keep unexpected browser errors visible; fix rejection handling rather than suppressing the error collector. CI retains coverage and browser artifacts to make failures reviewable.
+
+The focused `tests/e2e/gif.spec.ts --project=chromium` journey uses the real
+ImageDecoder and the tiny authored partial-update/disposal fixture documented
+in `tests/fixtures/gif/README.md`. It checks complete pixels, timing, editor
+preview, normal ShowAnimation delivery, and identical delays in four compiled
+tiles. Unit tests cover budgets before proportional work, unsupported decoding,
+cleanup/stale owners, product/native gates, and typed provenance round trips.
+These remain software evidence; imported-GIF physical acceptance is unchecked.
+
+`npm run schema:generate` reproduces the checked-in Bundle V3 validator from
+`public/bundle-v3.schema.json`; `npm run schema:check` fails on stale output and
+runs in normal verification and before builds. Schema tests execute both Ajv
+2020-12 compilation and the generated function on current exports and mutations.
+The focused `tests/e2e/release-wave-three.spec.ts --project=chromium` journey
+covers source labels, report-kind/control/privacy transitions, Markdown downloads,
+and an accessible failed-download/retry path using the actual report generators.
+
+Presentation hardening regressions count text/scroll/demo generation and storage reads, assert preview identity and exact input invalidation, and exercise workspace/profile changes, history refresh/demotion, persistence failures, and concurrent errors. Browser regressions verify scrolling during unrelated publications, target-sized image modes and retry, connected Home diagnosis, external-store replacement/cleanup, and Device actions focus restoration with Escape/Browser Back. Timed observation elapsed displays update locally. Desktop timing measurements are supporting evidence, not pass/fail thresholds or Android acceptance.

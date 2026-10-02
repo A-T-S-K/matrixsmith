@@ -10,6 +10,10 @@ import {
  * pixels and GIF bytes never enter localStorage; only their configuration
  * (fit mode, colors, text) persists.
  */
+/** Responsiveness cap in UTF-16 code units, not a display limit.
+ * Invalid/oversized saved settings recover to the complete defaults (empty text).
+ */
+export const CONTENT_TEXT_CODE_UNIT_LIMIT = 512;
 export const CONTENT_SETTINGS_KEY = "matrixsmith:v2:content-settings";
 
 export interface ContentSettings {
@@ -97,6 +101,8 @@ function validSettings(value: unknown): value is ContentSettings {
     ["text", "textColor", "textBackground"].every(
       (key) => typeof v[key] === "string",
     ) &&
+    typeof v.text === "string" &&
+    v.text.length <= CONTENT_TEXT_CODE_UNIT_LIMIT &&
     ["left", "center", "right"].includes(String(v.textAlignment)) &&
     ["auto", "still", "scroll"].includes(String(v.textDisplayMode)) &&
     ["contain", "cover", "stretch", "center"].includes(

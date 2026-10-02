@@ -568,7 +568,6 @@ export class GuidedController {
     testId: string,
     origin: RecommendationOrigin = "automatic-recommendation",
   ): void {
-    this.ports.noticeStore().setError(null);
     try {
       const test = this.ports
         .workspaceStore()

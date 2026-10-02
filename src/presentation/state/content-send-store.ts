@@ -1,3 +1,5 @@
+import { ContentCache } from "./content-cache";
+import type { ContentCompilationRecord } from "../../diagnostics/content-evidence";
 import {
   Framebuffer,
   FrameSequence,
@@ -28,7 +30,7 @@ interface Ports {
     | "getSettings"
     | "_renderTextFrame"
     | "getImageState"
-    | "getGifBytes"
+    | "getGifSequence"
     | "getGifState"
   >;
   workspaceStore(): Pick<WorkspaceStore, "getController">;
@@ -37,7 +39,15 @@ interface Ports {
   noticeStore(): Pick<NoticeStore, "setError" | "_run" | "setInfo">;
 }
 export class ContentSendStore {
+  private readonly scrollCache = new ContentCache<ScrollPlan | null>();
+  private readonly demoCache = new ContentCache<FrameSequence>();
+  clearContentCaches(): void {
+    this.scrollCache.clear();
+    this.demoCache.clear();
+    this._pendingSend = null;
+  }
   async dispose(): Promise<void> {
+    this.clearContentCaches();
     this._pendingSend = null;
     await this._wakeLock.release();
   }
@@ -75,8 +85,7 @@ export class ContentSendStore {
         const scroll = this._scrollPlan(profile.width, profile.height);
         if (!scroll?.safe)
           throw new Error(
-            scroll?.warnings.at(-1) ??
-              "Scrolling text exceeds the safe raster budget.",
+            scroll?.reason ?? "Scrolling text exceeds the safe raster budget.",
           );
         const plan = this.ports.workspaceStore().getController().plan({
           type: "ShowScrollingText",
@@ -118,6 +127,14 @@ export class ContentSendStore {
     void this._requestContentSend("Display image", "image", () => {
       const image = this.ports.contentEditorStore().getImageState();
       if (!image) throw new Error("Choose an image first.");
+      const profile = this._requireProfile();
+      if (
+        image.preview.width !== profile.width ||
+        image.preview.height !== profile.height
+      )
+        throw new Error(
+          "This image was prepared for another display size. Choose the file again.",
+        );
       return {
         plan: this.ports
           .workspaceStore()
@@ -148,24 +165,39 @@ export class ContentSendStore {
     });
   }
   requestSendGif(): void {
-    void this._requestContentSend("Send experimental GIF", "gif", () => {
+    void this._requestContentSend("Display GIF", "gif", () => {
       const profile = this._requireProfile();
-      const bytes = this.ports.contentEditorStore().getGifBytes();
+      const sequence = this.ports.contentEditorStore().getGifSequence();
       const meta = this.ports.contentEditorStore().getGifState();
-      if (!bytes || !meta) throw new Error("Choose a GIF first.");
-      const width = Math.min(meta.width ?? profile.width, profile.width);
-      const height = Math.min(meta.height ?? profile.height, profile.height);
+      if (!sequence || !meta) throw new Error("Choose a GIF first.");
+      if (
+        sequence.width !== profile.width ||
+        sequence.height !== profile.height
+      )
+        throw new Error(
+          "This GIF was decoded for another display size. Choose the file again.",
+        );
       return {
-        plan: this.ports.workspaceStore().getController().plan({
-          type: "ShowGif",
-          gifBytes: bytes,
-          width,
-          height,
-        }),
-        preview: null,
+        plan: this.ports
+          .workspaceStore()
+          .getController()
+          .plan({ type: "ShowAnimation", sequence }),
+        preview: sequence.frames[0] ?? null,
+        extras: {
+          originalContent: "gif",
+          deliveryBackend: "local-gif-raster-animation",
+          sourceDimensions: `${meta.sourceWidth}×${meta.sourceHeight}`,
+          frameCount: meta.frameCount,
+          frameDelaysMs: sequence.timing.map(
+            ({ milliseconds }) => milliseconds,
+          ),
+          totalDurationMs: meta.totalDurationMs,
+          sourceRepetition: meta.repetition,
+        },
       };
     });
   }
+
   cancelPendingSend(): void {
     this._pendingSend = null;
     this.ports.navigationStore()._closeOverlay("send");
@@ -183,7 +215,7 @@ export class ContentSendStore {
     build: () => {
       plan: TransmissionPlan;
       preview: Framebuffer | null;
-      extras?: Record<string, string>;
+      extras?: Partial<ContentCompilationRecord>;
     },
   ): Promise<void> {
     try {
@@ -195,6 +227,7 @@ export class ContentSendStore {
       if (!gate?.allowed)
         throw new Error(gate?.reason ?? "This content path is unavailable.");
       const built = build();
+      this.ports.noticeStore().setError(null, `request-${path}`);
       const command: PendingSendCommand = {
         plan: built.plan,
         extras: built.extras,
@@ -217,7 +250,10 @@ export class ContentSendStore {
     } catch (error) {
       this.ports
         .noticeStore()
-        .setError(error instanceof Error ? error.message : String(error));
+        .setError(
+          error instanceof Error ? error.message : String(error),
+          `request-${path}`,
+        );
     }
     this.ports.snapshotStore()._emit();
   }
@@ -266,16 +302,38 @@ export class ContentSendStore {
   }
   _buildAnimationSequence(): FrameSequence {
     const profile = this._requireProfile();
-    return diagnosticAnimation(profile.width, profile.height);
+    const workspace = this.ports.workspaceStore().getController();
+    return this.demoCache.get(
+      [workspace, workspace.session.profile, profile.width, profile.height],
+      () => diagnosticAnimation(profile.width, profile.height),
+    );
   }
   _scrollPlan(width: number, height: number): ScrollPlan | null {
-    const text = this.ports.contentEditorStore().getSettings().text.trim();
-    if (!text) return null;
-    return planRasterScroll(text, width, height, {
-      color: hexToRgb(this.ports.contentEditorStore().getSettings().textColor),
-      background: hexToRgb(
-        this.ports.contentEditorStore().getSettings().textBackground,
-      ),
-    });
+    const workspace = this.ports.workspaceStore().getController();
+    const settings = this.ports.contentEditorStore().getSettings();
+    return this.scrollCache.get(
+      [
+        workspace,
+        workspace.session.profile,
+        width,
+        height,
+        settings.text,
+        settings.textColor,
+        settings.textBackground,
+        settings.textDisplayMode,
+      ],
+      () => {
+        const text = settings.text.trim();
+        if (!text) return null;
+        return planRasterScroll(text, width, height, {
+          color: hexToRgb(
+            this.ports.contentEditorStore().getSettings().textColor,
+          ),
+          background: hexToRgb(
+            this.ports.contentEditorStore().getSettings().textBackground,
+          ),
+        });
+      },
+    );
   }
 }

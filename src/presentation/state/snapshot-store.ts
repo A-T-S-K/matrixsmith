@@ -1,15 +1,11 @@
-import {
-  resolvesToScroll,
-  diagnosticAnimation,
-  RASTER_STRATEGY_LABELS,
-} from "./dependencies";
+import { resolvesToScroll, RASTER_STRATEGY_LABELS } from "./dependencies";
 
 import type { ContentState } from "./types";
 import {
   SYMPTOM_ROWS,
   recommendationView,
-  endpointKey,
-  supportRows,
+  candidateEvidence,
+  deviceInfoEvidence,
   recommendedFromAssessment,
   filterTransactions,
 } from "./selectors";
@@ -40,16 +36,23 @@ interface Ports {
     | "getReportOptions"
     | "_reportMarkdownForKind"
     | "_effectiveReportKind"
+    | "getReportError"
+    | "getReportPreviewFailed"
   >;
   navigationStore(): Pick<NavigationStore, "getPage" | "getView">;
   noticeStore(): Pick<NoticeStore, "getBusy" | "getError" | "getInfo">;
   connectionStore(): Pick<
     ConnectionStore,
-    "getPreviouslyAuthorized" | "getSubscriptions" | "getLastImport"
+    "getPreviouslyAuthorized" | "getLastImport"
   >;
   contentSendStore(): Pick<
     ContentSendStore,
-    "getSendProgress" | "getWakeLock" | "getPendingSend" | "_scrollPlan"
+    | "getSendProgress"
+    | "getWakeLock"
+    | "getPendingSend"
+    | "_scrollPlan"
+    | "_buildAnimationSequence"
+    | "clearContentCaches"
   >;
   projectionStore(): Pick<
     ProjectionStore,
@@ -64,7 +67,11 @@ interface Ports {
   guidedProjectionStore(): Pick<GuidedProjectionStore, "_guidedFlowView">;
   contentEditorStore(): Pick<
     ContentEditorStore,
-    "getSettings" | "_renderTextFrame" | "getImageState" | "getGifState"
+    | "getSettings"
+    | "_renderTextFrame"
+    | "getImageState"
+    | "getGifState"
+    | "clearTextCache"
   >;
 }
 export class SnapshotStore {
@@ -76,6 +83,7 @@ export class SnapshotStore {
   private readonly _listeners = new Set<() => void>();
   private _snapshot!: AppSnapshot;
   subscribe = (listener: () => void): (() => void) => {
+    if (this.disposed) return () => {};
     this._listeners.add(listener);
     return () => this._listeners.delete(listener);
   };
@@ -188,6 +196,11 @@ export class SnapshotStore {
             profileId: profile?.id ?? null,
           }
         : null,
+      deviceInfoEvidence: deviceInfoEvidence(
+        session.source,
+        liveConnected,
+        session.latestDeviceInfoRecord?.timestamp ?? null,
+      ),
       deviceState: {
         brightness:
           typeof info?.fields.brightnessRaw === "number"
@@ -202,7 +215,6 @@ export class SnapshotStore {
       },
       capabilities,
       assessment,
-      support: supportRows(assessment),
       recommended: recommendedFromAssessment(assessment),
       diagnosticTools: this.ports
         .workspaceStore()
@@ -218,12 +230,20 @@ export class SnapshotStore {
             .getController()
             .registry.drivers.find((d) => d.id === match.driverId)?.family ??
           match.driverId,
-        state:
-          match.driverId === driver?.id
-            ? "VERIFIED ON THIS SESSION"
-            : match.score <= 0
-              ? "Rejected for this profile"
-              : "Candidate",
+        evidence: candidateEvidence(
+          match.driverId === driver?.id,
+          match.score,
+          session.source,
+          liveConnected,
+          session.protocolResolution,
+        ),
+        state: candidateEvidence(
+          match.driverId === driver?.id,
+          match.score,
+          session.source,
+          liveConnected,
+          session.protocolResolution,
+        ).label,
         summary:
           match.driverId === driver?.id
             ? (session.protocolResolution?.summary ?? "Resolved by evidence.")
@@ -250,14 +270,12 @@ export class SnapshotStore {
           canRead: c.properties.read,
           canSubscribe: c.properties.notify || c.properties.indicate,
           subscribed: this.ports
-            .connectionStore()
-            .getSubscriptions()
-            .has(
-              endpointKey({
-                serviceUuid: service.uuid,
-                characteristicUuid: c.uuid,
-              }),
-            ),
+            .workspaceStore()
+            .getController()
+            .isNotificationActive({
+              serviceUuid: service.uuid,
+              characteristicUuid: c.uuid,
+            }),
         })),
       })),
       transactions,
@@ -268,12 +286,17 @@ export class SnapshotStore {
       sendProgress: this.ports.contentSendStore().getSendProgress(),
       wakeLockSupported: this.ports.contentSendStore().getWakeLock().supported,
       // Only generated while the dialog is open: it is the most expensive
-      // thing a snapshot can do, and it was previously rebuilt on every
-      // 100ms timer tick during an observation.
+      // thing a snapshot can do. Timed observations update their elapsed
+      // display locally, without rebuilding the external snapshot.
       reportMarkdown:
         fingerprint && this.ports.reportStore().getReportOpen()
           ? this.ports.reportStore()._reportMarkdownForKind()
           : "",
+      reportError: this.ports.reportStore().getReportError(),
+      reportPreviewFailed: this.ports.reportStore().getReportPreviewFailed(),
+      reportObjective:
+        this.ports.workspaceStore().getController().investigation?.goal
+          .description ?? null,
       reportKind: this.ports.reportStore()._effectiveReportKind(),
       investigationReportAvailable:
         this.ports.workspaceStore().getController().investigation !== null,
@@ -320,6 +343,10 @@ export class SnapshotStore {
   _contentState(
     profile: { width: number; height: number } | null,
   ): ContentState {
+    if (!profile) {
+      this.ports.contentEditorStore().clearTextCache();
+      this.ports.contentSendStore().clearContentCaches();
+    }
     const gate = this._contentAllowed();
     return {
       allowed: gate.allowed,
@@ -343,7 +370,7 @@ export class SnapshotStore {
           : null,
       image: this.ports.contentEditorStore().getImageState(),
       animationPreview: profile
-        ? [...diagnosticAnimation(profile.width, profile.height).frames]
+        ? this.ports.contentSendStore()._buildAnimationSequence().frames
         : [],
       gif: this.ports.contentEditorStore().getGifState(),
     };

@@ -1,7 +1,6 @@
 import type { JSX } from "preact";
-import { useSignal } from "@preact/signals";
+import { useMatrixSnapshot } from "../presentation/store";
 import { lazy, Suspense } from "preact/compat";
-import { useLayoutEffect } from "preact/hooks";
 import { GuidedTestDialog } from "./components/GuidedTestDialog";
 import { NoticeRegion } from "./components/NoticeRegion";
 import { ExperimentalSendDialog } from "./components/ExperimentalSendDialog";
@@ -21,16 +20,7 @@ export function App({
   readonly store: PresentationStore;
   readonly updates?: UpdateManager;
 }): JSX.Element {
-  const snapshotSignal = useSignal(store.getSnapshot());
-  useLayoutEffect(() => {
-    const sync = (): void => {
-      snapshotSignal.value = store.getSnapshot();
-    };
-    const unsubscribe = store.subscribe(sync);
-    sync();
-    return unsubscribe;
-  }, [store, snapshotSignal]);
-  const snapshot = snapshotSignal.value;
+  const snapshot = useMatrixSnapshot(store);
   return (
     <>
       <div class="app-shell">

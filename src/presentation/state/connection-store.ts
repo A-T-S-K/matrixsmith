@@ -1,7 +1,7 @@
 import { INPUT_LIMITS } from "./dependencies";
 import type { GattEndpoint } from "./dependencies";
 
-import { summarizeImport, endpointKey } from "./selectors";
+import { summarizeImport } from "./selectors";
 
 import type { ImportSummary } from "./types";
 
@@ -15,7 +15,7 @@ import type { PresentationEnvironment } from "../environment";
 
 interface Ports {
   snapshotStore(): Pick<SnapshotStore, "_emit">;
-  noticeStore(): Pick<NoticeStore, "_run" | "setInfo" | "setError">;
+  noticeStore(): Pick<NoticeStore, "_run" | "setInfo" | "setError" | "getBusy">;
   investigationStore(): Pick<
     InvestigationStore,
     "_persistInvestigation" | "_persistDetachedInvestigation"
@@ -28,7 +28,6 @@ interface Ports {
   contentEditorStore(): Pick<ContentEditorStore, "updateContentSettings">;
 }
 export class ConnectionStore {
-  private readonly _subscriptions = new Set<string>();
   private _previouslyAuthorized: { id: string; name: string }[] = [];
   private _lastImport: ImportSummary | null = null;
   constructor(
@@ -42,9 +41,6 @@ export class ConnectionStore {
     ConnectionStore["_previouslyAuthorized"]
   > {
     return this._previouslyAuthorized;
-  }
-  getSubscriptions(): ReadonlySet<string> {
-    return this._subscriptions;
   }
   getLastImport() {
     return this._lastImport;
@@ -63,6 +59,20 @@ export class ConnectionStore {
     mode: "registered" | "inspection" = "registered",
     serviceHints: readonly BluetoothServiceUUID[] = [],
   ): Promise<void> {
+    const workspace = this.ports.workspaceStore().getController();
+    if (
+      this.ports.noticeStore().getBusy() ||
+      workspace.session.source !== "live" ||
+      workspace.transport.state === "connected"
+    ) {
+      this.ports
+        .noticeStore()
+        .setError(
+          "Finish the current operation and disconnect the active display before connecting.",
+        );
+      this.ports.snapshotStore()._emit();
+      return;
+    }
     await this.ports
       .noticeStore()
       ._run(
@@ -235,25 +245,14 @@ export class ConnectionStore {
         );
     });
   }
-  async toggleSubscription(endpoint: GattEndpoint): Promise<void> {
-    const key = endpointKey(endpoint);
-    await this.ports
-      .noticeStore()
-      ._run(
-        this._subscriptions.has(key) ? "Unsubscribing…" : "Subscribing…",
-        async () => {
-          if (this._subscriptions.has(key))
-            throw new Error(
-              "Unsubscribe is available after disconnect in this transport adapter.",
-            );
-          await this.ports
-            .workspaceStore()
-            .getController()
-            .enableNotifications(endpoint);
-          this._subscriptions.add(key);
-          this.ports.noticeStore().setInfo("Notifications subscribed.");
-        },
-      );
+  async subscribeNotifications(endpoint: GattEndpoint): Promise<void> {
+    await this.ports.noticeStore()._run("Subscribing…", async () => {
+      await this.ports
+        .workspaceStore()
+        .getController()
+        .enableNotifications(endpoint);
+      this.ports.noticeStore().setInfo("Notifications subscribed.");
+    });
   }
   recordObservation(summary: string): void {
     this.ports.workspaceStore().getController().recordObservation(summary);
@@ -261,7 +260,6 @@ export class ConnectionStore {
     this.ports.snapshotStore()._emit();
   }
   importExternalCapture(content: string): void {
-    this.ports.noticeStore().setError(null);
     try {
       if (
         new TextEncoder().encode(content).byteLength > INPUT_LIMITS.captureBytes

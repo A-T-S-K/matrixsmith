@@ -21,6 +21,7 @@ export interface PresentationEnvironment {
   readonly bluetoothSupported: boolean;
   authorizedDevices(): Promise<readonly { id: string; name: string }[]>;
   signalTimingStart(): void;
+  onHistoryChange?(listener: () => void): () => void;
   onBack(listener: () => void): () => void;
   pushOverlay(kind: string): void;
   back(): void;

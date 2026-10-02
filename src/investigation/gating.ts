@@ -36,8 +36,13 @@ const PATH_REQUIREMENTS: Readonly<
     label: "Animations need verified animation playback",
   },
   gif: {
-    claims: ["stored-program.upload", "gif.playback"],
-    label: "GIF needs verified GIF playback on this device",
+    claims: [
+      "stored-program.upload",
+      "animation.frames",
+      "animation.timing",
+      "animation.tile-sync",
+    ],
+    label: "GIFs need verified animation playback",
   },
 });
 

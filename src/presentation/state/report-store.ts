@@ -26,6 +26,83 @@ export class ReportStore {
   private _transactionFilter: TransactionFilter = "all";
   private _transactionSearch = "";
   private readonly _files: FilesPort;
+  private _previewOwner: ReturnType<WorkspaceStore["getController"]> | null =
+    null;
+  private _lastValidMarkdown = "";
+  private _previewError: string | null = null;
+  private _actionError: string | null = null;
+  private _actionGeneration = 0;
+  private syncWorkspace(): void {
+    const owner = this.ports.workspaceStore().getController();
+    if (owner === this._previewOwner) return;
+    this._previewOwner = owner;
+    this._lastValidMarkdown = "";
+    this._previewError = null;
+    this._actionError = null;
+    this._actionGeneration++;
+  }
+  getReportError(): string | null {
+    this.syncWorkspace();
+    return this._actionError ?? this._previewError;
+  }
+  getReportPreviewFailed(): boolean {
+    return this._previewError !== null;
+  }
+  private async action(
+    work: () => void | Promise<void>,
+    success?: string,
+  ): Promise<void> {
+    this.syncWorkspace();
+    const owner = this._previewOwner;
+    const generation = ++this._actionGeneration;
+    this.ports.noticeStore().setInfo(null);
+    try {
+      await work();
+      this.syncWorkspace();
+      if (owner !== this._previewOwner || generation !== this._actionGeneration)
+        return;
+      this._actionError = null;
+      if (success) this.ports.noticeStore().setInfo(success);
+    } catch (error) {
+      this.syncWorkspace();
+      if (owner !== this._previewOwner || generation !== this._actionGeneration)
+        return;
+      this._actionError =
+        error instanceof Error ? error.message : String(error);
+      this.ports.noticeStore().setError(this._actionError);
+    }
+    this.ports.snapshotStore()._emit();
+  }
+  private async copyContent(text: string): Promise<void> {
+    if (!(await this._files.copyText(text)))
+      throw new Error("Clipboard access was denied. Use Download instead.");
+  }
+  async copyReport(): Promise<void> {
+    await this.action(
+      () => this.copyContent(this.generateSelected()),
+      "Copied to clipboard.",
+    );
+  }
+  async downloadReport(
+    filename: string,
+    privacy?: import("../../diagnostics/bundle").BundlePrivacy,
+  ): Promise<void> {
+    await this.action(() => {
+      const content = privacy
+        ? this.exportBundle(privacy)
+        : this.generateSelected();
+      return this._files.download(
+        filename,
+        content,
+        privacy ? "application/json" : "text/markdown",
+      );
+    });
+  }
+  retryReport(): void {
+    this._actionError = null;
+    this.ports.snapshotStore()._emit();
+  }
+
   constructor(
     private readonly ports: Ports,
     environment: Pick<PresentationEnvironment, "files">,
@@ -92,82 +169,80 @@ export class ReportStore {
     });
   }
   async copy(text: string): Promise<void> {
-    const copied = await this._files.copyText(text);
-    if (copied) this.ports.noticeStore().setInfo("Copied to clipboard.");
-    else
-      this.ports
-        .noticeStore()
-        .setError("Clipboard access was denied. Use Download instead.");
-    this.ports.snapshotStore()._emit();
+    await this.action(() => this.copyContent(text), "Copied to clipboard.");
   }
   download(filename: string, content: string, type: string): void {
-    this._files.download(filename, content, type);
+    void this.action(() => this._files.download(filename, content, type));
   }
   async copyTestReport(testId?: string): Promise<void> {
     const id = testId ?? this.ports.guidedController().getGuidedFlow()?.testId;
     if (!id) return;
-    try {
-      await this.copy(
-        this.ports.workspaceStore().getController().testReportMarkdown(id),
-      );
-    } catch (error) {
-      this.ports
-        .noticeStore()
-        .setError(error instanceof Error ? error.message : String(error));
-      this.ports.snapshotStore()._emit();
-    }
+    await this.action(
+      () =>
+        this.copyContent(
+          this.ports.workspaceStore().getController().testReportMarkdown(id),
+        ),
+      "Copied to clipboard.",
+    );
   }
   async copyInvestigationReport(): Promise<void> {
-    try {
-      await this.copy(
-        this.ports
-          .workspaceStore()
-          .getController()
-          .investigationReportMarkdown(),
-      );
-    } catch (error) {
-      this.ports
-        .noticeStore()
-        .setError(error instanceof Error ? error.message : String(error));
-      this.ports.snapshotStore()._emit();
-    }
+    await this.action(
+      () =>
+        this.copyContent(
+          this.ports
+            .workspaceStore()
+            .getController()
+            .investigationReportMarkdown(),
+        ),
+      "Copied to clipboard.",
+    );
   }
   async copyForensicReport(): Promise<void> {
-    try {
-      await this.copy(
-        this.ports.workspaceStore().getController().forensicReportMarkdown(),
-      );
-    } catch (error) {
-      this.ports
-        .noticeStore()
-        .setError(error instanceof Error ? error.message : String(error));
-      this.ports.snapshotStore()._emit();
-    }
+    await this.action(
+      () =>
+        this.copyContent(
+          this.ports.workspaceStore().getController().forensicReportMarkdown(),
+        ),
+      "Copied to clipboard.",
+    );
   }
   _effectiveReportKind(): ReportKind {
-    if (this._reportKind) return this._reportKind;
+    if (
+      this._reportKind &&
+      (this._reportKind !== "investigation" ||
+        this.ports.workspaceStore().getController().investigation)
+    )
+      return this._reportKind;
     return this.ports.workspaceStore().getController().investigation
       ? "investigation"
       : "device";
   }
+  private generateSelected(): string {
+    const controller = this.ports.workspaceStore().getController();
+    switch (this._effectiveReportKind()) {
+      case "investigation":
+        return controller.investigationReportMarkdown(
+          this._reportOptions.includeIdentifiers,
+        );
+      case "forensic":
+        return controller.forensicReportMarkdown(
+          this._reportOptions.includeIdentifiers,
+        );
+      case "device":
+        return this.markdown();
+    }
+  }
   _reportMarkdownForKind(): string {
+    this.syncWorkspace();
     try {
-      switch (this._effectiveReportKind()) {
-        case "investigation":
-          return this.ports
-            .workspaceStore()
-            .getController()
-            .investigationReportMarkdown();
-        case "forensic":
-          return this.ports
-            .workspaceStore()
-            .getController()
-            .forensicReportMarkdown();
-        case "device":
-          return this.markdown();
-      }
+      const markdown = this.generateSelected();
+      this._lastValidMarkdown = markdown;
+      this._previewError = null;
+      return markdown;
     } catch (error) {
-      return `Report unavailable: ${error instanceof Error ? error.message : String(error)}`;
+      this._previewError =
+        error instanceof Error ? error.message : String(error);
+      return this._lastValidMarkdown;
     }
   }
   _reportData(): ReportData {
@@ -177,6 +252,8 @@ export class ReportStore {
       throw new Error("No device evidence is available for a report.");
     const driver = session.selection?.selected;
     return {
+      privacyContext:
+        this.ports.workspaceStore().getController().investigation ?? undefined,
       createdAt: new Date().toISOString(),
       matrixsmithVersion: MATRIXSMITH_VERSION,
       fingerprint,

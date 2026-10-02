@@ -96,6 +96,9 @@ export class ProtocolEvidenceService {
     source: TransactionSource,
     diagnosticRunIdValue: string | null,
     error: string | null,
+    sessionSource: ProtocolTransaction["sessionSource"] = this.ports
+      .connection()
+      .getSession().source,
   ): void {
     const session = this.ports.connection().getSession();
     const completedAt = result?.completedAt ?? new Date().toISOString();
@@ -141,7 +144,7 @@ export class ProtocolEvidenceService {
       startedAt,
       completedAt,
       durationMs: duration(startedAt, completedAt),
-      sessionSource: session.source,
+      sessionSource,
       source,
       driverId: plan.driverId,
       profileId: plan.profileId,
@@ -169,6 +172,7 @@ export class ProtocolEvidenceService {
     packet: Uint8Array,
     recordTrace: boolean,
     endpoint: GattEndpoint | null,
+    recordedAt?: string,
   ): NotificationRecord {
     const session = this.ports.connection().getSession();
     const raw = packet.slice();
@@ -191,7 +195,7 @@ export class ProtocolEvidenceService {
       candidates.sort((a, b) => decodePriority(b) - decodePriority(a))[0] ??
       null;
     const record = {
-      timestamp: new Date().toISOString(),
+      timestamp: recordedAt ?? new Date().toISOString(),
       raw,
       rawHex: packetHex(raw),
       decoded,

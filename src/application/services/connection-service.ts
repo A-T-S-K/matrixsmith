@@ -1,3 +1,4 @@
+import { normalizeUuid } from "../../core/device";
 import type { TransmissionAuthorization } from "../../app/transmission-authorization";
 import type { DeviceFingerprint } from "../../core/device";
 import type { GattEndpoint } from "../../core/device";
@@ -52,6 +53,7 @@ export class ConnectionService {
     string,
     () => Promise<void>
   >();
+  private readonly _notificationStarts = new Map<string, Promise<void>>();
   private readonly _desiredNotificationEndpoints = new Map<
     string,
     GattEndpoint
@@ -61,6 +63,7 @@ export class ConnectionService {
   private _connectionState: ApplicationConnectionState =
     INITIAL_CONNECTION_STATE;
   private _connectionEpoch = 0;
+  private _lifetimeGeneration = 0;
   private readonly transport: MatrixTransport;
   private disposed = false;
   private disposal: Promise<void> | null = null;
@@ -113,6 +116,13 @@ export class ConnectionService {
     serviceHints: readonly BluetoothServiceUUID[] = [],
   ): Promise<DeviceFingerprint> {
     if (this.disposed) throw new Error("This workspace has been disposed.");
+    if (this.transport.state !== "idle" && this.transport.state !== "error")
+      throw new Error(
+        `Cannot connect while transport is ${this.transport.state}.`,
+      );
+    const epoch = ++this._lifetimeGeneration;
+    this._notificationSubscriptions.clear();
+    this._notificationStarts.clear();
     this._connectionState = transitionConnection(this._connectionState, {
       type: "SELECT",
       mode,
@@ -129,6 +139,7 @@ export class ConnectionService {
         serviceHints,
       });
     } catch (error) {
+      if (epoch !== this._lifetimeGeneration) throw error;
       this._connectionState = recoverConnection(
         transitionConnection(this._connectionState, {
           type: "FAILED",
@@ -142,6 +153,8 @@ export class ConnectionService {
       );
       throw error;
     }
+    if (epoch !== this._lifetimeGeneration)
+      throw new Error("The connection attempt was retired.");
     if (this.disposed) {
       await this.transport.disconnect();
       throw new Error("This workspace was disposed while connecting.");
@@ -158,6 +171,10 @@ export class ConnectionService {
       });
     this._enrichAdvertisementEvidence();
     await this._restoreNotificationSubscriptions();
+    if (epoch !== this._lifetimeGeneration)
+      throw new Error(
+        "The connection attempt was retired during notification restoration.",
+      );
     return fingerprint;
   }
   async reconnectAuthorized(deviceId: string): Promise<DeviceFingerprint> {
@@ -166,6 +183,13 @@ export class ConnectionService {
       throw new Error(
         "This transport cannot reconnect without the device chooser.",
       );
+    if (this.transport.state !== "idle" && this.transport.state !== "error")
+      throw new Error(
+        `Cannot connect while transport is ${this.transport.state}.`,
+      );
+    const epoch = ++this._lifetimeGeneration;
+    this._notificationSubscriptions.clear();
+    this._notificationStarts.clear();
     this._connectionState = transitionConnection(this._connectionState, {
       type: "SELECT",
       mode: "registered",
@@ -178,6 +202,8 @@ export class ConnectionService {
       mode: "registered",
       hints: this.ports.identification().getRegistry().discoveryHints(),
     });
+    if (epoch !== this._lifetimeGeneration)
+      throw new Error("The connection attempt was retired.");
     if (this.disposed) {
       await this.transport.disconnect();
       throw new Error("This workspace was disposed while connecting.");
@@ -194,6 +220,10 @@ export class ConnectionService {
       });
     this._enrichAdvertisementEvidence();
     await this._restoreNotificationSubscriptions();
+    if (epoch !== this._lifetimeGeneration)
+      throw new Error(
+        "The connection attempt was retired during notification restoration.",
+      );
     return fingerprint;
   }
   _enrichAdvertisementEvidence(): void {
@@ -231,16 +261,18 @@ export class ConnectionService {
       type: "DISCONNECT",
     });
     try {
-      await Promise.all(
-        [...this._notificationSubscriptions.values()].map((unsubscribe) =>
-          unsubscribe().catch(() => undefined),
-        ),
-      );
+      const epoch = ++this._lifetimeGeneration;
+      const subscriptions = [...this._notificationSubscriptions.values()];
       this._notificationSubscriptions.clear();
+      this._notificationStarts.clear();
+      // Local invalidation is immediate; an obsolete browser stop may never settle.
+      for (const unsubscribe of subscriptions)
+        void unsubscribe().catch(() => undefined);
       this._desiredNotificationEndpoints.clear();
       this.ports.protocolEvidence().getNotificationRouter().reset();
-      await this.transport.disconnect();
       this.session.clearConnection();
+      await this.transport.disconnect();
+      if (epoch !== this._lifetimeGeneration) return;
       this._connectionState = transitionConnection(this._connectionState, {
         type: "DISCONNECTED",
         unexpected: false,
@@ -328,28 +360,53 @@ export class ConnectionService {
       throw error;
     }
   }
+  isNotificationActive(endpoint: GattEndpoint): boolean {
+    return (
+      this.session.source === "live" &&
+      this.transport.state === "connected" &&
+      this._notificationSubscriptions.has(notificationKey(endpoint))
+    );
+  }
   async enableNotifications(endpoint: GattEndpoint): Promise<void> {
-    const key = `${endpoint.serviceUuid.toLowerCase()}/${endpoint.characteristicUuid.toLowerCase()}`;
+    if (this.disposed) throw new Error("This workspace has been disposed.");
+    const key = notificationKey(endpoint);
     this._desiredNotificationEndpoints.set(key, endpoint);
-    if (this._notificationSubscriptions.has(key)) return;
+    if (this.isNotificationActive(endpoint)) return;
+    const existing = this._notificationStarts.get(key);
+    if (existing) return existing;
     const connectionId = this.transport.connectionId;
-    const unsubscribe = await this.transport.subscribe(endpoint, (packet) => {
-      if (connectionId && this.transport.connectionId === connectionId)
-        this.ports.protocolEvidence()._recordIncoming(packet, true, endpoint);
-    });
-    if (
-      !connectionId ||
-      this.transport.connectionId !== connectionId ||
-      this.transport.state !== "connected"
-    ) {
-      await unsubscribe().catch(() => undefined);
-      return;
+    const epoch = this._lifetimeGeneration;
+    const current = () =>
+      epoch === this._lifetimeGeneration &&
+      !!connectionId &&
+      connectionId === this.transport.connectionId &&
+      this.transport.state === "connected" &&
+      !this.disposed;
+    const startup = (async () => {
+      const unsubscribe = await this.transport.subscribe(endpoint, (packet) => {
+        if (current())
+          this.ports.protocolEvidence()._recordIncoming(packet, true, endpoint);
+      });
+      if (!current()) {
+        void unsubscribe().catch(() => undefined);
+        throw new Error(
+          "Notification startup belonged to a retired connection.",
+        );
+      }
+      this._notificationSubscriptions.set(key, unsubscribe);
+    })();
+    this._notificationStarts.set(key, startup);
+    try {
+      await startup;
+    } finally {
+      if (this._notificationStarts.get(key) === startup)
+        this._notificationStarts.delete(key);
     }
-    this._notificationSubscriptions.set(key, unsubscribe);
   }
   async enableDriverNotifications(
     driver = this.session.selection?.selected ?? null,
   ): Promise<void> {
+    const epoch = this._lifetimeGeneration;
     const fingerprint = this.session.fingerprint;
     if (!fingerprint) throw new Error("No fingerprint is connected.");
     const drivers = driver
@@ -377,13 +434,20 @@ export class ConnectionService {
           endpoint,
         );
     }
-    for (const endpoint of endpoints.values())
+    for (const endpoint of endpoints.values()) {
+      if (epoch !== this._lifetimeGeneration)
+        throw new Error("The notification connection was retired.");
       await this.enableNotifications(endpoint);
+    }
   }
   async _restoreNotificationSubscriptions(): Promise<void> {
     if (this.transport.state !== "connected") return;
-    for (const endpoint of this._desiredNotificationEndpoints.values())
+    const epoch = this._lifetimeGeneration;
+    for (const endpoint of this._desiredNotificationEndpoints.values()) {
+      if (epoch !== this._lifetimeGeneration)
+        throw new Error("The notification connection was retired.");
       await this.enableNotifications(endpoint);
+    }
   }
   _handleTransportState(
     state: import("../ports/transport").ConnectionState,
@@ -397,6 +461,7 @@ export class ConnectionService {
     )
       return;
     this._notificationSubscriptions.clear();
+    this._notificationStarts.clear();
     this.ports
       .protocolEvidence()
       .getNotificationRouter()
@@ -413,6 +478,7 @@ export class ConnectionService {
       unexpected: true,
     });
     this._connectionEpoch += 1;
+    this._lifetimeGeneration += 1;
     this.ports
       .protocolEvidence()
       .getTrace()
@@ -441,4 +507,8 @@ export class ConnectionService {
   get connectionState(): ApplicationConnectionState {
     return this._connectionState;
   }
+}
+
+function notificationKey(endpoint: GattEndpoint): string {
+  return `${normalizeUuid(endpoint.serviceUuid)}/${normalizeUuid(endpoint.characteristicUuid)}`;
 }

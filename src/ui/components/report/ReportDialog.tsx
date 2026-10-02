@@ -1,3 +1,7 @@
+import {
+  reportPrivacyLabel,
+  REPORT_REVIEW_WARNING,
+} from "../../../diagnostics/report-privacy";
 import type { JSX } from "preact";
 import type {
   AppSnapshot,
@@ -28,7 +32,6 @@ export function ReportDialog({
     ["includeEvidence", "Evidence / unknowns / rejected hypotheses"],
     ["includeObservations", "Observations"],
     ["includeTextContent", "User text content in compiler evidence"],
-    ["includeIdentifiers", "Browser/device identifiers"],
     ["includeRawTrace", "Full raw event trace"],
   ];
   const filename = `matrixsmith-report-${new Date().toISOString().slice(0, 10)}`;
@@ -40,7 +43,9 @@ export function ReportDialog({
     >
       <header>
         <div>
-          <p class="eyebrow">SAFE TO SHARE BY DEFAULT</p>
+          <p class="eyebrow">
+            {reportPrivacyLabel(options.includeIdentifiers)}
+          </p>
           <h1 id="report-title">
             {snapshot.reportKind === "investigation"
               ? "Investigation report"
@@ -91,45 +96,56 @@ export function ReportDialog({
               <span>Canonical device report</span>
             </label>
           </fieldset>
-          <label>
-            <strong>Goal / question</strong>
-            <textarea
-              rows={4}
-              placeholder="What should a reviewer help determine?"
-              value={options.goal}
-              onInput={(event) => toggle("goal", event.currentTarget.value)}
-            />
-          </label>
-          <fieldset
-            class={snapshot.reportKind === "device" ? "" : "muted-options"}
-          >
-            <legend>
-              Include
-              {snapshot.reportKind !== "device" && (
-                <small> — applies to the device report</small>
-              )}
-            </legend>
-            {checks.map(([key, label]) => (
-              <label
-                key={key}
-                class={
-                  key === "includeIdentifiers" || key === "includeRawTrace"
-                    ? "sensitive"
-                    : ""
-                }
-              >
-                <input
-                  type="checkbox"
-                  checked={Boolean(options[key])}
-                  onChange={(event) => toggle(key, event.currentTarget.checked)}
+          {snapshot.reportKind === "device" ? (
+            <>
+              <label>
+                <strong>Goal / question</strong>
+                <textarea
+                  rows={4}
+                  placeholder="What should a reviewer help determine?"
+                  value={options.goal}
+                  onInput={(event) => toggle("goal", event.currentTarget.value)}
                 />
-                <span>{label}</span>
-                {key === "includeIdentifiers" && (
-                  <small>May identify this browser/device</small>
-                )}
               </label>
-            ))}
+              <fieldset>
+                <legend>Include</legend>
+                {checks.map(([key, label]) => (
+                  <label
+                    key={key}
+                    class={key === "includeRawTrace" ? "sensitive" : ""}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={Boolean(options[key])}
+                      onChange={(event) =>
+                        toggle(key, event.currentTarget.checked)
+                      }
+                    />
+                    <span>{label}</span>
+                  </label>
+                ))}
+              </fieldset>
+            </>
+          ) : (
+            <p>
+              Investigation objective (from the investigation):{" "}
+              {snapshot.reportObjective ?? "No active investigation."}
+            </p>
+          )}
+          <fieldset>
+            <legend>Markdown privacy</legend>
+            <label class="sensitive">
+              <input
+                type="checkbox"
+                checked={options.includeIdentifiers}
+                onChange={(event) =>
+                  toggle("includeIdentifiers", event.currentTarget.checked)
+                }
+              />
+              <span>Include known identifiers in this Markdown report</span>
+            </label>
           </fieldset>
+          <p>{REPORT_REVIEW_WARNING}</p>
           {options.includeIdentifiers && (
             <p class="notice warning">
               Identifying information is included by your choice. Review the
@@ -138,6 +154,20 @@ export function ReportDialog({
           )}
         </form>
         <div class="report-preview">
+          {snapshot.reportError && (
+            <div role="alert">
+              <p>{snapshot.reportError}</p>
+              <button type="button" onClick={() => store.retryReport()}>
+                Retry preview
+              </button>
+            </div>
+          )}
+          {snapshot.reportPreviewFailed && (
+            <p>
+              The preview is unavailable. Any retained preview is from the last
+              successful generation.
+            </p>
+          )}
           <div class="preview-title">
             <strong>Markdown preview</strong>
             <span>
@@ -152,29 +182,24 @@ export function ReportDialog({
       <footer>
         <button
           class="primary"
-          onClick={() => void store.copy(snapshot.reportMarkdown)}
+          disabled={snapshot.reportPreviewFailed}
+          onClick={() => void store.copyReport()}
         >
           Copy Markdown
         </button>
         <button
           class="secondary"
-          onClick={() =>
-            store.download(
-              `${filename}.md`,
-              snapshot.reportMarkdown,
-              "text/markdown",
-            )
-          }
+          disabled={snapshot.reportPreviewFailed}
+          onClick={() => void store.downloadReport(`${filename}.md`)}
         >
           Download .md
         </button>
         <button
           class="secondary"
           onClick={() =>
-            store.download(
+            void store.downloadReport(
               `${filename}-shareable-v3.json`,
-              store.exportBundle("shareable"),
-              "application/json",
+              "shareable",
             )
           }
         >
@@ -183,10 +208,9 @@ export function ReportDialog({
         <button
           class="secondary"
           onClick={() =>
-            store.download(
+            void store.downloadReport(
               `${filename}-full-local-archive-v3.json`,
-              store.exportBundle("full-local-archive"),
-              "application/json",
+              "full-local-archive",
             )
           }
         >

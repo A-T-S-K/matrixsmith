@@ -99,7 +99,7 @@ const CAPABILITY_LABELS: Readonly<Record<CapabilityId, string>> = {
   "static-frame": "Static image",
   animation: "Animation",
   text: "Text",
-  gif: "GIF",
+  gif: "Native GIF decoder (experimental)",
 };
 
 const REQUIREMENTS: Readonly<
@@ -123,7 +123,6 @@ const CONTENT_PATH: Readonly<Partial<Record<CapabilityId, ContentPathId>>> = {
   "static-frame": "image",
   text: "text",
   animation: "animation",
-  gif: "gif",
 };
 
 const ALL_CAPABILITIES = Object.keys(CAPABILITY_LABELS) as CapabilityId[];

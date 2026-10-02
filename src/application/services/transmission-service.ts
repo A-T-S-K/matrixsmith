@@ -95,6 +95,7 @@ export class TransmissionService {
       throw new Error(
         "Persistent content must be prepared for the connected target before authorization.",
       );
+    const connectionId = this.ports.connection().getTransport().connectionId;
     const experimentalWasEnabled = this.authority.experimentalTxEnabled;
     if (requiresExperimentalConfirmation) this.authority.enableExperimentalTx();
     if (requiresExperimentalConfirmation)
@@ -119,9 +120,13 @@ export class TransmissionService {
         );
       return result;
     } finally {
-      this.authority.consumePersistentConfirmation();
-      if (requiresExperimentalConfirmation && !experimentalWasEnabled)
-        this.authority.disableExperimentalTx();
+      if (
+        connectionId === this.ports.connection().getTransport().connectionId
+      ) {
+        this.authority.consumePersistentConfirmation();
+        if (requiresExperimentalConfirmation && !experimentalWasEnabled)
+          this.authority.disableExperimentalTx();
+      }
     }
   }
   plan(operation: MatrixOperation): PreparedTransmission {
@@ -196,8 +201,12 @@ export class TransmissionService {
     onProgress?: (progress: ExecutionProgress) => void,
   ): Promise<ExecutionResult> {
     const session = this.ports.connection().getSession();
+    const connectionId = this.ports.connection().getTransport().connectionId;
+    const current = () =>
+      connectionId === this.ports.connection().getTransport().connectionId;
     const startedAt = new Date().toISOString();
     const notificationStart = session.notifications.length;
+    const sessionSource = session.source;
     const decision = this.authorize(plan);
     if (!decision.allowed || !decision.authorized)
       throw new Error(decision.reasons.join(" "));
@@ -207,6 +216,8 @@ export class TransmissionService {
       .drivers.find(({ id }) => id === plan.driverId);
     if (!driver) throw new Error(`Driver ${plan.driverId} is unavailable.`);
     await this.ports.connection().enableDriverNotifications(driver);
+    if (!current())
+      throw new Error("The connection changed during notification setup.");
     // A stored-program display holds exactly one program. Every persistent
     // write replaces it, so the belief about what is on the panel is settled
     // HERE — the one path all of them go through — rather than in each
@@ -227,12 +238,13 @@ export class TransmissionService {
           plan,
           result,
           startedAt,
-          notificationStart,
+          current() ? notificationStart : session.notifications.length,
           source,
           diagnosticRunIdValue,
           null,
+          sessionSource,
         );
-      if (replacesStoredProgram) {
+      if (current() && replacesStoredProgram) {
         // "Written at" is the final host-accepted write, never the moment the
         // transfer began — a report that labels transfer-start as accepted is
         // reporting a time the panel had not yet been changed.
@@ -253,6 +265,7 @@ export class TransmissionService {
       return result;
     } catch (error) {
       if (
+        current() &&
         this.ports.connection().getTransport().state === "quarantined" &&
         isPreparedTransmission(plan)
       ) {
@@ -271,7 +284,7 @@ export class TransmissionService {
       // A failed persistent write may still have landed packets. What is on
       // the panel is genuinely unknown, and saying otherwise in either
       // direction would be a guess.
-      if (replacesStoredProgram) {
+      if (current() && replacesStoredProgram) {
         this.ports
           .investigation()
           ._invalidatePanelProgram(
@@ -284,10 +297,11 @@ export class TransmissionService {
           plan,
           null,
           startedAt,
-          notificationStart,
+          current() ? notificationStart : session.notifications.length,
           source,
           diagnosticRunIdValue,
           errorMessage(error),
+          sessionSource,
         );
       throw error;
     }
@@ -298,6 +312,7 @@ export class TransmissionService {
       throw new Error(
         "Imported and replay sessions cannot perform live probes.",
       );
+    const connectionId = this.ports.connection().getTransport().connectionId;
     const fingerprint = session.fingerprint;
     if (!fingerprint)
       throw new Error(
@@ -356,6 +371,7 @@ export class TransmissionService {
     await this.ports.connection().enableDriverNotifications(driver);
     const startedAt = new Date().toISOString();
     const notificationStart = session.notifications.length;
+    const sessionSource = session.source;
     let result: ExecutionResult;
     try {
       result = await this._executor.execute(decision.authorized, driver);
@@ -365,10 +381,13 @@ export class TransmissionService {
           decision.authorized.plan,
           result,
           startedAt,
-          notificationStart,
+          connectionId === this.ports.connection().getTransport().connectionId
+            ? notificationStart
+            : session.notifications.length,
           "probe",
           null,
           null,
+          sessionSource,
         );
     } catch (error) {
       this.ports
@@ -377,10 +396,13 @@ export class TransmissionService {
           decision.authorized.plan,
           null,
           startedAt,
-          notificationStart,
+          connectionId === this.ports.connection().getTransport().connectionId
+            ? notificationStart
+            : session.notifications.length,
           "probe",
           null,
           errorMessage(error),
+          sessionSource,
         );
       throw error;
     }
@@ -395,6 +417,8 @@ export class TransmissionService {
       : result.response
         ? profileProbe!.interpret(result.response)
         : null;
+    if (connectionId !== this.ports.connection().getTransport().connectionId)
+      throw new Error("The probe belongs to a retired connection.");
     if (interpretation?.matched)
       this.ports
         .identification()

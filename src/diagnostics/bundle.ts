@@ -1,3 +1,4 @@
+import validateStructure from "./generated/bundle-validator.js";
 import { redactIdentifyingText } from "./shareable-text";
 import type { Capability } from "../core/capabilities";
 import type { DeviceFingerprint } from "../core/device";
@@ -18,6 +19,8 @@ import { INPUT_LIMITS } from "../application/input-limits";
 import { MATRIXSMITH_VERSION } from "../application/version";
 
 export const BUNDLE_INPUT_LIMITS = INPUT_LIMITS;
+/** Count object/array containers, including the root, before recursive consumers. */
+export const BUNDLE_MAX_NESTING_DEPTH = 64;
 export type BundlePrivacy = "shareable" | "full-local-archive";
 export interface BundleValidationIssue {
   readonly path: string;
@@ -27,6 +30,7 @@ export interface BundleValidationIssue {
     | "invalid_value"
     | "too_large"
     | "too_many"
+    | "too_deep"
     | "unsupported_version";
   readonly message: string;
 }
@@ -156,7 +160,46 @@ export function safeParseDiagnosticBundle(json: string): ParseBundleResult {
   } catch {
     return failure("$", "invalid_json", "Diagnostic bundle is not valid JSON.");
   }
+  if (obj(value) && value.schemaVersion !== 3)
+    return failure(
+      "$.schemaVersion",
+      "unsupported_version",
+      "Unsupported diagnostic bundle schemaVersion; expected Bundle V3.",
+    );
+  const depthIssue = checkNestingDepth(value);
+  if (depthIssue) return { success: false, errors: [depthIssue] };
   const errors: BundleValidationIssue[] = [];
+  if (!validateStructure(value)) {
+    for (const issue of validateStructure.errors ?? []) {
+      const extra =
+        issue.params.additionalProperty ?? issue.params.missingProperty;
+      const pointer =
+        issue.instancePath +
+        (typeof extra === "string" ? `/${extra.slice(0, 80)}` : "");
+      const path =
+        "$" +
+        pointer
+          .split("/")
+          .slice(1)
+          .map((part) =>
+            /^\d+$/.test(part)
+              ? `[${part}]`
+              : `.${part.replaceAll("~1", "/").replaceAll("~0", "~")}`,
+          )
+          .join("");
+      add(
+        errors,
+        path.slice(0, 256),
+        issue.keyword === "type"
+          ? "invalid_type"
+          : issue.keyword === "maxItems"
+            ? "too_many"
+            : "invalid_value",
+        `Bundle V3 structure: ${issue.message ?? "invalid value"}.`,
+      );
+    }
+    return { success: false, errors };
+  }
   validateBundle(value, errors);
   if (errors.length || !obj(value)) return { success: false, errors };
   const investigation =
@@ -742,6 +785,34 @@ function compilation(v: unknown, p: string, e: BundleValidationIssue[]): void {
   ])
     num(v[k], `${p}.${k}`, e);
   one(v.compression, ["lzss-safe", "lzss"], `${p}.compression`, e);
+  if (v.originalContent !== undefined)
+    one(v.originalContent, ["gif"], `${p}.originalContent`, e);
+  if (v.deliveryBackend !== undefined)
+    one(
+      v.deliveryBackend,
+      ["local-gif-raster-animation"],
+      `${p}.deliveryBackend`,
+      e,
+    );
+  if (v.totalDurationMs !== undefined)
+    positive(v.totalDurationMs, `${p}.totalDurationMs`, e);
+  if (v.sourceRepetition !== undefined) {
+    if (typeof v.sourceRepetition === "number") {
+      if (!Number.isSafeInteger(v.sourceRepetition) || v.sourceRepetition < 0)
+        add(
+          e,
+          `${p}.sourceRepetition`,
+          "invalid_value",
+          "Expected a nonnegative safe integer.",
+        );
+    } else
+      one(
+        v.sourceRepetition,
+        ["infinite", "unknown"],
+        `${p}.sourceRepetition`,
+        e,
+      );
+  }
   optNum(v.frameCount, `${p}.frameCount`, e);
   if (v.frameDelaysMs !== undefined)
     numbers(v.frameDelaysMs, `${p}.frameDelaysMs`, e);
@@ -845,7 +916,7 @@ function add(
   code: BundleValidationIssue["code"],
   message: string,
 ): void {
-  e.push({ path, code, message });
+  if (e.length < 32) e.push({ path, code, message });
 }
 function failure(
   path: string,
@@ -853,6 +924,38 @@ function failure(
   message: string,
 ): ParseBundleResult {
   return { success: false, errors: [{ path, code, message }] };
+}
+function checkNestingDepth(value: unknown): BundleValidationIssue | null {
+  // Parsed JSON is acyclic. Iterators keep traversal iterative without queuing
+  // every sibling in a wide collection; paths stay bounded even for long keys.
+  function children(container: object) {
+    return Object.entries(container)[Symbol.iterator]();
+  }
+  if (typeof value !== "object" || value === null) return null;
+  const stack = [
+    { entries: children(value), path: "$", array: Array.isArray(value) },
+  ];
+  while (stack.length) {
+    const frame = stack[stack.length - 1]!;
+    const next = frame.entries.next();
+    if (next.done) {
+      stack.pop();
+      continue;
+    }
+    const [key, child] = next.value;
+    if (typeof child !== "object" || child === null) continue;
+    const path = (
+      frame.path + (frame.array ? `[${key}]` : `.${key.slice(0, 80)}`)
+    ).slice(0, 256);
+    if (stack.length >= BUNDLE_MAX_NESTING_DEPTH)
+      return {
+        path,
+        code: "too_deep",
+        message: `Diagnostic bundle exceeds the ${BUNDLE_MAX_NESTING_DEPTH}-level object/array nesting limit (including the root).`,
+      };
+    stack.push({ entries: children(child), path, array: Array.isArray(child) });
+  }
+  return null;
 }
 function obj(v: unknown): v is O {
   return typeof v === "object" && v !== null && !Array.isArray(v);
@@ -896,7 +999,7 @@ function one(
 }
 function iso(v: unknown, p: string, e: BundleValidationIssue[]): void {
   if (typeof v !== "string") str(v, p, e);
-  else if (Number.isNaN(Date.parse(v)))
+  else if (!validateStructure.validateDateTime(v))
     add(e, p, "invalid_value", "Expected an ISO date/time string.");
 }
 function hex(v: unknown, p: string, e: BundleValidationIssue[]): void {

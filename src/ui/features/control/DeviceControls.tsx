@@ -82,8 +82,10 @@ export function DeviceControls({
         </div>
       </dl>
       <div class="utility-row">
-        <StatusBadge tone={snapshot.liveConnected ? "good" : "neutral"}>
-          {snapshot.liveConnected ? "Live readback" : "Imported evidence"}
+        <StatusBadge tone={snapshot.deviceInfoEvidence.tone}>
+          {snapshot.deviceInfoEvidence.label}
+          {snapshot.deviceInfoEvidence.timestamp &&
+            ` · ${snapshot.deviceInfoEvidence.timestamp}`}
         </StatusBadge>
         <UnavailableAction
           class="text-action"

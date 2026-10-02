@@ -1,11 +1,10 @@
 import { createPresentationStore } from "../helpers/presentation-fixture";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { ApplicationRuntime } from "../../src/application/runtime";
 import { TraceRecorder } from "../../src/diagnostics/trace";
 import {
   PresentationStore,
   parseServiceHints,
-  recommendedAction,
 } from "../../src/presentation/store";
 import { knownIledHatFingerprint } from "../helpers/fixtures";
 import { ScriptedCoolLedUxDevice } from "../helpers/scripted-device";
@@ -72,26 +71,6 @@ describe("service hint parsing", () => {
   });
 });
 
-describe("recommended next action", () => {
-  it("asks for a connection when disconnected", () => {
-    expect(recommendedAction(false, false, false).action).toBe("connect");
-  });
-  it("asks for safe identification when the protocol is ambiguous", () => {
-    expect(recommendedAction(true, false, true).action).toBe("identify");
-  });
-  it("offers safe device checks once identified", () => {
-    expect(recommendedAction(true, true, false).action).toBe("checks");
-  });
-  it("falls back to evidence collection when no safe probe exists", () => {
-    expect(recommendedAction(true, false, false).action).toBe("none");
-  });
-  it("recommends offline review, not live actions, for imported reports", () => {
-    const recommended = recommendedAction(true, true, false, false);
-    expect(recommended.action).toBe("none");
-    expect(recommended.title).toBe("Review imported evidence");
-  });
-});
-
 describe("workspace snapshot", () => {
   it("opens a known display ready to use, with the probe still available", async () => {
     const { store } = await connectedStore();
@@ -99,18 +78,18 @@ describe("workspace snapshot", () => {
     expect(snapshot.page).toBe("workspace");
     // No identification step: the profile already answers the question the
     // probe exists to answer.
-    expect(snapshot.recommended.action).not.toBe("identify");
+    expect(snapshot.recommended).toMatchObject({
+      title: "Create content",
+      action: "none",
+    });
     expect(snapshot.device?.support).toMatch(/ready for normal use/i);
     expect(snapshot.device?.protocol).toBe("CoolLEDUX");
     await store.identify();
     snapshot = store.getSnapshot();
     expect(snapshot.error).toBeNull();
     expect(snapshot.candidates.find((c) => c.id === "coolledux")?.state).toBe(
-      "VERIFIED ON THIS SESSION",
+      "Identified by current live probe",
     );
-    expect(
-      snapshot.support.find((row) => row.label === "Protocol identity")?.state,
-    ).toBe("Verified");
     expect(snapshot.deviceState.brightness).toBe(0xcc);
   });
 
@@ -151,4 +130,45 @@ describe("workspace snapshot", () => {
     expect(store.getSnapshot().reportOptions.includeRawTrace).toBe(false);
     expect(store.markdown()).not.toContain("fixture-device");
   });
+});
+
+it("derives automatic/manual subscriptions from the live owner across disconnect and report workspaces", async () => {
+  const { store, transport } = await connectedStore();
+  const subscribed = () =>
+    store
+      .getSnapshot()
+      .gatt.flatMap((service) => service.characteristics)
+      .filter((c) => c.subscribed);
+  expect(subscribed()).toHaveLength(1);
+  await store.subscribeNotifications({
+    serviceUuid: subscribed()[0]!.serviceUuid,
+    characteristicUuid: subscribed()[0]!.uuid,
+  });
+  expect(transport.notificationListenerCount).toBe(1);
+  const bundle = store.controller.exportBundle();
+  transport.unexpectedDisconnect();
+  expect(subscribed()).toHaveLength(0);
+  await store.connect();
+  expect(subscribed()).toHaveLength(1);
+  store.importBundle(bundle);
+  expect(subscribed()).toHaveLength(0);
+});
+it("rejects oversized programmatic text, blocks unsafe scroll sending, and accepts valid recovery", async () => {
+  const { store, transport } = await connectedStore();
+  store.updateContentSettings({ text: "HI" });
+  store.updateContentSettings({ text: "X".repeat(513) });
+  expect(store.getSnapshot().content.settings.text).toBe("HI");
+  expect(store.getSnapshot().error).toMatch(/512/);
+  store.updateContentSettings({
+    text: "X".repeat(512),
+    textDisplayMode: "scroll",
+  });
+  expect(store.getSnapshot().content.textScrollPlan?.safe).toBe(false);
+  store.requestSendText();
+  await Promise.resolve();
+  await Promise.resolve();
+  expect(transport.writes).toHaveLength(0);
+  store.updateContentSettings({ text: "HI", textDisplayMode: "still" });
+  store.requestSendText();
+  await vi.waitFor(() => expect(transport.writes.length).toBeGreaterThan(0));
 });

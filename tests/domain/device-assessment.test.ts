@@ -1,3 +1,4 @@
+import { contentPathGate } from "../../src/investigation/gating";
 import { describe, expect, it } from "vitest";
 import { assessDevice } from "../../src/domain/device/assessment";
 import { coolLedUxDriver } from "../../src/drivers/coolledux";
@@ -20,6 +21,13 @@ describe("canonical device assessment", () => {
       operations: coolLedUxDriver.operations,
       live: true,
     });
+    expect(contentPathGate("gif", evidence).allowed).toBe(true);
+    expect(assessment.capabilities.gif.safety.assurance).toBe("experimental");
+    expect(assessment.capabilities.gif.availability).toBe("blocked");
+    expect(assessment.capabilities.gif.missingClaims).toContain("gif.playback");
+    expect(assessment.capabilities.gif.label).toBe(
+      "Native GIF decoder (experimental)",
+    );
     expect(assessment.readiness).toBe("ready");
     expect(assessment.summary).toMatch(/ready for normal use/i);
     expect(assessment.capabilities.text.availability).toBe("available");

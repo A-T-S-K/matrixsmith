@@ -14,6 +14,7 @@ import type { MatrixTransport } from "../application/ports/transport";
 import type { ApplicationRuntime } from "../application/runtime";
 import type { PresentationEnvironment } from "./environment";
 export class PresentationStore {
+  private readonly historyCleanup: () => void;
   private disposal: Promise<void> | null = null;
   private readonly connectionStore: ConnectionStore;
   private readonly contentEditorStore: ContentEditorStore;
@@ -68,6 +69,7 @@ export class PresentationStore {
     });
     this.investigationStore = new InvestigationStore(
       {
+        projectionStore: () => this.projectionStore,
         workspaceStore: () => this.workspaceStore,
         noticeStore: () => this.noticeStore,
         navigationStore: () => this.navigationStore,
@@ -109,6 +111,10 @@ export class PresentationStore {
     );
     this.workspaceStore = new WorkspaceStore(
       {
+        invalidateContent: () => {
+          this.contentEditorStore.dispose();
+          this.contentSendStore.clearContentCaches();
+        },
         noticeStore: () => this.noticeStore,
         snapshotStore: () => this.snapshotStore,
         navigationStore: () => this.navigationStore,
@@ -119,6 +125,7 @@ export class PresentationStore {
     );
     this.navigationStore = new NavigationStore(
       {
+        projectionStore: () => this.projectionStore,
         snapshotStore: () => this.snapshotStore,
         reportStore: () => this.reportStore,
         contentSendStore: () => this.contentSendStore,
@@ -141,6 +148,12 @@ export class PresentationStore {
       },
       environment,
     );
+    this.projectionStore.refreshHistory();
+    this.historyCleanup =
+      environment.onHistoryChange?.(() => {
+        this.projectionStore.refreshHistory();
+        this.snapshotStore._emit();
+      }) ?? (() => {});
     this.snapshotStore._rebuild();
     this.workspaceStore.initialize();
     this.navigationStore.initialize();
@@ -183,9 +196,8 @@ export class PresentationStore {
     this.readCharacteristic = this.connectionStore.readCharacteristic.bind(
       this.connectionStore,
     );
-    this.toggleSubscription = this.connectionStore.toggleSubscription.bind(
-      this.connectionStore,
-    );
+    this.subscribeNotifications =
+      this.connectionStore.subscribeNotifications.bind(this.connectionStore);
     this.recordObservation = this.connectionStore.recordObservation.bind(
       this.connectionStore,
     );
@@ -318,6 +330,11 @@ export class PresentationStore {
     this.exportBundle = this.reportStore.exportBundle.bind(this.reportStore);
     this.markdown = this.reportStore.markdown.bind(this.reportStore);
     this.copy = this.reportStore.copy.bind(this.reportStore);
+    this.copyReport = this.reportStore.copyReport.bind(this.reportStore);
+    this.downloadReport = this.reportStore.downloadReport.bind(
+      this.reportStore,
+    );
+    this.retryReport = this.reportStore.retryReport.bind(this.reportStore);
     this.download = this.reportStore.download.bind(this.reportStore);
     this.copyTestReport = this.reportStore.copyTestReport.bind(
       this.reportStore,
@@ -346,7 +363,7 @@ export class PresentationStore {
   readonly confirmProvisionalGeometry: ConnectionStore["confirmProvisionalGeometry"];
   readonly applyBrightness: ConnectionStore["applyBrightness"];
   readonly readCharacteristic: ConnectionStore["readCharacteristic"];
-  readonly toggleSubscription: ConnectionStore["toggleSubscription"];
+  readonly subscribeNotifications: ConnectionStore["subscribeNotifications"];
   readonly recordObservation: ConnectionStore["recordObservation"];
   readonly importBundle: WorkspaceStore["importBundle"];
   readonly returnToLiveWorkspace: WorkspaceStore["returnToLiveWorkspace"];
@@ -392,6 +409,9 @@ export class PresentationStore {
   readonly exportBundle: ReportStore["exportBundle"];
   readonly markdown: ReportStore["markdown"];
   readonly copy: ReportStore["copy"];
+  readonly copyReport: ReportStore["copyReport"];
+  readonly downloadReport: ReportStore["downloadReport"];
+  readonly retryReport: ReportStore["retryReport"];
   readonly download: ReportStore["download"];
   readonly copyTestReport: ReportStore["copyTestReport"];
   readonly copyInvestigationReport: ReportStore["copyInvestigationReport"];
@@ -407,6 +427,8 @@ export class PresentationStore {
   dispose(): Promise<void> {
     if (this.disposal) return this.disposal;
     this.snapshotStore.dispose();
+    this.historyCleanup();
+    this.projectionStore.dispose();
     this.contentEditorStore.dispose();
     this.navigationStore.dispose();
     this.disposal = Promise.all([
@@ -418,4 +440,4 @@ export class PresentationStore {
 }
 export * from "./state/types";
 export { parseServiceHints } from "./service-hints";
-export { recommendedAction, useMatrixSnapshot } from "./state/selectors";
+export { useMatrixSnapshot } from "./state/selectors";

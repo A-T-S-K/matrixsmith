@@ -116,6 +116,9 @@ export class ApplicationRuntime {
     );
     this.disconnect = this.connection.disconnect.bind(this.connection);
     this.read = this.connection.read.bind(this.connection);
+    this.isNotificationActive = this.connection.isNotificationActive.bind(
+      this.connection,
+    );
     this.enableNotifications = this.connection.enableNotifications.bind(
       this.connection,
     );
@@ -295,6 +298,7 @@ export class ApplicationRuntime {
   readonly reconnectAuthorized: ConnectionService["reconnectAuthorized"];
   readonly disconnect: ConnectionService["disconnect"];
   readonly read: ConnectionService["read"];
+  readonly isNotificationActive: ConnectionService["isNotificationActive"];
   readonly enableNotifications: ConnectionService["enableNotifications"];
   readonly enableDriverNotifications: ConnectionService["enableDriverNotifications"];
   readonly confirmProvisionalGeometry: DiagnosticsService["confirmProvisionalGeometry"];

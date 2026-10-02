@@ -104,7 +104,7 @@ export const coolLedUxDriver: MatrixDriver = {
       {
         id: "capability:gif",
         operationId: "ShowGif" as const,
-        label: "Display GIF",
+        label: "Native GIF decoder (experimental)",
         capabilityId: "gif" as const,
       },
     ].map((description) => describeCapabilityOperation(context, description)),
@@ -353,7 +353,7 @@ export function coolLedUxCapabilities(
     // GIF depends on a decoder this panel has never been observed running.
     {
       id: "gif",
-      label: "GIF (stored program)",
+      label: "Native GIF decoder (experimental)",
       supported: true,
       live: exact,
       ...persistent,

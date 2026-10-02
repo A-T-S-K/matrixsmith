@@ -48,3 +48,15 @@ Record the browser/OS, deployment commit, display identifier label, and result f
 - [ ] Screen-reader landmarks, dialogs, tabs, notices, and unavailable reasons are coherent.
 - [ ] Layout and controls are usable at 320, 390, 768, 1024, and 1280 CSS pixels.
 - [ ] Notices and bottom navigation do not cover actionable controls.
+
+## Local imported GIF → raster animation (pending)
+
+These checks require real iLedHat playback on the frozen candidate. Historical
+native-GIF captures, existing animation evidence, and browser/simulator tests
+do not satisfy these imported-GIF acceptance items.
+
+- [ ] Imported GIF plays across the full 32-pixel width with four synchronized tiles.
+- [ ] Multiple colors match the decoded preview.
+- [ ] Variable frame timing matches the source durations exposed by the browser.
+- [ ] Transparency, partial updates, and disposal match the complete decoded frames.
+- [ ] Sustained looping remains stable; finite source repetition is visibly warned about and is not promised to be preserved.

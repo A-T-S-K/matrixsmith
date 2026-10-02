@@ -5,11 +5,13 @@ import { useId, useRef, useState, useEffect } from "preact/hooks";
 export function FileButton({
   children,
   accept,
+  disabled = false,
   onFile,
   class: className = "text-action",
 }: {
   readonly children: JSX.Element | string;
   readonly accept?: string;
+  readonly disabled?: boolean;
   readonly onFile: (file: File) => void | Promise<void>;
   readonly class?: string;
 }): JSX.Element {
@@ -26,6 +28,7 @@ export function FileButton({
   return (
     <>
       <button
+        disabled={disabled}
         type="button"
         class={className}
         onClick={() => inputRef.current?.click()}
@@ -36,6 +39,7 @@ export function FileButton({
         id={id}
         ref={inputRef}
         class="file-input"
+        disabled={disabled}
         type="file"
         accept={accept}
         tabIndex={-1}

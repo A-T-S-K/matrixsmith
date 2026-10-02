@@ -29,6 +29,8 @@ export class WebBluetoothTransport implements MatrixTransport {
   >();
   readonly #stateListeners = new Set<TransportStateListener>();
   readonly #notificationCleanups = new Set<() => void>();
+  #generation = 0;
+  readonly #queueReleases = new Set<() => void>();
   #writeQueue: Promise<void> = Promise.resolve();
 
   constructor(private readonly trace: TraceRecorder) {}
@@ -56,6 +58,8 @@ export class WebBluetoothTransport implements MatrixTransport {
       throw new Error("Web Bluetooth is unavailable in this browser.");
     if (this.#state !== "idle" && this.#state !== "error")
       throw new Error(`Cannot connect while transport is ${this.#state}.`);
+    this.#retireGeneration();
+    const generation = this.#generation;
     this.#setState("selecting");
     this.trace.record("device.selection.started", { mode: options.mode });
     try {
@@ -77,14 +81,22 @@ export class WebBluetoothTransport implements MatrixTransport {
       if (manufacturerData && manufacturerData.length > 0)
         requestOptions.optionalManufacturerData = [...manufacturerData];
       const device = await navigator.bluetooth.requestDevice(requestOptions);
-      return await this.#connectDevice(device, options, optionalServices);
+      this.#assertGeneration(generation);
+      return await this.#connectDevice(
+        device,
+        options,
+        optionalServices,
+        generation,
+      );
     } catch (error) {
       this.trace.record("error", {
         scope: "connect",
         message: errorMessage(error),
       });
-      await this.#cleanup(false);
-      this.#setState("error");
+      if (generation === this.#generation) {
+        this.#cleanup(false);
+        this.#setState("error");
+      }
       throw error;
     }
   }
@@ -107,6 +119,8 @@ export class WebBluetoothTransport implements MatrixTransport {
       );
     if (this.#state !== "idle" && this.#state !== "error")
       throw new Error(`Cannot connect while transport is ${this.#state}.`);
+    this.#retireGeneration();
+    const generation = this.#generation;
     this.#setState("selecting");
     this.trace.record("device.selection.started", {
       mode: options.mode,
@@ -119,16 +133,22 @@ export class WebBluetoothTransport implements MatrixTransport {
         throw new Error(
           "The previously authorized device was not found. Use the device chooser instead.",
         );
-      return await this.#connectDevice(device, options, [
-        ...options.hints.optionalServices.map(String),
-      ]);
+      this.#assertGeneration(generation);
+      return await this.#connectDevice(
+        device,
+        options,
+        [...options.hints.optionalServices.map(String)],
+        generation,
+      );
     } catch (error) {
       this.trace.record("error", {
         scope: "connect",
         message: errorMessage(error),
       });
-      await this.#cleanup(false);
-      this.#setState("error");
+      if (generation === this.#generation) {
+        this.#cleanup(false);
+        this.#setState("error");
+      }
       throw error;
     }
   }
@@ -137,6 +157,7 @@ export class WebBluetoothTransport implements MatrixTransport {
     device: BluetoothDevice,
     options: DeviceSelectionOptions,
     optionalServices: readonly string[],
+    generation: number,
   ): Promise<DeviceFingerprint> {
     this.#device = device;
     device.addEventListener("gattserverdisconnected", this.#onDisconnected);
@@ -149,9 +170,16 @@ export class WebBluetoothTransport implements MatrixTransport {
     const server = await device.gatt?.connect();
     if (!server)
       throw new Error("The selected Bluetooth device has no GATT server.");
+    if (generation !== this.#generation) {
+      // A late connect may have reopened its retired server. Never disconnect
+      // the same authorized device when a replacement attempt owns it now.
+      if (device !== this.#device) server.disconnect();
+      this.#assertGeneration(generation);
+    }
     this.#server = server;
     this.trace.record("gatt.connected", { connected: server.connected });
-    const services = await this.#enumerateServices(server);
+    const services = await this.#enumerateServices(server, generation);
+    this.#assertGeneration(generation);
     this.#fingerprint = {
       schemaVersion: 1,
       transportKind: "web-bluetooth",
@@ -259,7 +287,7 @@ export class WebBluetoothTransport implements MatrixTransport {
   async disconnect(): Promise<void> {
     if (this.#state === "idle") return;
     this.#setState("disconnecting");
-    await this.#cleanup(true);
+    this.#cleanup(true);
     this.#setState("idle");
   }
 
@@ -273,10 +301,13 @@ export class WebBluetoothTransport implements MatrixTransport {
   }
 
   async read(endpoint: GattEndpoint): Promise<Uint8Array> {
-    const characteristic = await this.#resolve(endpoint);
+    const generation = this.#generation;
+    const characteristic = await this.#resolve(endpoint, generation);
+    this.#assertGeneration(generation);
     if (!characteristic.properties.read)
       throw new Error("Characteristic does not support reads.");
     const value = await characteristic.readValue();
+    this.#assertGeneration(generation);
     const bytes = new Uint8Array(
       value.buffer,
       value.byteOffset,
@@ -298,13 +329,17 @@ export class WebBluetoothTransport implements MatrixTransport {
     endpoint: GattEndpoint,
     listener: (bytes: Uint8Array) => void,
   ): Promise<() => Promise<void>> {
-    const characteristic = await this.#resolve(endpoint);
+    const generation = this.#generation;
+    const characteristic = await this.#resolve(endpoint, generation);
+    this.#assertGeneration(generation);
     if (
       !characteristic.properties.notify &&
       !characteristic.properties.indicate
     )
       throw new Error("Characteristic does not support notifications.");
     const onValue = (event: Event): void => {
+      if (generation !== this.#generation || this.#state !== "connected")
+        return;
       const value = (event.target as BluetoothRemoteGATTCharacteristic).value;
       const bytes = value
         ? new Uint8Array(
@@ -318,9 +353,16 @@ export class WebBluetoothTransport implements MatrixTransport {
     characteristic.addEventListener("characteristicvaluechanged", onValue);
     const removeListener = (): void => {
       characteristic.removeEventListener("characteristicvaluechanged", onValue);
+      this.#notificationCleanups.delete(removeListener);
     };
     this.#notificationCleanups.add(removeListener);
-    await characteristic.startNotifications();
+    try {
+      await characteristic.startNotifications();
+      this.#assertGeneration(generation);
+    } catch (error) {
+      removeListener();
+      throw error;
+    }
     this.trace.record("gatt.notifications.enabled", {
       serviceUuid: endpoint.serviceUuid,
       characteristicUuid: endpoint.characteristicUuid,
@@ -328,7 +370,11 @@ export class WebBluetoothTransport implements MatrixTransport {
     return async () => {
       removeListener();
       this.#notificationCleanups.delete(removeListener);
-      if (characteristic.service.device.gatt?.connected)
+      if (
+        generation === this.#generation &&
+        this.#state === "connected" &&
+        characteristic.service.device.gatt?.connected
+      )
         await characteristic.stopNotifications();
     };
   }
@@ -340,14 +386,20 @@ export class WebBluetoothTransport implements MatrixTransport {
   ): Promise<TransportReceipt> {
     if (this.#state !== "connected")
       throw new Error("Cannot write while disconnected.");
+    const generation = this.#generation;
     let resolveQueue: (() => void) | undefined;
     const previous = this.#writeQueue;
     this.#writeQueue = new Promise<void>((resolve) => {
       resolveQueue = resolve;
+      this.#queueReleases.add(resolve);
     });
     await previous;
     try {
-      const characteristic = await this.#resolve(endpoint);
+      this.#assertGeneration(generation);
+      const characteristic = await this.#resolve(endpoint, generation);
+      this.#assertGeneration(generation);
+      if (this.#state !== "connected")
+        throw new Error("Cannot write while disconnected or quarantined.");
       const writable = Uint8Array.from(bytes);
       if (mode === "without-response") {
         if (!characteristic.properties.writeWithoutResponse)
@@ -362,25 +414,52 @@ export class WebBluetoothTransport implements MatrixTransport {
           );
         await characteristic.writeValueWithResponse(writable);
       }
-      return {
+      const receipt: TransportReceipt = {
         acceptedAt: new Date().toISOString(),
         endpoint,
         writeMode: mode,
         byteLength: bytes.length,
       };
+      // Keep browser acceptance as old-operation history, never current success.
+      if (generation !== this.#generation) {
+        this.trace.record("gatt.write.lateHostAccepted", {
+          generation,
+          byteLength: bytes.length,
+          acceptedAt: receipt.acceptedAt,
+        });
+        throw new RetiredConnectionError(
+          "The retired connection's write was accepted late by the browser.",
+          receipt,
+        );
+      }
+      return receipt;
+    } catch (error) {
+      if (
+        generation !== this.#generation &&
+        !(error instanceof RetiredConnectionError)
+      )
+        this.trace.record("gatt.write.lateRejected", {
+          generation,
+          message: errorMessage(error),
+        });
+      throw error;
     } finally {
+      if (resolveQueue) this.#queueReleases.delete(resolveQueue);
       resolveQueue?.();
     }
   }
 
   async #enumerateServices(
     server: BluetoothRemoteGATTServer,
+    generation: number,
   ): Promise<readonly GattServiceFingerprint[]> {
     const services = await server.getPrimaryServices();
+    this.#assertGeneration(generation);
     const result: GattServiceFingerprint[] = [];
     for (const service of services) {
       this.trace.record("gatt.service.resolved", { serviceUuid: service.uuid });
       const characteristics = await service.getCharacteristics();
+      this.#assertGeneration(generation);
       const fingerprints = characteristics.map((characteristic) => {
         this.#characteristics.set(
           endpointKey({
@@ -409,21 +488,26 @@ export class WebBluetoothTransport implements MatrixTransport {
 
   async #resolve(
     endpoint: GattEndpoint,
+    generation: number,
   ): Promise<BluetoothRemoteGATTCharacteristic> {
+    this.#assertGeneration(generation);
     if (this.#state !== "connected" || !this.#server?.connected)
       throw new Error("Transport is disconnected.");
     const key = endpointKey(endpoint);
     const cached = this.#characteristics.get(key);
     if (cached) return cached;
     const service = await this.#server.getPrimaryService(endpoint.serviceUuid);
+    this.#assertGeneration(generation);
     const characteristic = await service.getCharacteristic(
       endpoint.characteristicUuid,
     );
+    this.#assertGeneration(generation);
     this.#characteristics.set(key, characteristic);
     return characteristic;
   }
 
-  async #cleanup(explicit: boolean): Promise<void> {
+  #cleanup(explicit: boolean): void {
+    this.#retireGeneration();
     for (const cleanup of this.#notificationCleanups) cleanup();
     this.#notificationCleanups.clear();
     this.#characteristics.clear();
@@ -441,7 +525,9 @@ export class WebBluetoothTransport implements MatrixTransport {
     if (explicit) this.trace.record("disconnect", { explicit: true });
   }
 
-  readonly #onDisconnected = (): void => {
+  readonly #onDisconnected = (event: Event): void => {
+    if (event.target !== this.#device) return;
+    this.#retireGeneration();
     for (const cleanup of this.#notificationCleanups) cleanup();
     this.#notificationCleanups.clear();
     this.#characteristics.clear();
@@ -457,6 +543,21 @@ export class WebBluetoothTransport implements MatrixTransport {
     this.#setState("idle");
     this.trace.record("disconnect", { explicit: false });
   };
+
+  #retireGeneration(): void {
+    this.#generation++;
+    for (const release of this.#queueReleases) release();
+    this.#queueReleases.clear();
+    this.#writeQueue = Promise.resolve();
+    this.#characteristics.clear();
+  }
+
+  #assertGeneration(generation: number): void {
+    if (generation !== this.#generation)
+      throw new RetiredConnectionError(
+        "The connection generation ended before the operation completed.",
+      );
+  }
 
   #setState(state: ConnectionState): void {
     this.#state = state;
@@ -523,4 +624,13 @@ function propertiesOf(
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+class RetiredConnectionError extends Error {
+  constructor(
+    message: string,
+    readonly lateReceipt?: TransportReceipt,
+  ) {
+    super(message);
+  }
 }

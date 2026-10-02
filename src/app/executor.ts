@@ -9,7 +9,7 @@ import type {
   TransportReceipt,
 } from "../application/ports/transport";
 import type { DecodedNotification, MatrixDriver } from "../drivers/types";
-import type { NotificationRouter } from "./notifications";
+import { ResponseTimeoutError, type NotificationRouter } from "./notifications";
 import { fingerprintIdentityKey } from "../investigation/device-identity";
 
 export class IndeterminateWriteError extends Error {
@@ -96,6 +96,11 @@ export class TransmissionExecutor {
               driver.responseMatches?.(notification, expected) ?? false,
           )
         : null;
+    // Observe both outcomes before any write can remain pending.
+    const responseOutcome = armed?.promise.then(
+      (response) => ({ ok: true as const, response }),
+      (error: unknown) => ({ ok: false as const, error }),
+    );
     try {
       for (const packet of authorized.plan.packets) {
         this.#verifyAuthorization(authorized);
@@ -128,7 +133,13 @@ export class TransmissionExecutor {
                   packet.index,
                   authorized.plan.timeoutMs,
                 );
-                this.transport.quarantine(error.message);
+                if (
+                  sameBindingOrNull(
+                    currentTargetBinding(this.transport),
+                    authorized.targetBinding,
+                  )
+                )
+                  this.transport.quarantine(error.message);
                 this.trace.record("tx.packet.indeterminate", {
                   planId: authorized.plan.id,
                   packetIndex: packet.index,
@@ -141,16 +152,28 @@ export class TransmissionExecutor {
                       packetIndex: packet.index,
                       acceptedAt: lateReceipt.acceptedAt,
                     }),
-                  (lateError) =>
-                    this.trace.record("tx.packet.lateRejected", {
-                      planId: authorized.plan.id,
-                      packetIndex: packet.index,
-                      message: errorMessage(lateError),
-                    }),
+                  (lateError: unknown) => {
+                    const lateReceipt = (
+                      lateError as { lateReceipt?: TransportReceipt } | null
+                    )?.lateReceipt;
+                    if (lateReceipt)
+                      this.trace.record("tx.packet.lateHostAccepted", {
+                        planId: authorized.plan.id,
+                        packetIndex: packet.index,
+                        acceptedAt: lateReceipt.acceptedAt,
+                      });
+                    else
+                      this.trace.record("tx.packet.lateRejected", {
+                        planId: authorized.plan.id,
+                        packetIndex: packet.index,
+                        message: errorMessage(lateError),
+                      });
+                  },
                 );
                 return error;
               },
             );
+            this.#verifyAuthorization(authorized);
             receipts.push(receipt);
             packetTimings.push({
               index: packet.index,
@@ -207,17 +230,19 @@ export class TransmissionExecutor {
       }
       let response: DecodedNotification | null = null;
       let responseTimedOut = false;
-      if (armed) {
-        try {
-          response = await armed.promise;
-        } catch (error) {
+      this.#verifyAuthorization(authorized);
+      if (responseOutcome) {
+        const outcome = await responseOutcome;
+        if (outcome.ok) response = outcome.response;
+        else if (outcome.error instanceof ResponseTimeoutError) {
           responseTimedOut = true;
           this.trace.record("tx.response.timeout", {
             planId: authorized.plan.id,
-            message: errorMessage(error),
+            message: errorMessage(outcome.error),
           });
-        }
+        } else throw outcome.error;
       }
+      this.#verifyAuthorization(authorized);
       if (response)
         this.trace.record("tx.response.matched", {
           planId: authorized.plan.id,
@@ -336,4 +361,8 @@ function endpointAvailable(
         ),
     ) ?? false
   );
+}
+
+function sameBindingOrNull(a: TargetBinding | null, b: TargetBinding): boolean {
+  return a !== null && sameBinding(a, b);
 }

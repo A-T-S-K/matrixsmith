@@ -30,7 +30,7 @@ test("known display updates routine text directly and remains visible from Home"
     timeout: 10_000,
   });
   await page.getByRole("button", { name: /back to MatrixSmith home/i }).click();
-  await expect(page.getByText("ACTIVE DISPLAY")).toBeVisible();
+  await expect(page.getByText("ACTIVE DISPLAY", { exact: true })).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Return to display" }),
   ).toBeVisible();
@@ -199,6 +199,59 @@ for (const width of [1024, 1280, 1440, 1920]) {
         () => document.documentElement.scrollWidth - window.innerWidth,
       ),
     ).toBeLessThanOrEqual(1);
+  });
+}
+
+for (const width of [390, 1024, 1440, 1920]) {
+  test(`uploaded image controls retain readable rows at ${width}px`, async ({
+    page,
+  }, testInfo) => {
+    test.skip(
+      testInfo.project.name !== "chromium",
+      "Canonical image layout sweep.",
+    );
+    await page.setViewportSize({ width, height: 1000 });
+    await connectKnown(page);
+    await page.getByRole("tab", { name: "Image", exact: true }).click();
+    await page
+      .locator('input[accept="image/png,image/jpeg,image/webp"]')
+      .setInputFiles("research/image-reduction/fixtures/transparent.png");
+    await page
+      .getByRole("combobox", { name: "Composition", exact: true })
+      .selectOption("custom");
+    await page.getByText("Advanced image processing", { exact: true }).click();
+    for (const name of ["Logical matrix", "Simulated LEDs", "Apparent size"]) {
+      await page.getByRole("tab", { name, exact: true }).click();
+      const editor = await page.locator(".content-editor").boundingBox();
+      const rows = await page
+        .locator(".content-editor > :not(.file-input)")
+        .evaluateAll((elements) =>
+          elements.map((element) => {
+            const rect = element.getBoundingClientRect();
+            return {
+              x: rect.x,
+              y: rect.y,
+              width: rect.width,
+              bottom: rect.bottom,
+            };
+          }),
+        );
+      for (const [index, row] of rows.entries()) {
+        expect(row.x).toBeCloseTo(editor!.x, 0);
+        expect(row.width).toBeCloseTo(editor!.width, 0);
+        if (index > 0)
+          expect(row.y).toBeGreaterThanOrEqual(rows[index - 1]!.bottom);
+      }
+      const send = await page
+        .getByRole("button", { name: "Display it", exact: true })
+        .boundingBox();
+      expect(send!.height).toBeLessThan(80);
+      expect(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth - window.innerWidth,
+        ),
+      ).toBeLessThanOrEqual(1);
+    }
   });
 }
 

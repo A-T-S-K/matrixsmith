@@ -235,7 +235,7 @@ describe("poisoned local storage", () => {
 });
 
 describe("imported evidence cannot unlock live operation", () => {
-  it("blocks content gates and transmission for an imported bundle claiming success", async () => {
+  it("keeps imported evidence non-authorizing and blocks offline transmission", async () => {
     // Build a real bundle from a live session with strong claims, then
     // import it into a fresh controller: nothing may unlock.
     const live = await connectedController();
@@ -284,9 +284,17 @@ describe("imported evidence cannot unlock live operation", () => {
             trust.basis === null || trust.basis.scope !== "imported-external",
         ),
     ).toBe(true);
-    // …and GIF, which the shipped profile does not verify, stays gated no
-    // matter what the bundle claims.
-    expect(offline.contentGate("gif").allowed).toBe(false);
+    // Local GIF has exactly the trusted built-in animation basis, irrespective
+    // of the imported claims. Native decoder support remains experimental.
+    expect(offline.contentGate("gif").allowed).toBe(
+      live.contentGate("gif").allowed,
+    );
+    expect(offline.assessment().capabilities.gif.missingClaims).toContain(
+      "gif.playback",
+    );
+    expect(offline.assessment().capabilities.gif.safety.assurance).toBe(
+      "experimental",
+    );
     // …and even a gate satisfied by shipped built-in evidence cannot
     // transmit: the safety policy blocks every non-live source.
     const sequence = (

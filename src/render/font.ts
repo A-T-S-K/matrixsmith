@@ -121,6 +121,18 @@ export function glyphColumns(character: string): readonly number[] {
   return FONT_5X7[code - 32] ?? FALLBACK_GLYPH;
 }
 
+/** Distinct unsupported characters, matching the renderer's ASCII fallback. */
+export function unsupportedTextCharacters(text: string): readonly string[] {
+  return [
+    ...new Set(
+      [...text].filter((character) => {
+        const code = character.codePointAt(0)!;
+        return code < 32 || code > 126;
+      }),
+    ),
+  ];
+}
+
 /** Column bit-patterns for a whole string, one blank column between glyphs. */
 export function textColumns(text: string): readonly number[] {
   const columns: number[] = [];
@@ -137,7 +149,15 @@ export function measureText(text: string): {
   readonly width: number;
   readonly height: number;
 } {
-  return { width: textColumns(text).length, height: GLYPH_HEIGHT };
+  let count = 0;
+  for (let index = 0; index < text.length; index++) {
+    if ((text.codePointAt(index) ?? 0) > 0xffff) index++;
+    count++;
+  }
+  return {
+    width: Math.max(0, count * (GLYPH_WIDTH + 1) - 1),
+    height: GLYPH_HEIGHT,
+  };
 }
 
 export type TextAlignment = "left" | "center" | "right";
@@ -169,10 +189,18 @@ export function renderText(
   height: number,
   options: RenderTextOptions,
 ): Framebuffer {
+  return renderTextColumns(textColumns(text), width, height, options);
+}
+
+export function renderTextColumns(
+  columns: readonly number[],
+  width: number,
+  height: number,
+  options: RenderTextOptions,
+): Framebuffer {
   const frame = new Framebuffer(width, height);
   const background = options.background ?? { r: 0, g: 0, b: 0 };
   frame.fill(background.r, background.g, background.b);
-  const columns = textColumns(text);
   const alignment = options.alignment ?? "left";
   const baseX =
     alignment === "left"

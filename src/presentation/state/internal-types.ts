@@ -1,3 +1,4 @@
+import type { ContentCompilationRecord } from "../../diagnostics/content-evidence";
 import { Framebuffer } from "./dependencies";
 import type {
   TransmissionPlan,
@@ -19,7 +20,7 @@ import type { GuidedTestState } from "../../application/machines/guided-test-mac
 export type PendingSendCommand = {
   view: PendingSend;
   plan: TransmissionPlan;
-  extras?: Record<string, string>;
+  extras?: Partial<ContentCompilationRecord>;
 };
 export interface GuidedFlowInternal {
   testId: string;

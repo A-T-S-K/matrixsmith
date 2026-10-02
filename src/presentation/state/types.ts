@@ -1,3 +1,4 @@
+import type { DecodedGif } from "../../render/gif";
 import type { Capability } from "../../core/capabilities";
 import type { ConnectionState } from "../../application/ports/transport";
 import type { ExecutionProgress } from "../../app/executor";
@@ -29,19 +30,18 @@ export type ReportKind = "investigation" | "device" | "forensic";
 export type TransactionFilter =
   "all" | "txrx" | "queries" | "probes" | "diagnostics" | "errors";
 
-export type SupportState =
-  | "Verified"
-  | "Experimental"
-  | "Not tested"
-  | "Unknown"
-  | "Rejected"
-  | "Unsupported"
-  | "Out of scope";
-export interface SupportArea {
-  readonly id: string;
+export interface EvidenceLabel {
+  readonly basis:
+    | "candidate"
+    | "rejected"
+    | "profile-match"
+    | "live-probe"
+    | "historical"
+    | "received"
+    | "unread";
   readonly label: string;
-  readonly state: SupportState;
-  readonly evidence: string;
+  readonly tone: "good" | "bad" | "warn" | "neutral";
+  readonly timestamp: string | null;
 }
 export interface GattCharacteristicView {
   readonly serviceUuid: string;
@@ -55,6 +55,7 @@ export interface DriverCandidateView {
   readonly id: string;
   readonly family: string;
   readonly state: string;
+  readonly evidence: EvidenceLabel;
   readonly summary: string;
   readonly score: number;
   readonly reasons: readonly string[];
@@ -89,6 +90,7 @@ export interface AppSnapshot {
     readonly advertisementGeometry: string;
     readonly profileId: string | null;
   } | null;
+  readonly deviceInfoEvidence: EvidenceLabel;
   readonly deviceState: {
     readonly brightness: number | null;
     readonly power: string;
@@ -97,7 +99,6 @@ export interface AppSnapshot {
   readonly capabilities: readonly Capability[];
   /** Canonical source for every readiness badge, gate, action, and report projection. */
   readonly assessment: DeviceAssessment;
-  readonly support: readonly SupportArea[];
   readonly recommended: {
     readonly title: string;
     readonly description: string;
@@ -123,6 +124,9 @@ export interface AppSnapshot {
   readonly reportOpen: boolean;
   readonly reportOptions: ReportOptions;
   readonly reportMarkdown: string;
+  readonly reportError: string | null;
+  readonly reportPreviewFailed: boolean;
+  readonly reportObjective: string | null;
   /** Which report the share dialog is showing. */
   readonly reportKind: ReportKind;
   /** True when an investigation is active, making the semantic report the default. */
@@ -182,13 +186,7 @@ export interface ContentState {
     readonly processed: ProcessedImage | null;
   } | null;
   readonly animationPreview: readonly Framebuffer[];
-  readonly gif: {
-    readonly byteLength: number;
-    readonly width: number | null;
-    readonly height: number | null;
-    readonly warning: string | null;
-    readonly name: string;
-  } | null;
+  readonly gif: (DecodedGif & { readonly name: string }) | null;
 }
 
 export interface PendingSend {

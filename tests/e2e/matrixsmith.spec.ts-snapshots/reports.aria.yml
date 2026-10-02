@@ -31,7 +31,10 @@
     - text: Observations
     - checkbox "User text content in compiler evidence"
     - text: User text content in compiler evidence
-    - checkbox "Browser/device identifiers May identify this browser/device"
-    - text: Browser/device identifiers May identify this browser/device
     - checkbox "Full raw event trace"
     - text: Full raw event trace
+- group "Markdown privacy":
+    - text: ""
+    - checkbox "Include known identifiers in this Markdown report"
+    - text: Include known identifiers in this Markdown report
+- paragraph: Raw protocol packets, user messages, and free-form notes still need manual review; not all sensitive content can be recognized automatically.

@@ -110,6 +110,7 @@ describe("CoolLEDUX content plans", () => {
       context,
     );
     expect(plan.metadata.contentType).toBe("gif");
+    expect(plan.validation).toBe("experimental");
     expect(() =>
       coolLedUxDriver.plan(
         { type: "ShowGif", gifBytes: gif, width: 64, height: 16 },

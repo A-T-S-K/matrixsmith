@@ -51,9 +51,13 @@ export class ApplicationState {
     this.authority.consumePersistentConfirmation();
   }
   get latestDeviceInfo(): DecodedNotification | null {
+    return this.latestDeviceInfoRecord?.decoded ?? null;
+  }
+  /** Associated notification from the single connection-owned record collection. */
+  get latestDeviceInfoRecord(): NotificationRecord | null {
     for (let index = this.notifications.length - 1; index >= 0; index -= 1) {
-      const decoded = this.notifications[index]?.decoded;
-      if (decoded?.kind === "device-info") return decoded;
+      const record = this.notifications[index];
+      if (record?.decoded?.kind === "device-info") return record;
     }
     return null;
   }

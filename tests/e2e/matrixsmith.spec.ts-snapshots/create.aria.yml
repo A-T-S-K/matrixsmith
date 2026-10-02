@@ -18,11 +18,12 @@
         - tab "Text" [selected]
         - tab "Image"
         - tab "Demo animation"
-        - tab "GIFnot yet verified": GIF●
+        - tab "GIF"
     - tabpanel "Text":
         - text: ""
         - textbox "Text":
             - /placeholder: HELLO
+        - paragraph: 0 / 512 text units. Some symbols use two units. Long scrolling messages may need shortening.
         - text: Display
         - combobox "Display":
             - option "Auto" [selected]

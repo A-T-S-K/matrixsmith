@@ -5,6 +5,7 @@ export default [
   {
     ignores: [
       "dist/**",
+      "src/diagnostics/generated/bundle-validator.js",
       "coverage/**",
       "node_modules/**",
       "test-results/**",

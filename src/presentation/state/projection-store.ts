@@ -1,3 +1,5 @@
+import { readStoredInvestigationSummary } from "../../storage/history-summary";
+import { INVESTIGATIONS_KEY } from "../../storage/keys";
 import {
   bindingAllowsSessionContinuity,
   deviceIdentityBinding,
@@ -25,6 +27,26 @@ interface Ports {
   guidedController(): Pick<GuidedController, "_retryableOnCurrentMilestone">;
 }
 export class ProjectionStore {
+  private disposed = false;
+  private stored: ReturnType<typeof latestInvestigationFor> = null;
+  private summary: StoredInvestigationView | null = null;
+  refreshHistory(): void {
+    if (this.disposed) return;
+    let raw: string | null = null;
+    try {
+      raw = this.environment.storage.getItem(INVESTIGATIONS_KEY);
+    } catch {
+      /* Display-only read; save/forget report their own failures. */
+    }
+    const storage = { ...this.environment.storage, getItem: () => raw };
+    this.summary = readStoredInvestigationSummary(storage);
+    this.stored = latestInvestigationFor(null, storage);
+  }
+  dispose(): void {
+    this.disposed = true;
+    this.stored = null;
+    this.summary = null;
+  }
   constructor(
     private readonly ports: Ports,
     private readonly environment: Pick<PresentationEnvironment, "storage">,
@@ -227,8 +249,8 @@ export class ProjectionStore {
   _storedInvestigationView(): StoredInvestigationView | null {
     const profileId =
       this.ports.workspaceStore().getController().session.profile?.id ?? null;
-    const stored = latestInvestigationFor(null, this.environment.storage);
-    if (!stored) return null;
+    const stored = this.stored;
+    if (!stored) return this.summary;
     // Never offer to resume the investigation that is already active.
     if (
       this.ports.workspaceStore().getController().investigation?.id ===

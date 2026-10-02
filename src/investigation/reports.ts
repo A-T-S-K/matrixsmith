@@ -1,3 +1,9 @@
+import {
+  projectReportPrivacy,
+  reportPrivacyLabel,
+  REPORT_REVIEW_WARNING,
+} from "../diagnostics/report-privacy";
+import { gifProvenanceText } from "../diagnostics/content-evidence";
 import type { DeviceFingerprint, DeviceProfile } from "../core/device";
 import type { ProtocolTransaction } from "../diagnostics/transactions";
 import type { ContentCompilationRecord } from "../diagnostics/content-evidence";
@@ -52,6 +58,7 @@ import {
  */
 
 export interface DeviceReportContext {
+  readonly privacyContext?: import("../diagnostics/report-privacy").ReportPrivacyContext;
   readonly fingerprint: DeviceFingerprint | null;
   readonly profile: DeviceProfile | null;
   readonly matrixsmithVersion: string;
@@ -81,9 +88,19 @@ const SCOPE_LABEL: Readonly<Record<ClaimEvidence["scope"], string>> = {
   "source-reference": "source/reference evidence",
 };
 
-export function generateTestReport(input: TestReportInput): string {
+export function generateTestReport(
+  input: TestReportInput,
+  includeIdentifiers = false,
+): string {
+  input = projectReportPrivacy(input, includeIdentifiers);
   const { device, test, completed } = input;
-  const lines: string[] = ["# MatrixSmith Hardware Test Report", ""];
+  const lines: string[] = [
+    "# MatrixSmith Hardware Test Report",
+    "",
+    reportPrivacyLabel(includeIdentifiers),
+    REPORT_REVIEW_WARNING,
+    "",
+  ];
   const section = (title: string, body: string): void => {
     lines.push(`## ${title}`, "", body, "");
   };
@@ -214,7 +231,9 @@ export interface InvestigationReportInput {
 
 export function generateInvestigationReport(
   input: InvestigationReportInput,
+  includeIdentifiers = false,
 ): string {
+  input = projectReportPrivacy(input, includeIdentifiers);
   const { device, investigation } = input;
   const allEvidence = [
     ...input.baselineEvidence,
@@ -222,7 +241,13 @@ export function generateInvestigationReport(
   ];
   const claims = resolveClaims(allEvidence);
   const byId = new Map(claims.map((claim) => [claim.id, claim]));
-  const lines: string[] = ["# MatrixSmith Hardware Investigation Report", ""];
+  const lines: string[] = [
+    "# MatrixSmith Hardware Investigation Report",
+    "",
+    reportPrivacyLabel(includeIdentifiers),
+    REPORT_REVIEW_WARNING,
+    "",
+  ];
   const section = (title: string, body: string): void => {
     lines.push(`## ${title}`, "", body, "");
   };
@@ -428,6 +453,7 @@ export function generateInvestigationReport(
 }
 
 export interface ForensicReportInput {
+  readonly device?: DeviceReportContext;
   readonly base: string;
   readonly transactions: readonly ProtocolTransaction[];
   readonly decoder: NotificationDecoder | null;
@@ -435,9 +461,15 @@ export interface ForensicReportInput {
 }
 
 /** Full-detail appendix: every packet with real timestamps and timing analysis. */
-export function generateForensicAppendix(input: ForensicReportInput): string {
+export function generateForensicAppendix(
+  input: ForensicReportInput,
+  includeIdentifiers = false,
+): string {
+  input = projectReportPrivacy(input, includeIdentifiers);
   const lines: string[] = [
     "# MatrixSmith Forensic Appendix",
+    reportPrivacyLabel(includeIdentifiers),
+    REPORT_REVIEW_WARNING,
     "",
     "All packets, receipts, and measured timing. Timestamps are actual per-write times, never planned pacing.",
     "",
@@ -447,6 +479,11 @@ export function generateForensicAppendix(input: ForensicReportInput): string {
     lines.push(
       `- ${transaction.startedAt} → ${transaction.completedAt} (${transaction.durationMs} ms); host=${transaction.hostAccepted}; protocol=${String(transaction.protocolAcknowledged)}; error=${transaction.error ?? "none"}`,
     );
+    const compilation = input.compilations.find(
+      (record) => record.transactionId === transaction.id,
+    );
+    if (compilation?.originalContent === "gif")
+      lines.push(compilationText(compilation));
     const chunkCount = compilationChunkCount(
       input.compilations,
       transaction.id,
@@ -1037,11 +1074,14 @@ function gattText(fingerprint: DeviceFingerprint | null): string {
 function compilationText(record: ContentCompilationRecord | null): string {
   if (!record) return "No compiled program is associated with this test.";
   return [
+    ...gifProvenanceText(record),
     `- Program: ${record.width}×${record.height}, ${record.tileCount} tile(s) of width ${record.tileWidth}, ${record.programBytes} bytes uncompressed`,
     `- CRC32 (custom): 0x${record.crc32.toString(16).padStart(8, "0").toUpperCase()}; compressed ${record.compressedBytes} bytes (${record.compression})`,
     `- Transmission: 1 announce + ${record.chunkCount} chunk packet(s), ${record.pacingMs} ms requested pacing`,
     ...(record.frameCount !== undefined
-      ? [`- Frames: ${record.frameCount}`]
+      ? [
+          `- Frames: ${record.frameCount}${record.frameDelaysMs ? `; delays ${record.frameDelaysMs.join("/")} ms` : ""}`,
+        ]
       : []),
   ].join("\n");
 }

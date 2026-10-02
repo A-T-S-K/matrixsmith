@@ -9,6 +9,7 @@ import type { NavigationStore } from "./navigation-store";
 import type { PresentationEnvironment } from "../environment";
 
 interface Ports {
+  invalidateContent(): void;
   noticeStore(): Pick<NoticeStore, "setError" | "setInfo" | "getBusy">;
   snapshotStore(): Pick<SnapshotStore, "_emit">;
   navigationStore(): Pick<
@@ -119,6 +120,7 @@ export class WorkspaceStore {
     const { transport: replay, controller: offline } =
       this.environment.createOfflineWorkspace(bundle.fingerprint);
     offline.importBundle(json);
+    this.ports.invalidateContent();
     const previous = this.controller;
     this.controller = offline;
     this.transport = replay;
@@ -135,8 +137,10 @@ export class WorkspaceStore {
     this.ports.snapshotStore()._emit();
   }
   returnToLiveWorkspace(): void {
+    if (this.ports.noticeStore().getBusy()) return;
     const live = this._liveWorkspace;
     if (!live) return;
+    this.ports.invalidateContent();
     const previous = this.controller;
     this.controller = live.controller;
     this.transport = live.transport;

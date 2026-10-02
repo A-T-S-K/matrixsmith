@@ -21,6 +21,8 @@ interface Waiter {
   readonly timer: ReturnType<typeof setTimeout>;
 }
 
+export class ResponseTimeoutError extends Error {}
+
 export interface ArmedResponse {
   readonly promise: Promise<DecodedNotification>;
   cancel(): void;
@@ -38,7 +40,7 @@ export class NotificationRouter {
       const timer = setTimeout(() => {
         this.#waiters.delete(waiter);
         reject(
-          new Error(
+          new ResponseTimeoutError(
             `Protocol response timed out after ${expectation.timeoutMs} ms.`,
           ),
         );

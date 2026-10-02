@@ -8,6 +8,7 @@ import type { SymptomId } from "./dependencies";
 
 import { saveInvestigation } from "./dependencies";
 
+import type { ProjectionStore } from "./projection-store";
 import type { WorkspaceStore } from "./workspace-store";
 import type { NoticeStore } from "./notice-store";
 import type { NavigationStore } from "./navigation-store";
@@ -15,8 +16,9 @@ import type { SnapshotStore } from "./snapshot-store";
 import type { PresentationEnvironment } from "../environment";
 
 interface Ports {
+  projectionStore(): Pick<ProjectionStore, "refreshHistory">;
   workspaceStore(): Pick<WorkspaceStore, "getController">;
-  noticeStore(): Pick<NoticeStore, "setError" | "setInfo" | "_run">;
+  noticeStore(): Pick<NoticeStore, "setError" | "setInfo" | "_run" | "getBusy">;
   navigationStore(): Pick<NavigationStore, "setViewState" | "setPage">;
   snapshotStore(): Pick<SnapshotStore, "_emit">;
 }
@@ -25,17 +27,23 @@ export class InvestigationStore {
     private readonly ports: Ports,
     private readonly environment: Pick<PresentationEnvironment, "storage">,
   ) {}
-  _persistInvestigation(): void {
+  _persistInvestigation(): boolean {
     const investigation = this.ports
       .workspaceStore()
       .getController().investigation;
     if (investigation) {
       const saved = saveInvestigation(investigation, this.environment.storage);
+      if (saved.ok) {
+        this.ports.projectionStore().refreshHistory();
+        this.ports.noticeStore().setError(null, "history");
+      }
       if (!saved.ok)
         this.ports
           .noticeStore()
-          .setError(`Investigation was not saved: ${saved.message}`);
+          .setError(`Investigation was not saved: ${saved.message}`, "history");
+      return saved.ok;
     }
+    return false;
   }
   _persistDetachedInvestigation(): void {
     const detached = this.ports
@@ -44,10 +52,14 @@ export class InvestigationStore {
       .takeDetachedInvestigation();
     if (detached) {
       const saved = saveInvestigation(detached, this.environment.storage);
+      if (saved.ok) {
+        this.ports.projectionStore().refreshHistory();
+        this.ports.noticeStore().setError(null, "history");
+      }
       if (!saved.ok)
         this.ports
           .noticeStore()
-          .setError(`Investigation was not saved: ${saved.message}`);
+          .setError(`Investigation was not saved: ${saved.message}`, "history");
     }
   }
   startTroubleshoot(symptomId: SymptomId): void {
@@ -71,16 +83,20 @@ export class InvestigationStore {
     this.ports.snapshotStore()._emit();
   }
   stopInvestigation(): void {
+    this.ports.noticeStore().setInfo(null);
     this.ports.workspaceStore().getController().stopActiveInvestigation();
-    this._persistInvestigation();
-    this.ports
-      .noticeStore()
-      .setInfo(
-        "Investigation saved locally. Copy the investigation report, or resume any time.",
-      );
+    if (this._persistInvestigation())
+      this.ports
+        .noticeStore()
+        .setInfo(
+          "Investigation saved locally. Copy the investigation report, or resume any time.",
+        );
     this.ports.snapshotStore()._emit();
   }
   resumeStoredInvestigation(): void {
+    if (this.ports.noticeStore().getBusy()) return;
+    this.ports.noticeStore().setInfo(null);
+    this.ports.projectionStore().refreshHistory();
     const stored = latestInvestigationFor(
       this.ports.workspaceStore().getController().session.profile?.id ?? null,
       this.environment.storage,
@@ -106,18 +122,39 @@ export class InvestigationStore {
     this.ports.snapshotStore()._emit();
   }
   forgetLocalHistory(): void {
+    if (this.ports.noticeStore().getBusy()) return;
+    this.ports.noticeStore().setInfo(null);
     const removed = forgetInvestigationHistory(this.environment.storage);
-    if (removed.ok)
+    if (removed.ok) {
+      this.ports.projectionStore().refreshHistory();
+      this.ports.noticeStore().setError(null, "history");
       this.ports
         .noticeStore()
         .setInfo("Local investigation/device history forgotten.");
-    else
+    } else
       this.ports
         .noticeStore()
-        .setError(`Local history could not be removed: ${removed.message}`);
+        .setError(
+          `Local history could not be removed: ${removed.message}`,
+          "history",
+        );
     this.ports.snapshotStore()._emit();
   }
   async reconnectAuthorized(deviceId: string): Promise<void> {
+    const workspace = this.ports.workspaceStore().getController();
+    if (
+      this.ports.noticeStore().getBusy() ||
+      workspace.session.source !== "live" ||
+      workspace.transport.state === "connected"
+    ) {
+      this.ports
+        .noticeStore()
+        .setError(
+          "Finish the current operation and disconnect the active display before reconnecting.",
+        );
+      this.ports.snapshotStore()._emit();
+      return;
+    }
     await this.ports.noticeStore()._run("Reconnecting display…", async () => {
       this._persistInvestigation();
       try {

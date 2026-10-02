@@ -13,6 +13,8 @@ export type TraceEventType =
   | "gatt.characteristic.resolved"
   | "gatt.notifications.enabled"
   | "gatt.read"
+  | "gatt.write.lateHostAccepted"
+  | "gatt.write.lateRejected"
   | "notification.raw"
   | "notification.decoded"
   | "tx.plan.created"

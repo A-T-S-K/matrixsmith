@@ -1,5 +1,5 @@
 import type { JSX } from "preact";
-import { useEffect, useMemo, useState } from "preact/hooks";
+import { useEffect, useState } from "preact/hooks";
 import type { ApplicationCommand } from "../../application/commands";
 import type { HomeCapabilities } from "../../application/ports/home";
 import { readStoredInvestigationSummary } from "../../storage/history-summary";
@@ -35,10 +35,17 @@ export function BootstrapHome({
       active = false;
     };
   }, [capabilities]);
-  const storedInvestigation = useMemo(
-    () => readStoredInvestigationSummary(capabilities.storage),
-    [capabilities],
+  const [storedInvestigation, setStoredInvestigation] = useState(() =>
+    readStoredInvestigationSummary(capabilities.storage),
   );
+  useEffect(() => {
+    const refresh = (): void =>
+      setStoredInvestigation(
+        readStoredInvestigationSummary(capabilities.storage),
+      );
+    refresh();
+    return capabilities.onHistoryChange?.(refresh);
+  }, [capabilities]);
   const load = (label: string, action: ApplicationCommand): Promise<void> => {
     setBusy(label);
     setError(null);
@@ -67,6 +74,7 @@ export function BootstrapHome({
     },
   };
   const snapshot: HomeSnapshot = {
+    source: "live",
     liveConnected: false,
     device: null,
     assessment: { summary: "No display connected.", readiness: "no-device" },

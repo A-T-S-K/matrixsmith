@@ -23,6 +23,10 @@ export interface ContentCompilationRecord {
   readonly pacingMs: number;
   readonly frameCount?: number;
   readonly frameDelaysMs?: readonly number[];
+  readonly originalContent?: "gif";
+  readonly deliveryBackend?: "local-gif-raster-animation";
+  readonly totalDurationMs?: number;
+  readonly sourceRepetition?: number | "infinite" | "unknown";
   readonly sourceDimensions?: string;
   readonly fitMode?: string;
   readonly textContent?: string;
@@ -35,4 +39,13 @@ export function contentCompilationId(): string {
     globalThis.crypto?.randomUUID?.() ??
     `${Date.now()}-${Math.random().toString(16).slice(2)}`;
   return `compilation:${value}`;
+}
+
+/** Compact provenance shared by device and investigation/forensic reports. */
+export function gifProvenanceText(record: ContentCompilationRecord): string[] {
+  if (record.originalContent !== "gif") return [];
+  return [
+    `- Original content: GIF; delivery: ${record.deliveryBackend === "local-gif-raster-animation" ? "local GIF decode → raster animation" : "unspecified"}.`,
+    `- GIF source: ${record.sourceDimensions ?? "unknown"}${record.totalDurationMs === undefined ? "" : `; animation duration ${record.totalDurationMs} ms`}${record.sourceRepetition === undefined ? "" : `; source repetition ${record.sourceRepetition}`} (device repetition not encoded).`,
+  ];
 }

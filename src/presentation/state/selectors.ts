@@ -18,10 +18,8 @@ import type {
   ImportSummary,
   DiagnosticRegionView,
   RecommendationView,
-  SupportArea,
   TransactionFilter,
   ObservationPresentation,
-  SupportState,
 } from "./types";
 
 export function hexToRgb(hex: string): { r: number; g: number; b: number } {
@@ -142,112 +140,6 @@ export function useMatrixSnapshot(store: {
 export function endpointKey(endpoint: GattEndpoint): string {
   return `${endpoint.serviceUuid.toLowerCase()}/${endpoint.characteristicUuid.toLowerCase()}`;
 }
-/** Turns user text like "FFF0, a950" into chooser-ready service UUIDs; 4-hex shorthand expands to the full base UUID. */
-export function recommendedAction(
-  connected: boolean,
-  resolved: boolean,
-  ambiguous: boolean,
-  live = true,
-  _unusedEvidence: readonly unknown[] = [],
-  ready = false,
-): AppSnapshot["recommended"] {
-  if (!connected)
-    return {
-      title: "Connect display",
-      description:
-        "Connect a supported display or open an existing diagnostic report.",
-      action: "connect",
-    };
-  if (!live)
-    return {
-      title: "Review imported evidence",
-      description:
-        "This is an offline report. Explore Diagnose and Develop; live operations remain blocked.",
-      action: "none",
-    };
-  if (ambiguous && !resolved)
-    return {
-      title: "Run safe identification",
-      description:
-        "Use the verified read-only CoolLEDUX device-info query to resolve this shared GATT profile.",
-      action: "identify",
-    };
-  if (resolved) {
-    // A display whose profile already establishes a usable static substrate
-    // is ready to use. Leading with "validate the static framebuffer" would
-    // make characterization look mandatory for work that is already done.
-    if (ready)
-      return {
-        title: "Create content",
-        description:
-          "This display is a known, characterized profile. Verified image, text, and animation operations update it directly with target-bound authorization.",
-        action: "none",
-      };
-    return {
-      title: "Run safe device checks",
-      description:
-        "Refresh device info, or explicitly validate brightness with automatic restoration.",
-      action: "checks",
-    };
-  }
-  return {
-    title: "Collect GATT evidence",
-    description:
-      "No safe family probe is available. Inspect services without writing.",
-    action: "none",
-  };
-}
-
-export function supportRows(
-  assessment: DeviceAssessment,
-): readonly SupportArea[] {
-  const rows: SupportArea[] = [
-    {
-      id: "bluetooth-transport",
-      label: "Bluetooth transport",
-      state:
-        assessment.readiness === "no-device"
-          ? "Unknown"
-          : assessment.readiness === "offline"
-            ? "Experimental"
-            : "Verified",
-      evidence: assessment.summary,
-    },
-    {
-      id: "protocol-identity",
-      label: "Protocol identity",
-      state:
-        assessment.readiness === "needs-identification"
-          ? "Not tested"
-          : assessment.readiness === "no-device"
-            ? "Unknown"
-            : "Verified",
-      evidence: assessment.summary,
-    },
-  ];
-  for (const capability of Object.values(assessment.capabilities)) {
-    const state: SupportState =
-      capability.availability === "unsupported"
-        ? "Unsupported"
-        : capability.confidence === "conflicted"
-          ? "Rejected"
-          : capability.confidence === "verified"
-            ? "Verified"
-            : capability.confidence === "experimental"
-              ? "Experimental"
-              : capability.availability === "blocked"
-                ? "Not tested"
-                : "Unknown";
-    rows.push({
-      id: capability.id,
-      label: capability.label,
-      state,
-      evidence: capability.reason,
-    });
-  }
-  return rows;
-}
-
 export function recommendedFromAssessment(
   assessment: DeviceAssessment,
 ): AppSnapshot["recommended"] {
@@ -352,4 +244,71 @@ export function attemptFailureKind(
     case "accidental-tap":
       return "human-missed";
   }
+}
+
+/** Selection is profile evidence; only a current live resolution is a probe. */
+export function candidateEvidence(
+  selected: boolean,
+  score: number,
+  source: string,
+  connected: boolean,
+  resolution: { readonly source: string } | null,
+): import("./types").EvidenceLabel {
+  if (!selected)
+    return {
+      basis: score <= 0 ? "rejected" : "candidate",
+      label: score <= 0 ? "Rejected for this profile" : "Candidate",
+      tone: score <= 0 ? "bad" : "warn",
+      timestamp: null,
+    };
+  if (
+    source === "imported" ||
+    source === "replay" ||
+    resolution?.source === "replay"
+  )
+    return {
+      basis: "historical",
+      label: "Imported / replayed evidence",
+      tone: "neutral",
+      timestamp: null,
+    };
+  if (source === "live" && connected && resolution?.source === "live-probe")
+    return {
+      basis: "live-probe",
+      label: "Identified by current live probe",
+      tone: "good",
+      timestamp: null,
+    };
+  return {
+    basis: "profile-match",
+    label: "Selected profile / driver match",
+    tone: "neutral",
+    timestamp: null,
+  };
+}
+export function deviceInfoEvidence(
+  source: string,
+  connected: boolean,
+  timestamp: string | null,
+): import("./types").EvidenceLabel {
+  if (timestamp && source === "live" && connected)
+    return {
+      basis: "received",
+      label: "Device information received",
+      tone: "good",
+      timestamp,
+    };
+  if (timestamp)
+    return {
+      basis: "historical",
+      label: "Historical / imported device information",
+      tone: "neutral",
+      timestamp,
+    };
+  return {
+    basis: "unread",
+    label: "No device information received",
+    tone: "neutral",
+    timestamp: null,
+  };
 }

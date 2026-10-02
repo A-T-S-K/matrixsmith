@@ -67,3 +67,53 @@ describe("connection generation lifecycle", () => {
     ).toBeUndefined();
   });
 });
+
+it("late persistent failure cannot consume replacement authority or mix its notifications into old diagnostics", async () => {
+  const { vi } = await import("vitest");
+  const { deferred } = await import("../helpers/deferred-gatt");
+  const { diagnosticAnimation } = await import("../../src/render/patterns");
+  const transport = new FakeTransport(knownIledHatFingerprint());
+  const runtime = new ApplicationRuntime(transport);
+  await runtime.connect();
+  const pending =
+    deferred<
+      import("../../src/application/ports/transport").TransportReceipt
+    >();
+  const write = vi
+    .spyOn(transport, "write")
+    .mockReturnValueOnce(pending.promise);
+  const plan = runtime.plan({
+    type: "ShowAnimation",
+    sequence: diagnosticAnimation(),
+  });
+  const outcome = runtime.sendPersistentContent(plan).catch((error) => error);
+  await vi.waitFor(() => expect(write).toHaveBeenCalledTimes(1));
+  await runtime.disconnect();
+  await runtime.connect();
+  runtime.session.enableExperimentalTx();
+  runtime.session.confirmPlanDigest("new confirmation");
+  runtime.session.recordNotification({
+    timestamp: new Date().toISOString(),
+    raw: Uint8Array.of(9),
+    rawHex: "09",
+    decoded: null,
+  });
+  const invalidations = runtime.trace.events.filter(
+    (event) => event.type === "panel-program.invalidated",
+  ).length;
+  pending.reject(new Error("old write failed"));
+  expect(await outcome).toHaveProperty("message", "old write failed");
+  expect(runtime.session.experimentalTxEnabled).toBe(true);
+  expect(runtime.session.confirmedPlanDigest).toBe("new confirmation");
+  expect(
+    runtime.trace.events.filter(
+      (event) => event.type === "panel-program.invalidated",
+    ),
+  ).toHaveLength(invalidations);
+  expect(
+    runtime.transactions
+      .at(-1)
+      ?.packets.every((packet) => packet.direction === "TX"),
+  ).toBe(true);
+  await runtime.dispose();
+});

@@ -175,7 +175,7 @@ describe("markdown report generator", () => {
   it("excludes browser/device identifiers by default and includes them only on request", () => {
     const redacted = generateMarkdownReport(sampleData());
     expect(redacted).not.toContain("fixture-device");
-    expect(redacted).toContain("excluded by default");
+    expect(redacted).toContain("Known identifiers omitted by default");
     const full = generateMarkdownReport(sampleData(), {
       ...DEFAULT_REPORT_OPTIONS,
       includeIdentifiers: true,

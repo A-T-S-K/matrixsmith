@@ -1,3 +1,6 @@
+import { RASTER_SCROLL_FRAME_BUDGET } from "../../../render/scroll";
+import { unsupportedTextCharacters } from "../../../render/font";
+import { CONTENT_TEXT_CODE_UNIT_LIMIT } from "../../../storage/settings";
 import type { JSX } from "preact";
 import type {
   AppSnapshot,
@@ -21,11 +24,18 @@ export function ContentEditor({
 }): JSX.Element {
   const content = snapshot.content;
   const settings = content.settings;
+  const unsupported = unsupportedTextCharacters(settings.text);
   const gate = snapshot.contentGates[selected];
   const live = snapshot.liveConnected;
-  const canSend = gate.allowed && live && snapshot.busy === null;
+  const scrollReason =
+    selected === "text" && content.textScrollPlan?.safe === false
+      ? content.textScrollPlan.reason
+      : null;
+  const canSend =
+    gate.allowed && live && snapshot.busy === null && !scrollReason;
   const sendReason =
     snapshot.busy ??
+    scrollReason ??
     (!live
       ? "Live content requires a connected physical display."
       : gate.allowed
@@ -48,6 +58,7 @@ export function ContentEditor({
           <label class="field">
             <span>Text</span>
             <input
+              maxLength={CONTENT_TEXT_CODE_UNIT_LIMIT}
               value={settings.text}
               placeholder="HELLO"
               onInput={(event) =>
@@ -57,6 +68,18 @@ export function ContentEditor({
               }
             />
           </label>
+          <p class="fineprint">
+            {settings.text.length} / {CONTENT_TEXT_CODE_UNIT_LIMIT} text units.
+            Some symbols use two units. Long scrolling messages may need
+            shortening.
+          </p>
+          {unsupported.length > 0 && (
+            <p class="notice warning">
+              This display font supports basic English letters, numbers, and
+              punctuation. These characters will appear as boxes:{" "}
+              {unsupported.join(" ")}. Check the preview before sending.
+            </p>
+          )}
           <label class="field">
             <span>Display</span>
             <select
@@ -73,7 +96,7 @@ export function ContentEditor({
               <option value="scroll">Scroll</option>
             </select>
           </label>
-          {content.textScrollPlan ? (
+          {content.textScrollPlan?.safe ? (
             <AnimatedFramePreview
               sequence={content.textScrollPlan.sequence}
               label="Actual scrolling-text preview"
@@ -85,30 +108,24 @@ export function ContentEditor({
           )}
           {content.textScrollPlan && (
             <>
-              <p
-                class={
-                  content.textScrollPlan.safe ? "fineprint" : "notice warning"
-                }
-              >
-                {content.textScrollPlan.textWidth} columns ·{" "}
-                {content.textScrollPlan.frameCount} frames ·{" "}
-                {content.textScrollPlan.decodedBytesPerTile.toLocaleString()}{" "}
-                decoded bytes/tile · step {content.textScrollPlan.step} · raster
-                fallback
-              </p>
-              {content.textScrollPlan.warnings.map((warning) => (
-                <p key={warning} class="notice warning">
-                  {warning}
-                </p>
-              ))}
               <details class="secondary-section">
-                <summary>Text backend</summary>
+                <summary>Technical scrolling limits</summary>
                 <p class="fineprint">
-                  Raster scrolling is bounded and available now. Firmware-native
-                  CoolLEDUX Text remains experimental: the pinned protocol
-                  evidence does not define its segment layout clearly enough to
-                  transmit safely without hardware validation.
+                  {content.textScrollPlan.textWidth} columns ·{" "}
+                  {content.textScrollPlan.frameCount} /{" "}
+                  {RASTER_SCROLL_FRAME_BUDGET} frames ·{" "}
+                  {content.textScrollPlan.decodedBytesPerTile.toLocaleString()}{" "}
+                  /{" "}
+                  {content.textScrollPlan.safetyBudgetBytesPerTile.toLocaleString()}{" "}
+                  decoded bytes/tile · step {content.textScrollPlan.step}. The
+                  preview uses the embedded ASCII font and bounded raster
+                  animation.
                 </p>
+                {content.textScrollPlan.warnings.map((warning) => (
+                  <p key={warning} class="notice warning">
+                    {warning}
+                  </p>
+                ))}
               </details>
             </>
           )}
@@ -214,21 +231,27 @@ export function ContentEditor({
           </FileButton>
           {content.gif ? (
             <>
+              <AnimatedFramePreview
+                sequence={content.gif.sequence}
+                label="Decoded GIF preview"
+              />
               <p class="fineprint">
-                {content.gif.name} · {content.gif.byteLength.toLocaleString()}{" "}
-                bytes
-                {content.gif.width !== null
-                  ? ` · ${content.gif.width}×${content.gif.height}`
-                  : ""}
-                . Read locally; never uploaded.
+                {content.gif.name} · {content.gif.sourceWidth}×
+                {content.gif.sourceHeight} · {content.gif.frameCount} frames ·{" "}
+                {content.gif.totalDurationMs / 1000} s · display{" "}
+                {content.gif.targetWidth}×{content.gif.targetHeight}. Decoded
+                locally; never uploaded.
               </p>
-              {content.gif.warning && (
-                <p class="notice warning">{content.gif.warning}</p>
-              )}
+              {content.gif.warnings.map((warning) => (
+                <p key={warning} class="notice warning">
+                  {warning}
+                </p>
+              ))}
             </>
           ) : (
             <p class="empty">
-              The display decodes GIFs itself, so the file is sent as-is.
+              Your browser converts the GIF into an animation sized for this
+              display.
             </p>
           )}
           <UnavailableAction
@@ -237,7 +260,7 @@ export function ContentEditor({
             reason={!content.gif ? "Choose a GIF before sending." : sendReason}
             onClick={() => store.requestSendGif()}
           >
-            Send experimental GIF
+            Display GIF
           </UnavailableAction>
         </>
       )}

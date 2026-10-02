@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { ApplicationRuntime } from "../../src/application/runtime";
 import {
   createDiagnosticBundle,
+  BundleValidationError,
   notificationPacketsFromBundle,
   parseDiagnosticBundle,
   serializeDiagnosticBundle,
@@ -11,6 +12,40 @@ import { FakeTransport } from "../../src/transport/fake";
 import { knownIledHatFingerprint } from "../helpers/fixtures";
 
 describe("diagnostic bundles", () => {
+  it.each([false, true])(
+    "preserves the live workspace on a deep invalid import (unknown field: %s)",
+    async (unknownField) => {
+      const controller = new ApplicationRuntime(
+        new FakeTransport(knownIledHatFingerprint()),
+      );
+      await controller.connect();
+      controller.recordObservation("Keep current evidence");
+      const before = controller.exportBundle();
+      const fingerprint = controller.session.fingerprint;
+      const investigation = controller.investigation;
+      const source = controller.session.source;
+      const invalid = JSON.stringify({
+        ...JSON.parse(before),
+        ...(unknownField ? { unknown: true } : {}),
+        advertisementEvidence: null,
+      }).replace(
+        '"advertisementEvidence":null',
+        `"advertisementEvidence":${'{"child":'.repeat(10_000)}null${"}".repeat(10_000)}`,
+      );
+      expect(() => controller.importBundle(invalid)).toThrow(
+        BundleValidationError,
+      );
+      expect(controller.session.fingerprint).toBe(fingerprint);
+      expect(controller.investigation).toBe(investigation);
+      expect(controller.session.source).toBe(source);
+      expect(JSON.parse(controller.exportBundle())).toEqual({
+        ...JSON.parse(before),
+        createdAt: expect.any(String),
+      });
+      await controller.dispose();
+    },
+  );
+
   it("round-trips the known device with exact raw trace hex", () => {
     const trace = new TraceRecorder();
     trace.record(

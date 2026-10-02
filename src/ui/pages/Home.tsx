@@ -1,6 +1,7 @@
 import { readBoundedText } from "../../application/file-input";
 import type { JSX } from "preact";
 import { useState } from "preact/hooks";
+import { UnavailableAction } from "../components/UnavailableAction";
 import { FileButton } from "../components/FileButton";
 import { parseServiceHints } from "../../presentation/service-hints";
 import type {
@@ -11,6 +12,7 @@ import type {
 
 /** The intentionally small contract used by both the cold Home shell and the full store. */
 export interface HomeSnapshot {
+  readonly source: AppSnapshot["source"];
   readonly liveConnected: boolean;
   readonly device: Pick<NonNullable<AppSnapshot["device"]>, "name"> | null;
   readonly assessment: Pick<AppSnapshot["assessment"], "summary" | "readiness">;
@@ -45,6 +47,15 @@ export function Home({
   readonly store: HomeStore | PresentationStore;
 }): JSX.Element {
   const [serviceHints, setServiceHints] = useState("");
+  const connectionReason =
+    snapshot.busy ??
+    (snapshot.liveConnected || snapshot.liveWorkspaceAvailable
+      ? "Disconnect the active display before choosing another device."
+      : snapshot.source === "imported"
+        ? "Reload MatrixSmith to start a live connection from this offline-only report."
+        : !snapshot.bluetoothSupported
+          ? "Web Bluetooth is unavailable in this browser."
+          : "");
   return (
     <main class="home">
       <header class="home-hero">
@@ -80,24 +91,15 @@ export function Home({
               >
                 Return to display
               </button>
-              <button
-                class="secondary"
-                disabled={snapshot.busy !== null}
-                onClick={() =>
-                  void (async () => {
-                    await store.disconnect();
-                    await store.connect();
-                  })()
-                }
-              >
-                Disconnect / change display
+              <button class="secondary" onClick={() => void store.disconnect()}>
+                Disconnect display
               </button>
             </div>
           </article>
         ) : (
           <button
             class="primary hero-cta"
-            disabled={!snapshot.bluetoothSupported || snapshot.busy !== null}
+            disabled={Boolean(connectionReason)}
             onClick={() => void store.connect()}
           >
             {snapshot.busy ?? "Connect a display"}
@@ -118,13 +120,20 @@ export function Home({
           <p>
             Connect a display and run only verified, safe identification checks.
           </p>
-          <button
+          <UnavailableAction
             class="text-action"
-            disabled={!snapshot.bluetoothSupported}
-            onClick={() => void store.connect()}
+            available={
+              !snapshot.busy && (snapshot.liveConnected || !connectionReason)
+            }
+            reason={connectionReason}
+            onClick={() =>
+              snapshot.liveConnected
+                ? store.setView("diagnose")
+                : void store.connect()
+            }
           >
             Start diagnosis →
-          </button>
+          </UnavailableAction>
         </article>
         <article class="task-card">
           <span class="task-icon">⌁</span>
@@ -146,21 +155,23 @@ export function Home({
             after you select the device. Services not requested here can stay
             hidden.
           </p>
-          <button
+          <UnavailableAction
             class="text-action"
-            disabled={!snapshot.bluetoothSupported}
+            available={!connectionReason}
+            reason={connectionReason}
             onClick={() =>
               void store.connect("inspection", parseServiceHints(serviceHints))
             }
           >
             Choose device →
-          </button>
+          </UnavailableAction>
         </article>
         <article class="task-card">
           <span class="task-icon">⇧</span>
           <h2>Open diagnostic report</h2>
           <p>Review a portable MatrixSmith JSON bundle entirely offline.</p>
           <FileButton
+            disabled={Boolean(snapshot.busy)}
             accept="application/json,.json"
             onFile={async (file) =>
               store.importBundle(await readBoundedText(file, "bundle"))
@@ -177,6 +188,7 @@ export function Home({
             decoded and correlated but never transmitted.
           </p>
           <FileButton
+            disabled={Boolean(snapshot.busy)}
             accept=".txt,.log,text/plain"
             onFile={async (file) =>
               store.importExternalCapture(
@@ -192,7 +204,12 @@ export function Home({
         <section class="authorized">
           <h2>Live display still connected</h2>
           <p>The offline report is separate from the live workspace.</p>
-          <button class="primary" onClick={() => store.returnToLiveWorkspace()}>
+          <button
+            class="primary"
+            disabled={Boolean(snapshot.busy)}
+            title={snapshot.busy ?? undefined}
+            onClick={() => store.returnToLiveWorkspace()}
+          >
             Return to live display
           </button>
         </section>
@@ -209,6 +226,8 @@ export function Home({
               <button
                 key={device.id}
                 class="authorized-device"
+                disabled={Boolean(connectionReason)}
+                title={connectionReason}
                 onClick={() => void store.reconnectAuthorized(device.id)}
               >
                 <span>▣</span>
@@ -230,11 +249,16 @@ export function Home({
           <div class="inline-form">
             <button
               class="secondary"
+              disabled={Boolean(snapshot.busy)}
               onClick={() => store.resumeStoredInvestigation()}
             >
               Review saved investigation
             </button>
-            <button class="quiet" onClick={() => store.forgetLocalHistory()}>
+            <button
+              class="quiet"
+              disabled={Boolean(snapshot.busy)}
+              onClick={() => store.forgetLocalHistory()}
+            >
               Forget local history
             </button>
           </div>

@@ -26,16 +26,8 @@ export function CandidateSection({
           <article key={candidate.id} class="candidate-card">
             <div>
               <h3>{candidate.family}</h3>
-              <StatusBadge
-                tone={
-                  candidate.state.startsWith("VERIFIED")
-                    ? "good"
-                    : candidate.state.startsWith("Rejected")
-                      ? "bad"
-                      : "warn"
-                }
-              >
-                {candidate.state}
+              <StatusBadge tone={candidate.evidence.tone}>
+                {candidate.evidence.label}
               </StatusBadge>
             </div>
             <p>{candidate.summary}</p>
@@ -43,7 +35,7 @@ export function CandidateSection({
               <button class="primary" onClick={() => void store.identify()}>
                 Run safe identification
               </button>
-            ) : candidate.state === "Candidate" ? (
+            ) : candidate.evidence.basis === "candidate" ? (
               <p class="notice">
                 No verified read-only discriminator available.
               </p>

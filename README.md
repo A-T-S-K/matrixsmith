@@ -12,7 +12,7 @@ The initial supported profile is the characterized **CoolLEDUX iLedHat 31AE 32×
 4. Use **Investigate** to troubleshoot or characterize an unfamiliar display. Experimental writes show one consequence-specific confirmation; imported evidence never enables a live write.
 5. Use **Device actions → Share report…** for reports and Bundle V3 exports. A shareable bundle redacts device identifiers; a full local archive explicitly includes them.
 
-Demo animation is a built-in example, not an animation editor. Native GIF support remains experimental where the driver permits testing it. Firmware, password changes, and arbitrary raw writes are not available.
+Demo animation is a built-in example, not an animation editor. Imported GIFs decode locally in supported Chrome/Android browsers into device-sized raster animations, using the trusted animation path. The native device GIF decoder remains experimental research. Firmware, password changes, and arbitrary raw writes are not available.
 
 After a successful online installation, the app shell and lazy features can open offline. Bluetooth access still depends on browser/device support. Updates are explicit and refresh open MatrixSmith tabs only after they acknowledge readiness. Finish active work or close an unavailable tab before applying an update.
 
@@ -44,7 +44,7 @@ Deployment remains deferred. A local green run is not a successful Linux CI run 
 
 ## Data and privacy
 
-The app has no backend, accounts, telemetry, runtime CDN, or content upload. Files are processed locally. Input budgets are 10 MiB for bundles, 25 MiB for images/captures, 8 MiB for GIFs, and 24 megapixels for decoded images.
+The app has no backend, accounts, telemetry, runtime CDN, or content upload. Files are processed locally. Input budgets are 10 MiB for bundles, 25 MiB for images/captures, 8 MiB for GIFs, and 24 megapixels for decoded images. Imported GIFs are bounded to 48 frames, 24 million cumulative source pixels, and 16 KiB decoded data per 8-column tile; these are application guardrails, not hardware limits.
 
 Bundle V3 and `matrixsmith:v2:` local settings/history remain the current formats. Older bundle versions are rejected rather than migrated. Invalid imports preserve the current workspace. Opening a report offline retains a connected live workspace separately; returning to it does not import authorization from the report.
 

@@ -1,3 +1,4 @@
+import type { ProjectionStore } from "./projection-store";
 import type { HashRouter } from "./dependencies";
 import type { AppSnapshot, WorkspaceView } from "./types";
 
@@ -10,6 +11,7 @@ import type { GuidedController } from "./guided-controller";
 import type { PresentationEnvironment } from "../environment";
 
 interface Ports {
+  projectionStore(): Pick<ProjectionStore, "refreshHistory">;
   snapshotStore(): Pick<SnapshotStore, "_emit">;
   reportStore(): Pick<ReportStore, "setReportOpen">;
   contentSendStore(): Pick<ContentSendStore, "setPendingSend">;
@@ -96,6 +98,7 @@ export class NavigationStore {
     this.ports.snapshotStore()._emit();
   }
   goHome(): void {
+    this.ports.projectionStore().refreshHistory();
     this._page = "home";
     this._router?.navigate("home");
     this.ports.snapshotStore()._emit();
@@ -113,6 +116,7 @@ export class NavigationStore {
   _applyRoute(route: AppRoute): void {
     switch (route.id) {
       case "home":
+        this.ports.projectionStore().refreshHistory();
         this._page = "home";
         return;
       case "create":

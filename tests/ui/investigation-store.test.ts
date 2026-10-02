@@ -76,14 +76,14 @@ describe("claims-derived support map", () => {
 });
 
 describe("path-specific content gating in the store", () => {
-  it("opens image, text and animation from this profile's shipped evidence", async () => {
+  it("opens image, text, animation and local GIF from this profile's shipped evidence", async () => {
     const { store } = await identifiedStore();
     const gates = store.getSnapshot().contentGates;
     expect(gates.animation.allowed).toBe(true);
     expect(gates.image.allowed).toBe(true);
     expect(gates.text.allowed).toBe(true);
-    // GIF depends on a claim this panel has never demonstrated.
-    expect(gates.gif.allowed).toBe(false);
+    // Imported GIF uses the already trusted animation substrate.
+    expect(gates.gif.allowed).toBe(true);
     // A verified routine text send is direct and target-bound.
     store.updateContentSettings({ text: "HI" });
     store.requestSendText();
@@ -95,11 +95,11 @@ describe("path-specific content gating in the store", () => {
     expect(store.getSnapshot().info).toBe("Display updated.");
   });
 
-  it("still refuses a GIF send behind its own gate", async () => {
+  it("refuses a GIF send until a decoded file is selected", async () => {
     const { store } = await identifiedStore();
     store.requestSendGif();
     expect(store.getSnapshot().pendingSend).toBeNull();
-    expect(store.getSnapshot().error).toMatch(/GIF/i);
+    expect(store.getSnapshot().error).toBe("Choose a GIF first.");
   });
 
   it("allows an animation send request through its own gate", async () => {

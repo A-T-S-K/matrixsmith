@@ -148,7 +148,13 @@ function loadStore(storage?: KeyValueStorage): StoreShape {
   };
   try {
     const raw = new BrowserStorageRepository(storage).get(INVESTIGATIONS_KEY);
-    if (!raw) return empty;
+    // Storage is untrusted: bound reads before parsing or sanitizing entries.
+    if (
+      !raw ||
+      new TextEncoder().encode(raw).byteLength >
+        INVESTIGATION_HISTORY_BYTE_LIMIT
+    )
+      return empty;
     const value: unknown = JSON.parse(raw);
     if (typeof value !== "object" || value === null) return empty;
     const version = (value as { schemaVersion?: unknown }).schemaVersion;
