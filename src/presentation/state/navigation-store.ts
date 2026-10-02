@@ -23,10 +23,11 @@ interface Ports {
     | "selectContext"
     | "transitionReason"
     | "getReportGeneration"
+    | "getContextIdentity"
   >;
   projectionStore(): Pick<ProjectionStore, "refreshHistory">;
   snapshotStore(): Pick<SnapshotStore, "_emit">;
-  reportStore(): Pick<ReportStore, "setReportOpen">;
+  reportStore(): Pick<ReportStore, "setReportOpen" | "review">;
   contentSendStore(): Pick<ContentSendStore, "setPendingSend">;
   guidedController(): Pick<
     GuidedController,
@@ -141,6 +142,7 @@ export class NavigationStore {
       this.context() === "offline" && view === "control" ? "diagnose" : view;
     view = this._view;
     this.views.set(this.ports.workspaceStore().getController(), view);
+    const review = this.ports.reportStore().review;
     this._router?.navigate(
       view === "develop"
         ? workbenchRoute(this.context(), this.getWorkbenchSection())
@@ -149,6 +151,48 @@ export class NavigationStore {
           : view === "control"
             ? "create"
             : "investigate",
+      false,
+      this.context() === "offline"
+        ? this.ports.workspaceStore().getReportGeneration()
+        : undefined,
+      view === "develop" &&
+        this.getWorkbenchSection() === "transactions" &&
+        review.selected
+        ? {
+            transactionId: review.selected,
+            generation: this.ports.workspaceStore().getContextIdentity(),
+          }
+        : undefined,
+    );
+    this.ports.snapshotStore()._emit();
+  }
+  openTransaction(id: string): void {
+    const review = this.ports.reportStore().review;
+    review.origin = id;
+    if (review.packetOwner !== id) review.packetPage = 0;
+    review.packetOwner = id;
+    review.selected = id;
+    review.restoreFocus = false;
+    if (this._router)
+      this._router.navigate(
+        workbenchRoute(this.context(), "transactions"),
+        false,
+        this.context() === "offline"
+          ? this.ports.workspaceStore().getReportGeneration()
+          : undefined,
+        {
+          transactionId: id,
+          generation: this.ports.workspaceStore().getContextIdentity(),
+        },
+      );
+    this.ports.snapshotStore()._emit();
+  }
+  closeTransaction(): void {
+    const review = this.ports.reportStore().review;
+    review.selected = null;
+    review.restoreFocus = true;
+    this._router?.navigate(
+      workbenchRoute(this.context(), "transactions"),
       false,
       this.context() === "offline"
         ? this.ports.workspaceStore().getReportGeneration()
@@ -191,6 +235,13 @@ export class NavigationStore {
           this.acceptedRoute.id,
           true,
           this.acceptedRoute.reportGeneration,
+          this.acceptedRoute.transactionId &&
+            this.acceptedRoute.reviewGeneration
+            ? {
+                transactionId: this.acceptedRoute.transactionId,
+                generation: this.acceptedRoute.reviewGeneration,
+              }
+            : undefined,
         );
       return;
     }
@@ -208,13 +259,35 @@ export class NavigationStore {
         .selectContext(route.context, route.reportGeneration)
     )
       this.missingContext = route.context;
+    if (
+      route.transactionId &&
+      (this.missingContext ||
+        route.reviewGeneration !==
+          this.ports.workspaceStore().getContextIdentity())
+    )
+      this.missingContext = route.context;
     if ("section" in route) {
       this._view = "develop";
-      if (!this.missingContext)
+      if (!this.missingContext) {
+        if (route.section === "transactions") {
+          const review = this.ports.reportStore().review;
+          if (review.selected && !route.transactionId)
+            review.restoreFocus = true;
+          if (
+            route.transactionId &&
+            review.packetOwner !== route.transactionId
+          ) {
+            review.packetPage = 0;
+            review.packetOwner = route.transactionId;
+          }
+          review.selected = route.transactionId ?? null;
+          if (route.transactionId) review.origin = route.transactionId;
+        }
         this.sections.set(
           this.ports.workspaceStore().getController(),
           route.section,
         );
+      }
     } else this._view = route.id === "create" ? "control" : "diagnose";
     if (!this.missingContext)
       this.views.set(this.ports.workspaceStore().getController(), this._view);

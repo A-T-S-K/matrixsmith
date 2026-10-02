@@ -97,7 +97,7 @@ describe("bounded review", () => {
     expect(retained.selectedId).toBe("review:50");
     expect(retained.selected).toBeNull();
     expect(retained.pending).toBe(1);
-    expect(owner.work.compilations).toBe(1);
+    expect(owner.work.compilations).toBe(2);
     owner.resetTransactions();
     expect(owner.project(values).rows[0]?.id).toBe("review:102");
   });
@@ -210,4 +210,42 @@ it("mutation owners revision edits, retention, import and throw paths", () => {
   const before = trace.revision;
   trace.importSerialized([{ timestamp: "same", type: "error", metadata: {} }]);
   expect(trace.revision).toBe(before + 1);
+});
+
+it("bounds compilation joins to retained transactions and drops disposed evidence", () => {
+  const owner = new TransactionReview();
+  const values = input(1);
+  values.compilations = [
+    { id: "outside", transactionId: "review:2" } as ContentCompilationRecord,
+    { id: "inside", transactionId: "review:0" } as ContentCompilationRecord,
+  ];
+  owner.selected = "review:0";
+  expect(owner.project(values).compilation?.id).toBe("inside");
+  values.transactions[0] = reviewTransaction(2);
+  values.revisions.transactions++;
+  owner.selected = "review:2";
+  expect(owner.project(values).compilation?.id).toBe("outside");
+  owner.dispose();
+  expect(owner.project(input(0))).toMatchObject({
+    rows: [],
+    selected: null,
+    compilation: null,
+    events: [],
+  });
+});
+
+it("an empty raw review window defers arrivals until explicit latest", () => {
+  const owner = new TransactionReview();
+  const values = input(0);
+  values.section = "raw";
+  expect(owner.project(values)).toMatchObject({ events: [], rawTotal: 0 });
+  values.rawEvents.push({ timestamp: "same", type: "error", metadata: {} });
+  values.revisions.raw++;
+  expect(owner.project(values)).toMatchObject({
+    events: [],
+    rawTotal: 1,
+    rawPending: 1,
+  });
+  owner.showLatestRaw();
+  expect(owner.project(values).events).toHaveLength(1);
 });

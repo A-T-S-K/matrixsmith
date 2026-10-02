@@ -128,3 +128,100 @@ it("keeps aliases accurate and missing offline data unavailable", async () => {
   expect(transport.state).toBe("idle");
   await store.dispose();
 });
+
+it("round trips opaque IDs, bounds inputs and rejects malformed details", () => {
+  for (const id of ["id:/?#% +", "日本語:🔬", "id\\with\\slashes"])
+    expect(
+      parseRoute(`#/device/develop/transactions/${encodeURIComponent(id)}`)
+        .transactionId,
+    ).toBe(id);
+  for (const path of ["%", "%FF", "%00", "a/b", "", "a".repeat(513)])
+    expect(
+      parseRoute(`#/device/develop/transactions/${path}`).transactionId,
+    ).toBeUndefined();
+  expect(parseRoute("x".repeat(5000)).id).toBe("home");
+});
+
+it("detail history binds selection to runtime lifetime and replacement reports", async () => {
+  const transport = new FakeTransport(knownIledHatFingerprint());
+  const runtime = new ApplicationRuntime(transport);
+  await runtime.connect();
+  let route = parseRoute("#/device/develop/transactions");
+  let changed!: (next: typeof route) => void;
+  const history: (typeof route)[] = [route];
+  const store = new PresentationStore(runtime, transport, {
+    ...createBrowserEnvironment(),
+    router: {
+      get current() {
+        return route;
+      },
+      navigate(id, replace, generation, detail) {
+        route = {
+          ...ROUTES.find((r) => r.id === id)!,
+          reportGeneration: generation,
+          ...(detail
+            ? {
+                transactionId: detail.transactionId,
+                reviewGeneration: detail.generation,
+              }
+            : {}),
+        };
+        if (replace) history[history.length - 1] = route;
+        else history.push(route);
+        changed(route);
+      },
+      dispose() {},
+      subscribe(listener) {
+        changed = listener;
+        return () => {};
+      },
+    },
+  });
+  await store.initialize();
+  const bundle = JSON.parse(runtime.exportBundle());
+  const { reviewTransaction } = await import("../helpers/review-fixtures");
+  bundle.transactions = Array.from({ length: 101 }, (_, i) =>
+    reviewTransaction(i),
+  );
+  store.importBundle(JSON.stringify(bundle));
+  store.setWorkbenchSection("transactions");
+  store.setReviewPage("transactions", 1);
+  store.openTransaction("review:50");
+  const detail = route;
+  expect(store.getSnapshot().review.selected?.id).toBe("review:50");
+  store.setWorkbenchSection("raw");
+  store.setReviewPage("raw", 1);
+  store.setWorkbenchSection("transactions");
+  expect(store.getSnapshot().review).toMatchObject({
+    selectedId: "review:50",
+    transactions: { page: 1 },
+  });
+  store.returnToLiveWorkspace();
+  store.setWorkbenchSection("transactions");
+  expect(store.getSnapshot().review.selectedId).toBeNull();
+  store.returnToOfflineWorkspace();
+  store.setWorkbenchSection("transactions");
+  expect(store.getSnapshot().review.selectedId).toBe("review:50");
+  // Back to list, Forward to detail; no query keystroke history.
+  const before = history.length;
+  store.setTransactionSearch("status");
+  expect(history).toHaveLength(before);
+  changed({ ...detail, transactionId: undefined, reviewGeneration: undefined });
+  expect(store.getSnapshot().review.selectedId).toBeNull();
+  expect(store.reviewState.restoreFocus).toBe(true);
+  changed(detail);
+  expect(store.getSnapshot().review.selectedId).toBe("review:50");
+  expect(JSON.parse(store.exportBundle()).transactions).toHaveLength(101);
+  const markdown = store.markdown();
+  expect(markdown.match(/^### (?:Get status|Probe)$/gm)).toHaveLength(101);
+  expect(markdown.match(/- RX: 00 aB FF/g)).toHaveLength(101);
+  expect(store.getSnapshot().source).toBe("imported");
+  expect(store.getSnapshot().content.allowed).toBe(false);
+  store.importBundle(JSON.stringify(bundle));
+  changed(detail);
+  expect(store.getSnapshot().missingContext).toBe("offline");
+  expect(store.getSnapshot().review.selectedId).toBeNull();
+  changed(parseRoute("#/offline/report/develop/transactions/review%3A50"));
+  expect(store.getSnapshot().missingContext).toBe("offline");
+  await store.dispose();
+});

@@ -35,7 +35,11 @@ type RouteSpec =
     }
   | WorkbenchRoute;
 
-export type AppRoute = RouteSpec & { readonly reportGeneration?: string };
+export type AppRoute = RouteSpec & {
+  readonly reportGeneration?: string;
+  readonly transactionId?: string;
+  readonly reviewGeneration?: string;
+};
 
 export function workbenchRoute(
   context: WorkspaceContext,
@@ -64,8 +68,35 @@ export const ROUTES: readonly AppRoute[] = Object.freeze([
   })),
 ]);
 
+function hasControlCharacters(value: string): boolean {
+  return [...value].some(
+    (character) =>
+      character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127,
+  );
+}
+
 export function parseRoute(hash: string): AppRoute {
   const normalized = hash.startsWith("#") ? hash : `#${hash}`;
+  if (normalized.length > 4096) return ROUTES[0]!;
+  const detail = normalized.match(
+    /^(#\/(?:device|offline\/report)\/develop\/transactions)\/([^/]+)$/,
+  );
+  if (detail) {
+    const route = ROUTES.find((candidate) => candidate.hash === detail[1]);
+    try {
+      const transactionId = decodeURIComponent(detail[2]!);
+      if (
+        route &&
+        transactionId.length > 0 &&
+        transactionId.length <= 512 &&
+        !hasControlCharacters(transactionId)
+      )
+        return { ...route, transactionId };
+    } catch {
+      /* Malformed URL is never evidence. */
+    }
+    return ROUTES[0]!;
+  }
   return ROUTES.find((route) => route.hash === normalized) ?? ROUTES[0]!;
 }
 
@@ -75,6 +106,7 @@ export interface HashRouter {
     route: AppRoute["id"],
     replace?: boolean,
     reportGeneration?: string,
+    detail?: { transactionId: string; generation: string },
   ): void;
   dispose(): void;
   subscribe(listener: (route: AppRoute) => void): () => void;
@@ -90,11 +122,19 @@ export function createHashRouter(
     const route = parseRoute(browserWindow.location.hash);
     const generation: unknown =
       browserWindow.history.state?.matrixsmithReportGeneration;
-    return "context" in route &&
+    const reviewGeneration: unknown =
+      browserWindow.history.state?.matrixsmithReviewGeneration;
+    return {
+      ...route,
+      ...("context" in route &&
       route.context === "offline" &&
       typeof generation === "string"
-      ? { ...route, reportGeneration: generation }
-      : route;
+        ? { reportGeneration: generation }
+        : {}),
+      ...(route.transactionId && typeof reviewGeneration === "string"
+        ? { reviewGeneration }
+        : {}),
+    };
   };
   let current = readRoute();
   const listeners = new Set<(route: AppRoute) => void>();
@@ -102,7 +142,9 @@ export function createHashRouter(
     const next = readRoute();
     if (
       next.id === current.id &&
-      next.reportGeneration === current.reportGeneration
+      next.reportGeneration === current.reportGeneration &&
+      next.transactionId === current.transactionId &&
+      next.reviewGeneration === current.reviewGeneration
     )
       return;
     current = next;
@@ -114,22 +156,52 @@ export function createHashRouter(
     get current() {
       return current;
     },
-    navigate(id, replace = false, reportGeneration) {
+    navigate(id, replace = false, reportGeneration, detail) {
       const route = ROUTES.find((candidate) => candidate.id === id);
       if (!route) throw new Error(`Unknown route ${id}.`);
       if (
         route.id === current.id &&
-        current.reportGeneration === reportGeneration
+        current.reportGeneration === reportGeneration &&
+        current.transactionId === detail?.transactionId &&
+        current.reviewGeneration === detail?.generation
       )
         return;
+      if (
+        detail &&
+        (!("section" in route) ||
+          route.section !== "transactions" ||
+          detail.transactionId.length === 0 ||
+          detail.transactionId.length > 512 ||
+          hasControlCharacters(detail.transactionId))
+      )
+        throw new Error("Invalid transaction detail route.");
       const state =
-        reportGeneration === undefined
+        reportGeneration === undefined && !detail
           ? null
-          : { matrixsmithReportGeneration: reportGeneration };
-      if (replace) browserWindow.history.replaceState(state, "", route.hash);
-      else browserWindow.history.pushState(state, "", route.hash);
-      current =
-        reportGeneration === undefined ? route : { ...route, reportGeneration };
+          : {
+              ...(reportGeneration === undefined
+                ? {}
+                : { matrixsmithReportGeneration: reportGeneration }),
+              ...(detail
+                ? { matrixsmithReviewGeneration: detail.generation }
+                : {}),
+            };
+      const hash = detail
+        ? `${route.hash}/${encodeURIComponent(detail.transactionId)}`
+        : route.hash;
+      if (hash.length > 4096) throw new Error("Transaction route is too long.");
+      if (replace) browserWindow.history.replaceState(state, "", hash);
+      else browserWindow.history.pushState(state, "", hash);
+      current = {
+        ...route,
+        ...(reportGeneration === undefined ? {} : { reportGeneration }),
+        ...(detail
+          ? {
+              transactionId: detail.transactionId,
+              reviewGeneration: detail.generation,
+            }
+          : {}),
+      };
       for (const listener of listeners) listener(current);
     },
     dispose() {

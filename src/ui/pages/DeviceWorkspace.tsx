@@ -48,7 +48,12 @@ export function DeviceWorkspace({
         focusedRoute.current = key;
         return true;
       }
-      const heading = main.querySelector<HTMLElement>("h1");
+      const heading =
+        current.view === "develop" &&
+        current.workbenchSection === "transactions" &&
+        current.review.selectedId
+          ? main.querySelector<HTMLElement>("[data-review-detail-heading]")
+          : main.querySelector<HTMLElement>("h1");
       if (!heading) return false;
       if (document.activeElement?.matches("input,textarea,select")) return true;
       focusedRoute.current = key;

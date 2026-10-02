@@ -114,3 +114,35 @@ the source archive or live state. Import restores only historical
 geometry, including when that driver is absent locally. It never creates an eligible
 proposal, a current family claim, an unlock or confirmation. A live connection
 always requires new identification and explicit adoption.
+
+### Workbench review windows
+
+Transactions, selected-transaction packets, and raw events use explicit pages of
+50 records. Transaction and raw-event windows open newest first and retain their
+identities while records arrive. **Show latest** starts a new window on page one.
+Search and filter changes also restart transaction paging; they search the full
+capture's operation, driver, decoded summary/opcode, and exact packet hex, not
+just the visible page. Retention leaves unavailable slots rather than silently
+substituting another record. Packet numbering is the original zero-based index.
+Reports and bundle exports still contain all retained evidence.
+
+Search, filter, pages, selection, and list position are in-memory workspace review
+state. A transaction detail URL selects an opaque ID within a retained runtime;
+its browser history entry also binds the runtime generation. Reloads and old
+history from replacement reports require reopening the intended context. URLs do
+not restore live connections, permissions, or evidence. Browser Back returns to
+the list and restores its row focus and scroll position when the row survives.
+
+Host acceptance, correlated acknowledgement, and operation-response fulfillment
+are independent recorded dimensions. The executor's `deviceStateVerified` flag
+means a matching response fulfilled the operation expectation. It is not proof of
+physical appearance or separate readback; physical observations remain separate.
+
+Projection caches belong to one workspace review owner. Transaction, compilation,
+and trace mutation revisions cover in-place edits, imports, and same-length
+retention. Unrelated publications reuse filtering and joins. Compilation joins
+preserve the first matching record for retained transaction IDs and refresh when
+that ID membership changes. Disposal clears the active review caches. The caches
+retain references and identities,
+not extra normalized copies of large packet strings. Replacing or disposing a
+workspace releases its captured review state; no global evidence cache is used.

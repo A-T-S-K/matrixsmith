@@ -4,19 +4,8 @@ import type { TraceEvent } from "../../diagnostics/trace";
 import type { TransactionFilter } from "./types";
 import { filterTransactions } from "./selectors";
 
-/** Fixed presentation limit; evidence and report/export collections stay complete. */
-export const REVIEW_PAGE_SIZE = 50;
-export function pageWindow(length: number, requested: number) {
-  const pages = Math.max(1, Math.ceil(length / REVIEW_PAGE_SIZE));
-  const page = Math.max(0, Math.min(pages - 1, Math.trunc(requested) || 0));
-  const start = page * REVIEW_PAGE_SIZE;
-  return {
-    page,
-    pages,
-    start,
-    end: Math.min(length, start + REVIEW_PAGE_SIZE),
-  };
-}
+import { pageWindow } from "../review-pagination";
+export { pageWindow, REVIEW_PAGE_SIZE } from "../review-pagination";
 
 /** One workspace's UI state, retained by capture/restore. No DOM or authority. */
 export class TransactionReview {
@@ -25,6 +14,7 @@ export class TransactionReview {
   packetPage = 0;
   selected: string | null = null;
   origin: string | null = null;
+  packetOwner: string | null = null;
   scrollY = 0;
   restoreFocus = false;
   private window: string[] | null = null;
@@ -46,6 +36,17 @@ export class TransactionReview {
   // Deterministic work counters, useful for testing invalidation independently of time.
   readonly work = { transactions: 0, compilations: 0, filters: 0, raw: 0 };
 
+  dispose(): void {
+    this.window = null;
+    this.rawWindow = null;
+    this.byId.clear();
+    this.compilations.clear();
+    this.filtered = [];
+    this.matching.clear();
+    this.rawById.clear();
+    this.rawIds = new WeakMap();
+    this.selected = this.origin = this.packetOwner = null;
+  }
   resetTransactions(): void {
     this.window = null;
     this.transactionPage = 0;
@@ -64,9 +65,14 @@ export class TransactionReview {
     section?: "transactions" | "raw";
   }) {
     const changed = this.transactionRevision !== input.revisions.transactions;
+    let joinMembershipChanged = false;
     if (changed) {
       this.transactionRevision = input.revisions.transactions;
-      this.byId = new Map(input.transactions.map((t) => [t.id, t]));
+      const next = new Map(input.transactions.map((t) => [t.id, t]));
+      joinMembershipChanged =
+        next.size !== this.byId.size ||
+        [...next.keys()].some((id) => !this.byId.has(id));
+      this.byId = next;
       this.work.transactions++;
     }
     if (
@@ -86,13 +92,17 @@ export class TransactionReview {
       this.matching = new Set(this.filtered.map((t) => t.id));
       this.work.filters++;
     }
-    if (this.compilationRevision !== input.revisions.compilations) {
+    if (
+      this.compilationRevision !== input.revisions.compilations ||
+      joinMembershipChanged
+    ) {
       this.compilationRevision = input.revisions.compilations;
       this.compilations = new Map();
       // Preserve Array.find's first-compilation-wins behavior.
       for (const record of input.compilations)
         if (
           record.transactionId &&
+          this.byId.has(record.transactionId) &&
           !this.compilations.has(record.transactionId)
         )
           this.compilations.set(record.transactionId, record);

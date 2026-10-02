@@ -467,6 +467,26 @@ export class PresentationStore {
   readonly copyTestReport: ReportStore["copyTestReport"];
   readonly copyInvestigationReport: ReportStore["copyInvestigationReport"];
   readonly copyForensicReport: ReportStore["copyForensicReport"];
+  openTransaction(id: string): void {
+    this.navigationStore.openTransaction(id);
+  }
+  closeTransaction(): void {
+    this.navigationStore.closeTransaction();
+  }
+  get reviewState() {
+    return this.reportStore.review;
+  }
+  setReviewPage(kind: "transactions" | "raw" | "packets", page: number): void {
+    if (kind === "transactions") this.reportStore.review.transactionPage = page;
+    else if (kind === "raw") this.reportStore.review.rawPage = page;
+    else this.reportStore.review.packetPage = page;
+    this.snapshotStore._emit();
+  }
+  showLatest(kind: "transactions" | "raw"): void {
+    if (kind === "transactions") this.reportStore.review.resetTransactions();
+    else this.reportStore.review.showLatestRaw();
+    this.snapshotStore._emit();
+  }
   subscribe = (listener: () => void) => this.snapshotStore.subscribe(listener);
   getSnapshot = () => this.snapshotStore.getSnapshot();
   get controller() {
@@ -477,6 +497,7 @@ export class PresentationStore {
   }
   dispose(): Promise<void> {
     if (this.disposal) return this.disposal;
+    this.reportStore.review.dispose();
     this.snapshotStore.dispose();
     this.historyCleanup();
     this.fileActivityCleanup();

@@ -1,3 +1,4 @@
+import { ReviewPagination } from "../../components/ReviewPagination";
 import { readBoundedText } from "../../../application/file-input";
 import type { JSX } from "preact";
 import { useState } from "preact/hooks";
@@ -25,12 +26,30 @@ export function RawSection({
           notifications.
         </p>
       </div>
-      <details class="raw-layer">
-        <summary>
-          Show full raw event trace ({snapshot.rawEvents.length} events)
-        </summary>
+      <p>
+        {snapshot.review.rawTotal} events · Newest first · 50 per page. New
+        arrivals do not move this review window.
+      </p>
+      <button onClick={() => store.showLatest("raw")}>
+        Show latest
+        {snapshot.review.rawPending
+          ? ` (${snapshot.review.rawPending} new events)`
+          : ""}
+      </button>
+      <ReviewPagination
+        window={snapshot.review.raw}
+        label="Raw events"
+        onPage={(page) => store.setReviewPage("raw", page)}
+      />
+      <div class="raw-layer">
         <ol>
-          {[...snapshot.rawEvents].reverse().map((event) => {
+          {snapshot.review.events.map(({ id, event }) => {
+            if (!event)
+              return (
+                <li key={id}>
+                  Event removed by capture retention. Show latest to refresh.
+                </li>
+              );
             const hex = event.rawBytes
               ? [...event.rawBytes]
                   .map((b) => b.toString(16).padStart(2, "0"))
@@ -38,7 +57,7 @@ export function RawSection({
                   .toUpperCase()
               : "";
             return (
-              <li key={`${event.timestamp}-${event.type}`}>
+              <li key={id}>
                 <time>{event.timestamp}</time>
                 <strong>{event.type}</strong>
                 <span>{JSON.stringify(event.metadata)}</span>
@@ -52,7 +71,14 @@ export function RawSection({
             );
           })}
         </ol>
-      </details>
+      </div>
+      {!snapshot.review.events.length && (
+        <p class="empty">
+          {snapshot.review.rawTotal === 0
+            ? "This capture contains no raw events."
+            : "New events are outside this review window. Show latest to review them."}
+        </p>
+      )}
     </section>
   );
 }
