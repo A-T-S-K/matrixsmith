@@ -37,6 +37,10 @@ export type FamilyProbeExecution = ExecutionResult & {
 };
 
 interface Ports {
+  guidedTestCatalog(): Pick<
+    import("./guided-test-catalog-service").GuidedTestCatalogService,
+    "guidedTest" | "guidedTests" | "planGuidedTest"
+  >;
   connection(): Pick<
     ConnectionService,
     | "getSession"
@@ -235,10 +239,59 @@ export class TransmissionService {
   async send(plan: TransmissionPlan): Promise<ExecutionResult> {
     return this._execute(plan, plan.purpose, null);
   }
+  /** Accepts a registered id, never a caller-supplied plan or test definition. */
+  async sendRegisteredQuery(testId: string): Promise<ExecutionResult> {
+    const catalog = this.ports.guidedTestCatalog();
+    const availability = catalog
+      .guidedTests()
+      .find(({ test }) => test.id === testId);
+    if (!availability?.available)
+      throw new Error(availability?.reason ?? "Unknown registered test.");
+    const test = catalog.guidedTest(testId);
+    const plan = catalog.planGuidedTest(testId);
+    if (test.risk !== "read-only" || test.persistence !== "none")
+      throw new Error(
+        "Registered query execution requires a read-only, non-persistent test.",
+      );
+    const capabilityId =
+      SHARED_OPERATIONS[plan.operation.type as keyof typeof SHARED_OPERATIONS];
+    if (
+      capabilityId &&
+      this.ports.identification().assessment().capabilities[capabilityId]
+        .confidence === "experimental" &&
+      !this.authority.experimentalTxEnabled
+    )
+      throw new Error(
+        "Registered experimental query execution requires explicit per-session unlock.",
+      );
+    return this.executeAuthorized(
+      plan,
+      "diagnostic",
+      null,
+      this.evaluatePolicy(plan),
+    );
+  }
   async _execute(
     plan: TransmissionPlan,
     source: TransactionSource,
     diagnosticRunIdValue: string | null,
+    onProgress?: (progress: ExecutionProgress) => void,
+    onExecutionStarted?: () => void,
+  ): Promise<ExecutionResult> {
+    return this.executeAuthorized(
+      plan,
+      source,
+      diagnosticRunIdValue,
+      this.authorize(plan),
+      onProgress,
+      onExecutionStarted,
+    );
+  }
+  private async executeAuthorized(
+    plan: TransmissionPlan,
+    source: TransactionSource,
+    diagnosticRunIdValue: string | null,
+    decision: PolicyDecision,
     onProgress?: (progress: ExecutionProgress) => void,
     onExecutionStarted?: () => void,
   ): Promise<ExecutionResult> {
@@ -249,7 +302,6 @@ export class TransmissionService {
     const startedAt = new Date().toISOString();
     const notificationStart = session.notifications.length;
     const sessionSource = session.source;
-    const decision = this.authorize(plan);
     if (!decision.allowed || !decision.authorized)
       throw new Error(decision.reasons.join(" "));
     const driver = this.ports
@@ -267,7 +319,8 @@ export class TransmissionService {
     const replacesStoredProgram =
       plan.risk === "persistent" || plan.persistence === "persistent";
     const staged = this.ports.investigation().getStagedPanelProgram();
-    this.ports.investigation().setStagedPanelProgram(null);
+    if (replacesStoredProgram)
+      this.ports.investigation().setStagedPanelProgram(null);
     try {
       onExecutionStarted?.();
       const result = await this._executor.execute(

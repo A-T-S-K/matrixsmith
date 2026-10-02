@@ -43,6 +43,8 @@ export type TraceEventType =
   | "investigation.resumed"
   | "investigation.device-resumed"
   | "investigation.device-detached"
+  | "guided-test.query-executed"
+  | "guided-test.query-failed"
   | "guided-test.transferred"
   | "guided-test.recorded"
   | "guided-test.abandoned"

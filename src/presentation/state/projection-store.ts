@@ -1,3 +1,4 @@
+import { guidedExecutionClass } from "../../investigation/tests";
 import { readStoredInvestigationSummary } from "../../storage/history-summary";
 import { INVESTIGATIONS_KEY } from "../../storage/keys";
 import {
@@ -182,6 +183,27 @@ export class ProjectionStore {
           transferId: transfer.transferId,
           attemptId: transfer.attemptId,
           reason: transfer.reason,
+          executionClass: (() => {
+            const linked = this.ports
+              .workspaceStore()
+              .getController()
+              .transactions.filter(({ id }) =>
+                transfer.transactionIds.includes(id),
+              );
+            return linked.length &&
+              linked.every(
+                ({ safety }) =>
+                  guidedExecutionClass(safety) === "read-only-query",
+              )
+              ? ("read-only-query" as const)
+              : linked.length &&
+                  linked.every(
+                    ({ safety }) =>
+                      guidedExecutionClass(safety) === "persistent-content",
+                  )
+                ? ("persistent-content" as const)
+                : null;
+          })(),
           programCrc32: transfer.fingerprint.programCrc32,
           transactionIds: transfer.transactionIds,
           failureReason: transfer.failureReason,

@@ -1,3 +1,4 @@
+import { SHARED_OPERATIONS } from "../../domain/device/assessment";
 import type { MatrixOperation } from "../../core/operations";
 import type { TransmissionPlan } from "../../core/transmission";
 import type { ProtocolTransaction } from "../../diagnostics/transactions";
@@ -10,6 +11,8 @@ import {
 import { type CompletedGuidedTest } from "../../investigation/investigation";
 import {
   evaluateTestAvailability,
+  guidedExecutionClass,
+  validateGuidedConsequence,
   resolveGuidedOperation,
   type GuidedTestAvailability,
   type GuidedTestDefinition,
@@ -36,6 +39,10 @@ import type { GuidedOrchestrationService } from "./guided-orchestration-service"
 import type { ExperimentService } from "./experiment-service";
 import type { TransmissionService } from "./transmission-service";
 interface Ports {
+  identification(): Pick<
+    import("./identification-service").IdentificationService,
+    "assessment" | "deviceTarget"
+  >;
   connection(): Pick<ConnectionService, "getSession">;
   protocolEvidence(): Pick<
     ProtocolEvidenceService,
@@ -137,9 +144,69 @@ export class GuidedTestCatalogService {
     ];
     // Scheduling asks what has run HERE, never what the record remembers.
     const completed = this.executedTests().map((test) => test.testId);
-    return this.guidedTestDefinitions().map((test) =>
-      evaluateTestAvailability(test, evidence, completed),
-    );
+    const session = this.ports.connection().getSession();
+    return this.guidedTestDefinitions().map((test) => {
+      const availability = evaluateTestAvailability(test, evidence, completed);
+      const reason =
+        session.source !== "live"
+          ? "Imported and historical contexts cannot execute registered tests."
+          : test.driverId !== session.selection?.selected?.id
+            ? "This registered test belongs to another driver."
+            : !guidedExecutionClass(test)
+              ? "Unsupported or unknown test consequence; only read-only queries and persistent content are supported."
+              : guidedExecutionClass(test) === "read-only-query" && test.timer
+                ? "Read-only queries cannot use stored-program observation timing."
+                : (this.queryRestriction(test) ?? availability.reason);
+      return {
+        ...availability,
+        available: availability.available && reason === null,
+        reason,
+      };
+    });
+  }
+  private queryRestriction(test: GuidedTestDefinition): string | null {
+    if (guidedExecutionClass(test) !== "read-only-query") return null;
+    const session = this.ports.connection().getSession();
+    const driver = session.selection?.selected;
+    const profile = session.profile;
+    const operation = this.guidedTestOperation(test.id);
+    const capabilityId =
+      SHARED_OPERATIONS[operation.type as keyof typeof SHARED_OPERATIONS];
+    if (!capabilityId || !driver || !profile) return null;
+    const capability = driver
+      .capabilities(profile)
+      .find(({ id }) => id === capabilityId);
+    if (
+      !capability?.supported ||
+      !capability.live ||
+      capability.validation === "rejected" ||
+      capability.validation === "unverified"
+    )
+      return "The driver does not support this query for live registered execution.";
+    const assessment = this.ports.identification().assessment();
+    const target = this.ports.identification().deviceTarget();
+    if (
+      !target ||
+      (target.kind !== "provisional" && target.kind !== "profile-resolved")
+    )
+      return "A current identified target and explicit profile/geometry are required for registered tests.";
+    const contribution = driver
+      .operations({ target, assessment })
+      .find(({ operationId }) => operationId === operation.type);
+    const canonical = assessment.capabilities[capabilityId];
+    // A missing eventual outcome is why a characterization exists. An
+    // independently contributed restriction still narrows eligibility.
+    if (
+      !contribution ||
+      (contribution.availability !== "available" &&
+        (contribution.availability !== canonical.availability ||
+          contribution.reason !== canonical.reason))
+    )
+      return (
+        contribution?.reason ??
+        "The driver does not offer this registered query operation."
+      );
+    return null;
   }
   recommendations(): readonly Recommendation[] {
     const evidence = [
@@ -221,6 +288,11 @@ export class GuidedTestCatalogService {
     });
   }
   planGuidedTest(testId: string): TransmissionPlan {
-    return this.ports.transmission().plan(this.guidedTestOperation(testId));
+    const test = this.guidedTest(testId);
+    const plan = this.ports
+      .transmission()
+      .plan(this.guidedTestOperation(testId));
+    validateGuidedConsequence(test, plan);
+    return plan;
   }
 }

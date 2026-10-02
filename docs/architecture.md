@@ -124,3 +124,31 @@ or closed generations show a reopen state. Reload loses in-memory contexts and
 media and never reconnects. Modal Back closes the modal first; Forward restores
 only the view. Heading focus changes with context/view/section, not ordinary
 snapshot publications, and modal close returns to its trigger or heading.
+
+## Family and registered execution contracts
+
+IdentificationService derives a typed family basis bound to selected driver,
+profile and fingerprint context: current live probe, recognized contributed
+profile, historical, or unknown. Shared query/control claims do not stand in for
+family identity. Driver operation requirements and restrictions only narrow the
+canonical assessment; ordinary GetDeviceInfo, SetBrightness and SetPower sends
+enforce both before central policy. Content/codec prerequisites remain separate.
+
+Profile-free probes construct only the selected registered bounded probe. Their
+correlated execution evidence and typed identification interpretation are
+separate. Registered characterization is the other narrow exception: catalog
+profile applicability, declared prerequisites, fixed operation and parameters,
+live driver intent and plan consequence validation precede central policy.
+TransmissionService’s registered query method accepts only a registered id and
+constructs its own plan; public send/evaluate APIs have no readiness bypass.
+The eventual claim outcome need not already be verified to run its test.
+
+Guided orchestration distinguishes read-only non-persistent queries from the
+existing persistent-content tests. Queries preserve panel belief and confirmation;
+persistent content keeps staging, uncertainty, timing and resend guards. Catalog
+snapshots validate declarations without compiling every plan. Failed attempts
+settle even on preflight rejection. Late records update only their originating
+investigation, including detached history, and cannot announce current-context
+success, change replacement panel belief or consume replacement authority.
+Bundle V3 and evidence entries retain their existing structures and IDs; reports
+identify query execution from linked transaction risk/persistence evidence.

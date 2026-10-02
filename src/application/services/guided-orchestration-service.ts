@@ -1,3 +1,4 @@
+import { guidedExecutionClass } from "../../investigation/tests";
 import {
   buildExecutionFingerprint,
   classifyTransfers,
@@ -35,13 +36,14 @@ interface Ports {
     | "guidedTestOperation"
     | "executedTests"
   >;
-  connection(): Pick<ConnectionService, "getSession">;
+  connection(): Pick<ConnectionService, "getSession" | "getTransport">;
   investigation(): Pick<
     InvestigationService,
     | "ensureInvestigation"
     | "panelProgram"
     | "setStagedPanelProgram"
     | "_updateOrchestration"
+    | "_updateOrchestrationFor"
     | "getInvestigation"
     | "orchestration"
     | "allClaimEvidence"
@@ -50,7 +52,10 @@ interface Ports {
     ProtocolEvidenceService,
     "getTrace" | "getTransactions"
   >;
-  transmission(): Pick<TransmissionService, "sendPersistentContent">;
+  transmission(): Pick<
+    TransmissionService,
+    "sendPersistentContent" | "sendRegisteredQuery"
+  >;
   experiment(): Pick<ExperimentService, "settleAttempt">;
 }
 export class GuidedOrchestrationService {
@@ -61,7 +66,66 @@ export class GuidedOrchestrationService {
       readonly confirmedConsequence: boolean;
       readonly reason: TransferReason;
       readonly attemptId: string;
+      readonly confirmedPlanDigest?: string;
     },
+  ): Promise<{
+    readonly transactionIds: readonly string[];
+    readonly finalWriteAcceptedAt: string | null;
+    readonly transferId: string;
+  }> {
+    const origin = this.ports.investigation().ensureInvestigation();
+    const investigationId = origin.id;
+    const connectionId = this.ports.connection().getTransport().connectionId;
+    try {
+      return await this.runTransfer(
+        testId,
+        options,
+        investigationId,
+        connectionId,
+        origin,
+      );
+    } catch (error) {
+      if (investigationId)
+        this.ports.investigation()._updateOrchestrationFor(
+          investigationId,
+          (current) => ({
+            ...current,
+            experiments: current.experiments.map((run) => ({
+              ...run,
+              attempts: run.attempts.map((attempt) =>
+                attempt.attemptId !== options.attemptId
+                  ? attempt
+                  : {
+                      ...attempt,
+                      validity: "invalid" as const,
+                      failureKind: "transfer-failed" as const,
+                      invalidationReason: `The registered diagnostic execution failed before any physical observation: ${errorMessage(error)}`,
+                      transferIds: current.transfers
+                        .filter(
+                          (transfer) =>
+                            transfer.attemptId === attempt.attemptId,
+                        )
+                        .map(({ transferId }) => transferId),
+                    },
+              ),
+            })),
+          }),
+          origin,
+        );
+      throw error;
+    }
+  }
+  private async runTransfer(
+    testId: string,
+    options: {
+      readonly confirmedConsequence: boolean;
+      readonly reason: TransferReason;
+      readonly attemptId: string;
+      readonly confirmedPlanDigest?: string;
+    },
+    investigationId: string | undefined,
+    connectionId: string | null,
+    origin: import("../../investigation/investigation").Investigation,
   ): Promise<{
     readonly transactionIds: readonly string[];
     readonly finalWriteAcceptedAt: string | null;
@@ -69,7 +133,11 @@ export class GuidedOrchestrationService {
   }> {
     const session = this.ports.connection().getSession();
     const test = this.ports.guidedTestCatalog().guidedTest(testId);
-    if (!options.confirmedConsequence)
+    const executionClass = guidedExecutionClass(test);
+    if (
+      executionClass === "persistent-content" &&
+      !options.confirmedConsequence
+    )
       throw new Error(`Explicit confirmation required. ${test.consequence}`);
     if (session.source !== "live")
       throw new Error("Guided hardware tests require a live connection.");
@@ -83,6 +151,13 @@ export class GuidedOrchestrationService {
       );
     this.ports.investigation().ensureInvestigation();
     const plan = this.ports.guidedTestCatalog().planGuidedTest(testId);
+    if (
+      options.confirmedPlanDigest &&
+      (!("digest" in plan) || plan.digest !== options.confirmedPlanDigest)
+    )
+      throw new Error(
+        "The registered plan changed after it was reviewed; review its current consequence before running.",
+      );
     const fingerprint = this.guidedExecutionFingerprint(
       testId,
       typeof plan.metadata.crc32 === "string" ? plan.metadata.crc32 : null,
@@ -94,6 +169,7 @@ export class GuidedOrchestrationService {
     // match, that is what they mean. After any intervening persistent write
     // the diagnostic is gone and an initial run is legitimate again.
     if (
+      executionClass === "persistent-content" &&
       isGuidedProgramActive(
         this.ports.investigation().panelProgram(),
         fingerprint,
@@ -122,50 +198,85 @@ export class GuidedOrchestrationService {
     // The panel program is stamped by the send path itself, so that a partial
     // or failed write leaves certainty at "unknown" rather than claiming this
     // diagnostic is showing.
-    this.ports.investigation().setStagedPanelProgram({
-      certainty: "known-active",
-      kind: "guided-diagnostic",
-      fingerprint,
-      label: `guided diagnostic ${test.title}`,
-      startedAt,
-      writtenAt: null,
-      uncertaintyReason: null,
-    });
+    if (executionClass === "persistent-content")
+      this.ports.investigation().setStagedPanelProgram({
+        certainty: "known-active",
+        kind: "guided-diagnostic",
+        fingerprint,
+        label: `guided diagnostic ${test.title}`,
+        startedAt,
+        writtenAt: null,
+        uncertaintyReason: null,
+      });
+    let finalWriteAcceptedAt: string | null = null;
     try {
-      const result = await this.ports
-        .transmission()
-        .sendPersistentContent(plan, {
-          confirmedConsequence: true,
-        });
+      const result =
+        executionClass === "read-only-query"
+          ? await this.ports.transmission().sendRegisteredQuery(testId)
+          : await this.ports
+              .transmission()
+              .sendPersistentContent(plan, { confirmedConsequence: true });
+      finalWriteAcceptedAt = result.finalWriteAcceptedAt;
+      if (
+        connectionId !== this.ports.connection().getTransport().connectionId ||
+        investigationId !== this.ports.investigation().getInvestigation()?.id
+      )
+        throw new Error(
+          "The diagnostic execution belongs to a retired physical context.",
+        );
+      if (
+        executionClass === "read-only-query" &&
+        (!result.hostAccepted ||
+          result.responseTimedOut ||
+          (plan.responseExpectation.type !== "none" &&
+            plan.responseExpectation.required &&
+            !result.response))
+      )
+        throw new Error(
+          "The registered query did not receive its required matching response; no physical observation was established.",
+        );
       const transactionIds = this.ports
         .protocolEvidence()
         .getTransactions()
         .slice(transactionIndex)
         .map(({ id }) => id);
-      this._recordTransfer({
-        transferId,
-        attemptId: options.attemptId,
-        diagnosticId: fingerprint.diagnosticId,
-        reason: options.reason,
-        fingerprint,
-        transactionIds,
-        startedAt,
-        finalWriteAcceptedAt: result.finalWriteAcceptedAt,
-        failureReason: null,
-      });
+      this._recordTransfer(
+        {
+          transferId,
+          attemptId: options.attemptId,
+          diagnosticId: fingerprint.diagnosticId,
+          reason: options.reason,
+          fingerprint,
+          transactionIds,
+          startedAt,
+          finalWriteAcceptedAt: result.finalWriteAcceptedAt,
+          failureReason: null,
+        },
+        investigationId,
+        origin,
+      );
       this.ports
         .protocolEvidence()
         .getTrace()
-        .record("guided-test.transferred", {
-          testId,
-          transferId,
-          attemptId: options.attemptId,
-          reason: options.reason,
-          fingerprint: fingerprint.key,
-          crc32: fingerprint.programCrc32,
-          transactionCount: transactionIds.length,
-          finalWriteAcceptedAt: result.finalWriteAcceptedAt,
-        });
+        .record(
+          executionClass === "read-only-query"
+            ? "guided-test.query-executed"
+            : "guided-test.transferred",
+          {
+            testId,
+            transferId,
+            attemptId: options.attemptId,
+            reason: options.reason,
+            fingerprint: fingerprint.key,
+            crc32: fingerprint.programCrc32,
+            transactionCount: transactionIds.length,
+            finalWriteAcceptedAt: result.finalWriteAcceptedAt,
+          },
+        );
+      if (executionClass === "read-only-query")
+        this.ports
+          .experiment()
+          .settleAttempt(options.attemptId, { validity: "valid" });
       return {
         transactionIds,
         finalWriteAcceptedAt: result.finalWriteAcceptedAt,
@@ -181,42 +292,61 @@ export class GuidedOrchestrationService {
         .slice(transactionIndex)
         .map(({ id }) => id);
       const detail = errorMessage(error);
-      this._recordTransfer({
-        transferId,
-        attemptId: options.attemptId,
-        diagnosticId: fingerprint.diagnosticId,
-        reason: options.reason,
-        fingerprint,
-        transactionIds,
-        startedAt,
-        finalWriteAcceptedAt: null,
-        failureReason: detail,
-      });
-      this.ports.experiment().settleAttempt(options.attemptId, {
-        validity: "invalid",
-        failureKind: "transfer-failed",
-        invalidationReason: `The diagnostic transfer failed before any physical observation: ${detail}`,
-      });
+      if (
+        executionClass === "persistent-content" &&
+        connectionId === this.ports.connection().getTransport().connectionId &&
+        investigationId === this.ports.investigation().getInvestigation()?.id
+      )
+        this.ports.investigation().setStagedPanelProgram(null);
+      this._recordTransfer(
+        {
+          transferId,
+          attemptId: options.attemptId,
+          diagnosticId: fingerprint.diagnosticId,
+          reason: options.reason,
+          fingerprint,
+          transactionIds,
+          startedAt,
+          finalWriteAcceptedAt,
+          failureReason: detail,
+        },
+        investigationId,
+        origin,
+      );
       this.ports
         .protocolEvidence()
         .getTrace()
-        .record("guided-test.transfer-failed", {
-          testId,
-          transferId,
-          attemptId: options.attemptId,
-          reason: options.reason,
-          fingerprint: fingerprint.key,
-          transactionCount: transactionIds.length,
-          error: detail,
-        });
+        .record(
+          executionClass === "read-only-query"
+            ? "guided-test.query-failed"
+            : "guided-test.transfer-failed",
+          {
+            testId,
+            transferId,
+            attemptId: options.attemptId,
+            reason: options.reason,
+            fingerprint: fingerprint.key,
+            transactionCount: transactionIds.length,
+            error: detail,
+          },
+        );
       throw error;
     }
   }
-  _recordTransfer(record: TransferRecord): void {
-    this.ports.investigation()._updateOrchestration((current) => ({
-      ...current,
-      transfers: [...current.transfers, record],
-    }));
+  _recordTransfer(
+    record: TransferRecord,
+    investigationId = this.ports.investigation().getInvestigation()?.id,
+    origin?: import("../../investigation/investigation").Investigation,
+  ): void {
+    if (!investigationId) return;
+    this.ports.investigation()._updateOrchestrationFor(
+      investigationId,
+      (current) => ({
+        ...current,
+        transfers: [...current.transfers, record],
+      }),
+      origin,
+    );
   }
   guidedExecutionFingerprint(
     testId: string,

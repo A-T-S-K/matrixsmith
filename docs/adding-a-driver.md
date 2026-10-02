@@ -79,9 +79,16 @@ authorization; experimental persistent content requires a single-use exact-plan
 consequence confirmation. Pair a new persistent capability with driver-contributed
 `GuidedTestDefinition`s (`src/investigation/tests.ts`); application catalog,
 orchestration, and observation services own execution and recording. There is no
-`src/diagnostics/validation.ts`. Guided transfer currently routes through
-`sendPersistentContent`, so a read-only guided operation needs shared execution
-work rather than a false persistent classification. Destructive, reset, password,
+`src/diagnostics/validation.ts`. Registered guided execution supports two classes: `read-only` risk with `none`
+persistence, or the existing `persistent` risk with `persistent` persistence.
+The compiled plan must agree with the declaration. Queries execute the fixed
+registered definition through central authorization and retain transactions;
+they never stage a panel program, consume persistent confirmation, or compile
+content evidence. Their deliberate Run action needs no replacement checkbox,
+but experimental permission remains explicit and is never silently enabled.
+Stored-content tests retain exact-plan confirmation, panel replacement, final
+host-write timing, and deliberate resend reasons. Other/transient/unknown guided
+consequences remain unsupported; dedicated reversible diagnostics are separate. Destructive, reset, password,
 storage erase, OTA, and firmware operations remain blocked and require dedicated
 policy work. MatrixSmith must not acquire an arbitrary live writer as a
 reverse-engineering shortcut.

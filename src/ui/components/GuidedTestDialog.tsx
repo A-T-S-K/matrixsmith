@@ -138,7 +138,11 @@ function FailedStage({
 }): JSX.Element {
   return (
     <div class="guided-failure" role="alert">
-      <h2>Test transfer did not complete</h2>
+      <h2>
+        {flow.executionClass === "read-only-query"
+          ? "Query did not complete"
+          : "Test transfer did not complete"}
+      </h2>
       <p>
         {flow.failure?.message ?? "The diagnostic could not be transferred."}
       </p>
@@ -152,7 +156,9 @@ function FailedStage({
             class="primary"
             onClick={() => void store.retryFailedGuidedTransfer()}
           >
-            Retry transfer
+            {flow.executionClass === "read-only-query"
+              ? "Retry query"
+              : "Retry transfer"}
           </button>
         )}
         <button class="secondary" onClick={() => store.closeGuidedTest()}>
@@ -250,10 +256,20 @@ function AboutStage({
           {flow.planSummary && (
             <li>
               <span>
-                Transmission: {flow.planSummary.packetCount} packets (1 announce
-                + {flow.planSummary.chunkCount} chunks),{" "}
-                {flow.planSummary.programBytes} bytes uncompressed, CRC32{" "}
-                {flow.planSummary.crc32}, {flow.planSummary.pacingMs} ms pacing.
+                {flow.executionClass === "read-only-query" ? (
+                  <>
+                    Query execution: {flow.planSummary.packetCount} packets; no
+                    stored program upload.
+                  </>
+                ) : (
+                  <>
+                    Transmission: {flow.planSummary.packetCount} packets (1
+                    announce + {flow.planSummary.chunkCount} chunks),{" "}
+                    {flow.planSummary.programBytes} bytes uncompressed, CRC32{" "}
+                    {flow.planSummary.crc32}, {flow.planSummary.pacingMs} ms
+                    pacing.
+                  </>
+                )}
               </span>
             </li>
           )}
@@ -262,24 +278,39 @@ function AboutStage({
       {flow.about.preTransferNote && (
         <p class="notice warning">{flow.about.preTransferNote}</p>
       )}
-      <p class="notice warning">{flow.consequence}</p>
-      <label class="confirm-check">
-        <input
-          type="checkbox"
-          checked={confirmChecked}
-          onChange={(event) =>
-            setConfirmChecked((event.currentTarget as HTMLInputElement).checked)
-          }
-        />
-        <span>
-          I understand this replaces the stored display content and that
-          automatic restoration is not verified.
-        </span>
-      </label>
+      <p
+        class={
+          flow.executionClass === "read-only-query"
+            ? "notice"
+            : "notice warning"
+        }
+      >
+        {flow.consequence}
+      </p>
+      {flow.executionClass === "persistent-content" && (
+        <label class="confirm-check">
+          <input
+            type="checkbox"
+            checked={confirmChecked}
+            onChange={(event) =>
+              setConfirmChecked(
+                (event.currentTarget as HTMLInputElement).checked,
+              )
+            }
+          />
+          <span>
+            I understand this replaces the stored display content and that
+            automatic restoration is not verified.
+          </span>
+        </label>
+      )}
       <div class="step-nav">
         <button
           class="primary"
-          disabled={!confirmChecked || snapshot.busy !== null}
+          disabled={
+            (flow.executionClass === "persistent-content" && !confirmChecked) ||
+            snapshot.busy !== null
+          }
           onClick={() => void store.confirmGuidedTransfer()}
         >
           {timed ? "I'm ready — run test" : "Run test"}
@@ -303,13 +334,16 @@ function RunningStage({ flow }: { flow: GuidedFlowState }): JSX.Element {
         <p class="watch-now">Watch the display now.</p>
       )}
       <p class="fineprint">
-        This window stays open until the transfer completes — closing it would
-        not cancel the Bluetooth upload.
+        {flow.executionClass === "read-only-query"
+          ? "This window stays open until the query completes."
+          : "This window stays open until the transfer completes — closing it would not cancel the Bluetooth upload."}
       </p>
-      <p class="fineprint">
-        Larger programs can take several seconds to start rendering after the
-        final packet.
-      </p>
+      {flow.executionClass === "persistent-content" && (
+        <p class="fineprint">
+          Larger programs can take several seconds to start rendering after the
+          final packet.
+        </p>
+      )}
     </>
   );
 }

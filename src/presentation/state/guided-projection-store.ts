@@ -120,6 +120,7 @@ export class GuidedProjectionStore {
       consequence: flow.consequence,
       category: flow.category,
       risk: flow.risk,
+      executionClass: flow.executionClass,
       planSummary: flow.planSummary,
       previews: [...flow.previews],
       regions: [...flow.regions],
@@ -138,7 +139,9 @@ export class GuidedProjectionStore {
       timerStopped,
       transferProgress:
         machine.value === "transferring"
-          ? `Uploading diagnostic program (${machine.progress.totalPackets} packets at ${flow.planSummary?.pacingMs ?? "?"} ms pacing)…`
+          ? flow.executionClass === "read-only-query"
+            ? "Executing registered read-only query…"
+            : `Uploading diagnostic program (${machine.progress.totalPackets} packets at ${flow.planSummary?.pacingMs ?? "?"} ms pacing)…`
           : null,
       failure:
         machine.value === "failed"

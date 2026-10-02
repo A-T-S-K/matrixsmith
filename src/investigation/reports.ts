@@ -1,3 +1,4 @@
+import { guidedExecutionClass } from "./tests";
 import {
   projectReportPrivacy,
   reportPrivacyLabel,
@@ -292,7 +293,7 @@ export function generateInvestigationReport(
   if (input.transfers && input.transfers.length > 0)
     section(
       "Diagnostic transfer summary",
-      transferSummaryText(input.transfers),
+      transferSummaryText(input.transfers, input.transactions),
     );
   if (input.recommendationTrail && input.recommendationTrail.length > 0) {
     section(
@@ -934,9 +935,36 @@ function recommendationTrailText(
  * again, so a repeat is only flagged when its stated reason claims novelty the
  * bytes contradict.
  */
-function transferSummaryText(transfers: readonly TransferRecord[]): string {
+function transferSummaryText(
+  records: readonly TransferRecord[],
+  transactions: readonly ProtocolTransaction[],
+): string {
+  const queries = records.filter((record) => {
+    const linked = transactions.filter(({ id }) =>
+      record.transactionIds.includes(id),
+    );
+    return (
+      linked.length > 0 &&
+      linked.every(
+        ({ safety }) => guidedExecutionClass(safety) === "read-only-query",
+      )
+    );
+  });
+  const transfers = records.filter((record) => !queries.includes(record));
+  const queryLines = queries.length
+    ? [
+        `Read-only query executions: ${queries.length}. No stored program upload or physical observation is inferred.`,
+        ...queries.map(
+          (query) =>
+            `- \`${query.fingerprint.testId}\`: ${query.transactionIds.length} query transaction(s)${query.failureReason ? ` — FAILED: ${query.failureReason}` : " — execution evidence recorded"}.`,
+        ),
+        "",
+      ]
+    : [];
+  if (!transfers.length) return queryLines.join("\n");
   const summary = classifyTransfers(transfers);
   const lines: string[] = [
+    ...queryLines,
     `Total diagnostic transfers: ${summary.total}${summary.failed > 0 ? ` (${summary.failed} failed)` : ""}`,
     "",
   ];

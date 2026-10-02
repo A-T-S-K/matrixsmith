@@ -68,3 +68,25 @@ Review intended ARIA changes individually; do not regenerate visual baselines.
 Simulator and browser scripts provide software evidence only. Real chooser
 activation on a stable secure origin and physical live/offline disconnect and
 recovery acceptance remain manual checks in `docs/physical-acceptance.md`.
+
+## Synthetic family readiness and guided queries
+
+`tests/drivers/synthetic-family-contract.test.ts` exercises interpreted family
+outcomes separately from correlation, family-neutral readiness, restrictions,
+experimental permission and context boundaries. The second-profile fixture keeps
+baseline claims separate from the characterized iLedHat. Neither fixture is
+registered in production or claims new hardware support.
+
+`tests/drivers/synthetic-guided-query.test.ts` uses the real ApplicationRuntime,
+registry and FakeTransport interfaces for registered read-only execution, missing
+eventual evidence, response/attempt links, no content compilation or panel change,
+untouched confirmation, timeout/write failure settlement, unsupported consequence,
+plan mismatch, authored restriction, historical prerequisites and stale context.
+`tests/e2e/synthetic-guided-query.spec.ts` checks visible Run/consequence/result
+behavior in Chromium through a DEV-only injection of the same contributor fixture.
+Production builds prune that injection. Existing guided timing/resend, reversible
+diagnostics, experimental send and workspace journeys remain regression evidence.
+Simulator results establish software behavior only, never physical acceptance.
+
+Transient guided-operation generalization, automatic geometry extraction, new
+family claim vocabulary and production driver/profile support remain deferred.

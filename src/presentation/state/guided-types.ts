@@ -45,6 +45,7 @@ export interface OrchestrationDebugView {
     readonly transferId: string;
     readonly attemptId: string;
     readonly reason: string;
+    readonly executionClass: "read-only-query" | "persistent-content" | null;
     readonly programCrc32: string | null;
     readonly transactionIds: readonly string[];
     readonly failureReason: string | null;
@@ -196,6 +197,7 @@ export interface GuidedFlowState {
   readonly consequence: string;
   readonly category: string;
   readonly risk: string;
+  readonly executionClass: "read-only-query" | "persistent-content";
   readonly planSummary: {
     readonly packetCount: number;
     readonly programBytes: number;

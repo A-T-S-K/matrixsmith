@@ -1,3 +1,4 @@
+import { guidedExecutionClass } from "../../investigation/tests";
 import type { PresentationEnvironment } from "../environment";
 import { Framebuffer } from "./dependencies";
 import type { ObservationValue, ObservationAttempt } from "./dependencies";
@@ -25,7 +26,10 @@ import type { GuidedFlowInternal } from "./internal-types";
 interface Ports {
   snapshotStore(): Pick<SnapshotStore, "_emit">;
   workspaceStore(): Pick<WorkspaceStore, "getController" | "getTransport">;
-  investigationStore(): Pick<InvestigationStore, "_persistInvestigation">;
+  investigationStore(): Pick<
+    InvestigationStore,
+    "_persistInvestigation" | "_persistDetachedInvestigation"
+  >;
   noticeStore(): Pick<NoticeStore, "setError" | "setInfo" | "_run">;
   navigationStore(): Pick<NavigationStore, "_closeOverlay" | "_openOverlay">;
   contentSendStore(): Pick<ContentSendStore, "getWakeLock">;
@@ -607,9 +611,18 @@ export class GuidedController {
         .planGuidedTest(testId);
       // The resolved operation (evidence-aware where declared) drives the
       // preview and region diagram, so About always shows the actual run.
-      const { previews, regions } = this._guidedTestVisuals(
-        this.ports.workspaceStore().getController().guidedTestOperation(testId),
-      );
+      const executionClass = guidedExecutionClass(test);
+      if (!executionClass)
+        throw new Error("Unsupported registered test consequence.");
+      const { previews, regions } =
+        executionClass === "read-only-query"
+          ? { previews: [], regions: [] }
+          : this._guidedTestVisuals(
+              this.ports
+                .workspaceStore()
+                .getController()
+                .guidedTestOperation(testId),
+            );
       this._guidedFlow = {
         testId,
         title: test.title,
@@ -631,6 +644,7 @@ export class GuidedController {
         consequence: test.consequence,
         category: test.category,
         risk: test.risk,
+        executionClass,
         planSummary: {
           packetCount: plan.packets.length,
           programBytes:
@@ -688,6 +702,29 @@ export class GuidedController {
     if (flow.machine.value === "failed" && flow.machine.failure.retryable)
       flow.machine = transitionGuidedTest(flow.machine, { type: "RETRY" });
     if (flow.machine.value !== "about") return;
+    const reviewedPlanDigest = flow.machine.prepared.planDigest;
+    const workspace = this.ports.workspaceStore().getController();
+    const connectionId = this.ports
+      .workspaceStore()
+      .getTransport().connectionId;
+    const current = () =>
+      workspace === this.ports.workspaceStore().getController() &&
+      connectionId ===
+        this.ports.workspaceStore().getTransport().connectionId &&
+      flow === this._guidedFlow;
+    const retireFlow = () => {
+      flow.machine = transitionGuidedTest(flow.machine, {
+        type: "FAIL",
+        failure: {
+          code: "retired-context",
+          message:
+            "This diagnostic belongs to a retired connection. Start a new test in the current context.",
+          retryable: false,
+        },
+      });
+      if (workspace === this.ports.workspaceStore().getController())
+        this.ports.investigationStore()._persistDetachedInvestigation();
+    };
     flow.machine = transitionGuidedTest(flow.machine, {
       type: "START_TRANSFER",
       progress: {
@@ -700,114 +737,136 @@ export class GuidedController {
     this.ports.snapshotStore()._emit();
     await this.ports
       .noticeStore()
-      ._run("Transferring diagnostic content…", async () => {
-        await this.ports.contentSendStore().getWakeLock().acquire();
-        try {
-          // The controller's attempt is the authoritative identity; the timing
-          // record below borrows its number rather than counting separately. Two
-          // independently numbered attempt lists drift the moment one of them
-          // gains an entry the other cannot see — a failed transfer, for example.
-          const attempt = this.ports
-            .workspaceStore()
-            .getController()
-            .beginAttempt(flow.experimentRunId, flow.pendingTransferReason);
+      ._run(
+        flow.executionClass === "read-only-query"
+          ? "Executing registered query…"
+          : "Transferring diagnostic content…",
+        async () => {
+          await this.ports.contentSendStore().getWakeLock().acquire();
           try {
-            const { transactionIds, finalWriteAcceptedAt } = await this.ports
-              .workspaceStore()
-              .getController()
-              .runGuidedTestTransfer(flow.testId, {
-                confirmedConsequence: true,
-                reason: flow.pendingTransferReason,
-                attemptId: attempt.attemptId,
-              });
-            flow.transactionIds = [...flow.transactionIds, ...transactionIds];
-            if (flow.timerSpec && !finalWriteAcceptedAt)
-              throw new Error(
-                "The transfer completed without an accepted-write timestamp, so a timed observation cannot start safely.",
-              );
-            // Each transfer opens a fresh observation attempt: T0 restarts, so the
-            // human's marks belong to this run and not the previous one.
-            if (flow.timerSpec) {
-              flow.marks = [];
+            if (!current()) {
+              retireFlow();
+              return;
             }
-            flow.attempts = [
-              ...flow.attempts,
-              {
-                attemptNumber: attempt.attemptNumber,
-                parameters: { ...flow.parameters },
-                t0: finalWriteAcceptedAt,
-                marks: [],
-                values: [],
-                validity: "incomplete",
-                invalidationReason: null,
-                note: null,
-                startedAt: new Date().toISOString(),
-                endedAt: null,
-              },
-            ];
-            const activeRun = {
-              runId: attempt.attemptId,
-              prepared:
-                flow.machine.value === "transferring"
-                  ? flow.machine.prepared
-                  : {
-                      testId: flow.testId,
-                      title: flow.title,
-                      planDigest: "unknown",
-                    },
-              startedAt: attempt.startedAt,
-              finalWriteAcceptedAt: finalWriteAcceptedAt ?? attempt.startedAt,
-            };
-            flow.machine = transitionGuidedTest(
-              flow.machine,
-              flow.timerSpec
-                ? { type: "OBSERVE_TIMED", run: activeRun }
-                : { type: "OBSERVE_QUESTIONS", run: activeRun },
+            // The controller's attempt is the authoritative identity; the timing
+            // record below borrows its number rather than counting separately. Two
+            // independently numbered attempt lists drift the moment one of them
+            // gains an entry the other cannot see — a failed transfer, for example.
+            const attempt = workspace.beginAttempt(
+              flow.experimentRunId,
+              flow.pendingTransferReason,
             );
-            if (flow.timerSpec) this._signalTimingStart();
-            this.ports
-              .noticeStore()
-              .setInfo(
-                "Diagnostic upload sent; host writes completed. Watch the physical panel now to verify acceptance.",
-              );
-          } catch (error) {
-            // The transfer failed, so this attempt number is spent. It stays in
-            // the record as a failed attempt — the controller has already settled
-            // it — and the next try becomes the NEXT attempt. Blaming the person
-            // for a radio failure, or silently reusing the number, both lose what
-            // actually happened.
-            flow.attempts = [
-              ...flow.attempts,
-              {
-                attemptNumber: attempt.attemptNumber,
-                parameters: { ...flow.parameters },
-                t0: null,
-                marks: [],
-                values: [],
-                validity: "transfer-failed",
-                invalidationReason:
-                  ATTEMPT_INVALIDATION_LABELS["transfer-failed"],
-                note: null,
+            try {
+              const { transactionIds, finalWriteAcceptedAt } =
+                await workspace.runGuidedTestTransfer(flow.testId, {
+                  confirmedConsequence: true,
+                  confirmedPlanDigest: reviewedPlanDigest,
+                  reason: flow.pendingTransferReason,
+                  attemptId: attempt.attemptId,
+                });
+              if (!current()) {
+                retireFlow();
+                return;
+              }
+              flow.transactionIds = [...flow.transactionIds, ...transactionIds];
+              if (flow.timerSpec && !finalWriteAcceptedAt)
+                throw new Error(
+                  "The transfer completed without an accepted-write timestamp, so a timed observation cannot start safely.",
+                );
+              // Each transfer opens a fresh observation attempt: T0 restarts, so the
+              // human's marks belong to this run and not the previous one.
+              if (flow.timerSpec) {
+                flow.marks = [];
+              }
+              flow.attempts = [
+                ...flow.attempts,
+                {
+                  attemptNumber: attempt.attemptNumber,
+                  parameters: { ...flow.parameters },
+                  t0:
+                    flow.executionClass === "read-only-query"
+                      ? null
+                      : finalWriteAcceptedAt,
+                  marks: [],
+                  values: [],
+                  validity: "incomplete",
+                  invalidationReason: null,
+                  note: null,
+                  startedAt: new Date().toISOString(),
+                  endedAt: null,
+                },
+              ];
+              const activeRun = {
+                runId: attempt.attemptId,
+                prepared:
+                  flow.machine.value === "transferring"
+                    ? flow.machine.prepared
+                    : {
+                        testId: flow.testId,
+                        title: flow.title,
+                        planDigest: "unknown",
+                      },
                 startedAt: attempt.startedAt,
-                endedAt: new Date().toISOString(),
-              },
-            ];
-            flow.machine = transitionGuidedTest(flow.machine, {
-              type: "FAIL",
-              failure: {
-                code: "transfer-failed",
-                message: error instanceof Error ? error.message : String(error),
-                retryable:
-                  this.ports.workspaceStore().getTransport().state ===
-                  "connected",
-              },
-            });
-            throw error;
+                finalWriteAcceptedAt: finalWriteAcceptedAt ?? attempt.startedAt,
+              };
+              flow.machine = transitionGuidedTest(
+                flow.machine,
+                flow.timerSpec
+                  ? { type: "OBSERVE_TIMED", run: activeRun }
+                  : { type: "OBSERVE_QUESTIONS", run: activeRun },
+              );
+              if (flow.timerSpec) this._signalTimingStart();
+              this.ports
+                .noticeStore()
+                .setInfo(
+                  flow.executionClass === "read-only-query"
+                    ? "Query executed; the required response was recorded. No physical capability was verified."
+                    : "Diagnostic upload sent; host writes completed. Watch the physical panel now to verify acceptance.",
+                );
+            } catch (error) {
+              if (!current()) {
+                retireFlow();
+                return;
+              }
+              // The transfer failed, so this attempt number is spent. It stays in
+              // the record as a failed attempt — the controller has already settled
+              // it — and the next try becomes the NEXT attempt. Blaming the person
+              // for a radio failure, or silently reusing the number, both lose what
+              // actually happened.
+              flow.attempts = [
+                ...flow.attempts,
+                {
+                  attemptNumber: attempt.attemptNumber,
+                  parameters: { ...flow.parameters },
+                  t0: null,
+                  marks: [],
+                  values: [],
+                  validity: "transfer-failed",
+                  invalidationReason:
+                    ATTEMPT_INVALIDATION_LABELS["transfer-failed"],
+                  note: null,
+                  startedAt: attempt.startedAt,
+                  endedAt: new Date().toISOString(),
+                },
+              ];
+              flow.machine = transitionGuidedTest(flow.machine, {
+                type: "FAIL",
+                failure: {
+                  code: "transfer-failed",
+                  message:
+                    error instanceof Error ? error.message : String(error),
+                  retryable:
+                    this.ports.workspaceStore().getTransport().state ===
+                    "connected",
+                },
+              });
+              throw error;
+            }
+          } finally {
+            await this.ports.contentSendStore().getWakeLock().release();
           }
-        } finally {
-          await this.ports.contentSendStore().getWakeLock().release();
-        }
-      });
+        },
+      );
     this.ports.snapshotStore()._emit();
   }
 }

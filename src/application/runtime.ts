@@ -30,6 +30,7 @@ export class ApplicationRuntime {
     registry = new DriverRegistry(builtInDrivers),
   ) {
     this.transmission = new TransmissionService({
+      guidedTestCatalog: () => this.guidedTestCatalog,
       connection: () => this.connection,
       protocolEvidence: () => this.protocolEvidence,
       investigation: () => this.investigationService,
@@ -66,6 +67,7 @@ export class ApplicationRuntime {
       experiment: () => this.experiment,
     });
     this.guidedTestCatalog = new GuidedTestCatalogService({
+      identification: () => this.identification,
       connection: () => this.connection,
       protocolEvidence: () => this.protocolEvidence,
       investigation: () => this.investigationService,

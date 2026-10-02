@@ -139,6 +139,33 @@ export class InvestigationService {
     const current = investigation.orchestration ?? emptyOrchestration();
     this._investigation = withOrchestration(investigation, mutate(current));
   }
+  /** Late execution evidence may settle only the investigation that started it. */
+  _updateOrchestrationFor(
+    id: string,
+    mutate: (current: InvestigationOrchestration) => InvestigationOrchestration,
+    origin?: Investigation,
+  ): void {
+    if (this._investigation?.id === id) this._updateOrchestration(mutate);
+    else if (this._detachedInvestigation?.id === id)
+      this._detachedInvestigation = withOrchestration(
+        this._detachedInvestigation,
+        mutate(
+          this._detachedInvestigation.orchestration ?? emptyOrchestration(),
+        ),
+      );
+    else if (origin?.id === id) {
+      // A presentation owner may already have saved/taken detached history.
+      // The in-flight call retains only its own structured origin, and queues
+      // its late evidence for saving again without restoring live authority.
+      const historical = stopInvestigation(
+        demoteInvestigationEvidence(origin, "previous-local-session"),
+      );
+      this._detachedInvestigation = withOrchestration(
+        historical,
+        mutate(historical.orchestration ?? emptyOrchestration()),
+      );
+    }
+  }
   panelProgram(): PanelProgramState {
     return (
       this._investigation?.orchestration?.panelProgram ??

@@ -74,3 +74,16 @@ correlated probe response may be rejected by family interpretation. Registered
 bounded probes alone use profile-free candidate eligibility. Investigation
 continuity requires the same authorized device, fingerprint context, and profile;
 geometry/profile or family changes detach previous evidence.
+
+Registered characterization can establish missing evidence through a fixed
+contributed test, never an imported definition or arbitrary prepared plan.
+Declared prerequisites exclude imported and previous-session evidence as live
+satisfiers. Risk/persistence must agree with the compiled plan before writes:
+only read-only/none queries and persistent/persistent content are supported here.
+Queries still need explicit experimental permission when experimental; Run
+confirms the read-only consequence without a stored-content checkbox. Receipt
+alone creates no physical observation or capability claim. Query failure settles
+the attempt and retains transaction evidence without inventing panel replacement.
+Persistent tests retain exact-plan consequence confirmation and panel uncertainty
+on partial writes. All central source, confidence, target/digest, endpoint, risk,
+validation and intent checks apply to both paths. No automatic retries are added.

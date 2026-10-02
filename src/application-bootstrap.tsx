@@ -29,18 +29,27 @@ export async function startApplication(
   const Simulator = simulated
     ? (await import("./dev/simulated-device")).SimulatedIledHatTransport
     : null;
+  const synthetic =
+    import.meta.env.DEV && simulation === "lumen"
+      ? await import("./dev/synthetic-workspace")
+      : null;
   const registry =
-    import.meta.env.DEV && simulation === "experimental"
+    synthetic?.registry ??
+    (import.meta.env.DEV && simulation === "experimental"
       ? (await import("./dev/experimental-registry")).experimentalRegistry()
-      : undefined;
+      : undefined);
   const createLiveWorkspace = () => {
     const trace = new TraceRecorder();
-    const transport = Simulator
-      ? new Simulator(
-          simulation ? `simulated-iledhat-${simulation}` : "simulated-iledhat",
-          simulation === "unknown",
-        )
-      : new WebBluetoothTransport(trace);
+    const transport = synthetic
+      ? synthetic.createTransport()
+      : Simulator
+        ? new Simulator(
+            simulation
+              ? `simulated-iledhat-${simulation}`
+              : "simulated-iledhat",
+            simulation === "unknown",
+          )
+        : new WebBluetoothTransport(trace);
     const controller = new ApplicationRuntime(transport, trace, registry);
     trace.record("app.started", {
       webBluetoothSupported: "bluetooth" in navigator,

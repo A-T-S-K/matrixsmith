@@ -30,6 +30,7 @@ export interface GuidedFlowInternal {
   consequence: string;
   category: string;
   risk: string;
+  executionClass: "read-only-query" | "persistent-content";
   planSummary: GuidedFlowState["planSummary"];
   previews: readonly Framebuffer[];
   regions: readonly DiagnosticRegionView[];

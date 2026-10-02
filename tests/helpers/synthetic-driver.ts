@@ -1,3 +1,4 @@
+import type { GuidedTestDefinition } from "../../src/investigation/tests";
 import type { DeviceFingerprint, DeviceProfile } from "../../src/core/device";
 import { packetHex, type TransmissionPlan } from "../../src/core/transmission";
 import type { MatrixOperation } from "../../src/core/operations";
@@ -123,6 +124,49 @@ function queryPlan(
   } satisfies TransmissionPlan);
 }
 
+export const syntheticQueryTest: GuidedTestDefinition = {
+  id: "lumen-read-info",
+  driverId: "test-lumen",
+  title: "Read Synthetic Lumen information",
+  category: "core",
+  targetClaims: ["device-info.query"],
+  prerequisites: [],
+  requiresCompletedTests: [],
+  risk: "read-only",
+  persistence: "none",
+  consequence: "Runs a read-only query. Stored display content is unchanged.",
+  operation: { type: "GetDeviceInfo" },
+  about: {
+    question: "Does the registered synthetic query receive a response?",
+    whyRelevant: "Exercise query execution without physical verification.",
+    whatMatrixSmithDoes:
+      "Send one bounded authored query and record its response.",
+    whatChangesOnDevice: "No stored display content changes.",
+    estimatedObservationTime: "No physical observation is inferred.",
+    possibleOutcomes: [
+      {
+        outcome: "Response recorded",
+        learns: "Software correlation only; no physical verification.",
+      },
+    ],
+    observeInstructions:
+      "Review the recorded query. No physical capability has been verified.",
+    technicalDetails: [
+      "Requires explicit per-session experimental permission.",
+    ],
+  },
+  observation: [],
+  showRegionDiagram: false,
+  interpret: () => ({
+    status: "inconclusive",
+    established: [],
+    rejected: [],
+    unknowns: ["Physical behavior remains unverified."],
+    summary: "Read-only query execution recorded; software evidence only.",
+    claimUpdates: [],
+  }),
+};
+
 export const syntheticDriver: MatrixDriver = {
   id: "test-lumen",
   family: "Synthetic Lumen",
@@ -229,6 +273,12 @@ export const syntheticDriver: MatrixDriver = {
             },
     },
   ],
+  guidedTests: (profile) =>
+    profile.driverId === "test-lumen" &&
+    profile.width === 24 &&
+    profile.height === 8
+      ? [syntheticQueryTest]
+      : [],
   diagnosticTools: () => [
     {
       id: "lumen-identify",
