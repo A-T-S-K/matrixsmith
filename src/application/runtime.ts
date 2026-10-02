@@ -390,6 +390,9 @@ export class ApplicationRuntime {
   get observations() {
     return this.protocolEvidence.observations;
   }
+  get evidenceRevisions() {
+    return this.protocolEvidence.revisions;
+  }
   get transactions() {
     return this.protocolEvidence.transactions;
   }

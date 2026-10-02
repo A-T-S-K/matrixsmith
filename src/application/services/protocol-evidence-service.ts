@@ -34,6 +34,14 @@ interface Ports {
   >;
 }
 export class ProtocolEvidenceService {
+  private transactionRevision = 0;
+  private compilationRevision = 0;
+  get revisions() {
+    return {
+      transactions: this.transactionRevision,
+      compilations: this.compilationRevision,
+    };
+  }
   private readonly trace: TraceRecorder;
   private readonly _notificationRouter = new NotificationRouter();
   private readonly _observations: ManualObservation[] = [];
@@ -52,7 +60,11 @@ export class ProtocolEvidenceService {
   editTransactions(
     edit: (value: ProtocolEvidenceService["_transactions"]) => unknown,
   ): void {
-    edit(this._transactions);
+    try {
+      edit(this._transactions);
+    } finally {
+      this.transactionRevision++;
+    }
   }
   getTrace() {
     return this.trace;
@@ -81,7 +93,11 @@ export class ProtocolEvidenceService {
   editContentCompilations(
     edit: (value: ProtocolEvidenceService["_contentCompilations"]) => unknown,
   ): void {
-    edit(this._contentCompilations);
+    try {
+      edit(this._contentCompilations);
+    } finally {
+      this.compilationRevision++;
+    }
   }
   editImportedEvidence(
     edit: (value: ProtocolEvidenceService["_importedEvidence"]) => unknown,
@@ -167,6 +183,7 @@ export class ProtocolEvidenceService {
       diagnosticRunId: diagnosticRunIdValue,
     };
     this._transactions.push(transaction);
+    this.transactionRevision++;
     this._trimTransactions();
     return transaction;
   }
@@ -298,6 +315,7 @@ export class ProtocolEvidenceService {
       ...extras,
     };
     this._contentCompilations.push(record);
+    this.compilationRevision++;
     this.trace.record("content.compiled", {
       operation: plan.operation.type,
       programBytes: record.programBytes,
@@ -319,6 +337,9 @@ export class ProtocolEvidenceService {
   }
   _trimTransactions(): void {
     const overflow = this._transactions.length - INPUT_LIMITS.transactions;
-    if (overflow > 0) this._transactions.splice(0, overflow);
+    if (overflow > 0) {
+      this._transactions.splice(0, overflow);
+      this.transactionRevision++;
+    }
   }
 }

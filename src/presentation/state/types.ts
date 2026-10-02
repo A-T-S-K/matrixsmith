@@ -137,6 +137,7 @@ export interface AppSnapshot {
     readonly primary: boolean;
     readonly characteristics: readonly GattCharacteristicView[];
   }[];
+  readonly review: import("./transaction-review").ReviewProjection;
   readonly transactions: readonly ProtocolTransaction[];
   readonly rawEvents: readonly import("../../diagnostics/trace").TraceEvent[];
   readonly observations: readonly import("../../core/evidence").ManualObservation[];

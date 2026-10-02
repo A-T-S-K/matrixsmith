@@ -70,6 +70,10 @@ export interface TraceEvent {
 export type TraceListener = (event: TraceEvent) => void;
 
 export class TraceRecorder {
+  private _revision = 0;
+  get revision(): number {
+    return this._revision;
+  }
   readonly #events: TraceEvent[] = [];
   readonly #listeners = new Set<TraceListener>();
 
@@ -94,6 +98,7 @@ export class TraceRecorder {
       ...(rawBytes ? { rawBytes: rawBytes.slice() } : {}),
     };
     this.#events.push(event);
+    this._revision++;
     if (this.#events.length > INPUT_LIMITS.traceEvents) this.#events.shift();
     for (const listener of this.#listeners) listener(event);
     return event;
@@ -116,6 +121,7 @@ export class TraceRecorder {
         ...(rawBytes ? { rawBytes } : {}),
       };
       this.#events.push(event);
+      this._revision++;
       if (this.#events.length > INPUT_LIMITS.traceEvents) this.#events.shift();
       for (const listener of this.#listeners) listener(event);
     }

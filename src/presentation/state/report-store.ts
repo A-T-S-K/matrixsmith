@@ -1,3 +1,4 @@
+import { TransactionReview } from "./transaction-review";
 import { generateMarkdownReport, MATRIXSMITH_VERSION } from "./dependencies";
 import type { ReportData } from "./dependencies";
 import type { ReportKind } from "./types";
@@ -20,8 +21,10 @@ interface Ports {
   guidedController(): Pick<GuidedController, "getGuidedFlow">;
 }
 export class ReportStore {
+  review = new TransactionReview();
   captureContext() {
     return {
+      review: this.review,
       kind: this._reportKind,
       options: this._reportOptions,
       filter: this._transactionFilter,
@@ -35,6 +38,7 @@ export class ReportStore {
   restoreContext(
     state: ReturnType<ReportStore["captureContext"]> | null,
   ): void {
+    this.review = state?.review ?? new TransactionReview();
     this._actionGeneration++;
     this._previewOwner = this.ports.workspaceStore().getController();
     this._reportOpen = false;

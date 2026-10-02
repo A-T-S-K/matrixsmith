@@ -7,7 +7,6 @@ import {
   candidateEvidence,
   deviceInfoEvidence,
   recommendedFromAssessment,
-  filterTransactions,
 } from "./selectors";
 
 import type { AppSnapshot } from "./types";
@@ -37,6 +36,7 @@ interface Ports {
   >;
   reportStore(): Pick<
     ReportStore,
+    | "review"
     | "getTransactionFilter"
     | "getTransactionSearch"
     | "getReviewNote"
@@ -156,11 +156,26 @@ export class SnapshotStore {
     const profile = session.profile;
     const info = session.latestDeviceInfo;
     const capabilities = driver && profile ? driver.capabilities(profile) : [];
-    const transactions = filterTransactions(
-      this.ports.workspaceStore().getController().transactions,
-      this.ports.reportStore().getTransactionFilter(),
-      this.ports.reportStore().getTransactionSearch(),
-    );
+    const controller = this.ports.workspaceStore().getController();
+    const review = this.ports.reportStore().review.project({
+      transactions: controller.transactions,
+      compilations: controller.contentCompilations,
+      rawEvents: controller.trace.events,
+      revisions: {
+        ...controller.evidenceRevisions,
+        raw: controller.trace.revision,
+      },
+      filter: this.ports.reportStore().getTransactionFilter(),
+      search: this.ports.reportStore().getTransactionSearch(),
+      section:
+        this.ports.navigationStore().getView() === "develop" &&
+        ["transactions", "raw"].includes(
+          this.ports.navigationStore().getWorkbenchSection(),
+        )
+          ? (this.ports.navigationStore().getWorkbenchSection() as
+              "transactions" | "raw")
+          : undefined,
+    });
     const liveConnected =
       session.source === "live" &&
       this.ports.workspaceStore().getTransport().state === "connected";
@@ -308,7 +323,8 @@ export class SnapshotStore {
             }),
         })),
       })),
-      transactions,
+      review,
+      transactions: review.filtered,
       rawEvents: this.ports.workspaceStore().getController().trace.events,
       observations: this.ports.workspaceStore().getController().observations,
       reportOpen: this.ports.reportStore().getReportOpen(),
