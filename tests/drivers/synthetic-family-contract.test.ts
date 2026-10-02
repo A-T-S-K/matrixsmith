@@ -73,6 +73,60 @@ describe("test-only third-family contracts", () => {
     });
   });
 
+  it("narrows authored diagnostic availability without mutating contributions", async () => {
+    const authored = syntheticDriver.diagnosticTools!();
+    const tools = [
+      {
+        ...authored[0]!,
+        id: "disabled",
+        available: false,
+        unavailableReason: "Authored restriction.",
+      },
+      { ...authored[0]!, id: "disabled-no-reason", available: false },
+      authored[0]!,
+    ];
+    const before = structuredClone(tools);
+    const transport = new FakeTransport(syntheticFingerprint());
+    transport.notificationOnWrite = lumenFrame(0x91, [0x4c, 0x4d, 24, 8, 7]);
+    const runtime = new ApplicationRuntime(
+      transport,
+      new TraceRecorder(),
+      new DriverRegistry([
+        { ...syntheticDriver, diagnosticTools: () => tools },
+      ]),
+    );
+    try {
+      await runtime.connect();
+      runtime.session.enableExperimentalTx();
+      expect(runtime.diagnosticTools()[0]).toMatchObject({
+        available: false,
+        unavailableReason: "Authored restriction.",
+      });
+      await expect(runtime.runDiagnostic("disabled")).rejects.toThrow(
+        "Authored restriction.",
+      );
+      await expect(runtime.runDiagnostic("disabled-no-reason")).rejects.toThrow(
+        "unavailable for this driver",
+      );
+      expect(transport.writeAttempts).toHaveLength(0);
+      expect(runtime.diagnosticRuns).toHaveLength(0);
+      expect((await runtime.runDiagnostic("lumen-identify")).status).toBe(
+        "passed",
+      );
+      runtime.importBundle(runtime.exportBundle());
+      expect(runtime.diagnosticTools().every((tool) => !tool.available)).toBe(
+        true,
+      );
+      await expect(runtime.runDiagnostic("lumen-identify")).rejects.toThrow(
+        "read-only",
+      );
+      expect(transport.writeAttempts).toHaveLength(1);
+      expect(tools).toEqual(before);
+    } finally {
+      await runtime.dispose();
+    }
+  });
+
   it("decodes only intact distinct frames and matches the exact response expectation", () => {
     const fingerprint = syntheticFingerprint();
     const context = { fingerprint, profile: null, source: "fake" as const };

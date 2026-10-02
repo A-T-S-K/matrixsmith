@@ -105,10 +105,15 @@ export class DiagnosticsService {
       .flatMap((driver) => driver.diagnosticTools?.() ?? [])
       .map((tool) => ({
         ...tool,
-        available: session.source === "live",
+        available: tool.available && session.source === "live",
         ...(session.source !== "live"
           ? { unavailableReason: "Imported reports are read-only." }
-          : {}),
+          : !tool.available && !tool.unavailableReason
+            ? {
+                unavailableReason:
+                  "This diagnostic is unavailable for this driver.",
+              }
+            : {}),
       }));
   }
   async runDiagnostic(toolId: string): Promise<DiagnosticRun> {
