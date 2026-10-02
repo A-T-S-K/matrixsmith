@@ -2840,7 +2840,7 @@ main {
   background: var(--surface-2);
 }
 .type-tabs > .tab-list > [role="tab"] {
-  flex: 1;
+  flex: 1 1 auto;
   min-width: 0;
   min-height: var(--target);
   padding: 0 var(--s1);
@@ -2850,7 +2850,7 @@ main {
   color: var(--fg-dim);
   font-size: var(--text-sm);
   font-weight: 700;
-  white-space: nowrap;
+  white-space: normal;
 }
 .type-tabs > .tab-list > [role="tab"].active {
   background: var(--accent);

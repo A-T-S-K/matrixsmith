@@ -169,6 +169,17 @@ for (const width of [320, 390, 768, 1024, 1280]) {
     await expect(
       page.getByRole("button", { name: "Display it" }),
     ).toBeVisible();
+    const tabs = await page.getByRole("tab").evaluateAll((elements) =>
+      elements.map((element) => ({
+        label: element.textContent,
+        overflow: element.scrollWidth - element.clientWidth,
+      })),
+    );
+    for (const tab of tabs)
+      expect(
+        tab.overflow,
+        `${tab.label} should fit its tab`,
+      ).toBeLessThanOrEqual(1);
     const overflow = await page.evaluate(
       () => document.documentElement.scrollWidth - window.innerWidth,
     );
