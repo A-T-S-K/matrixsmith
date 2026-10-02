@@ -170,7 +170,8 @@ export class ConnectionStore {
           .noticeStore()
           .setInfo(
             run.status === "passed"
-              ? "CoolLEDUX identified from a valid structured 0x1F response."
+              ? (run.findings[0] ??
+                  "The current probe identified the display family.")
               : run.error,
           );
       });

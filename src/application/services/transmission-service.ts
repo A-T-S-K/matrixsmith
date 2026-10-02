@@ -27,6 +27,14 @@ import type { ConnectionService } from "./connection-service";
 import type { ProtocolEvidenceService } from "./protocol-evidence-service";
 import type { InvestigationService } from "./investigation-service";
 import type { IdentificationService } from "./identification-service";
+export type FamilyProbeExecution = ExecutionResult & {
+  readonly identification: import("../../drivers/types").IdentificationResult & {
+    readonly driverId: string;
+    readonly probeId: string;
+    readonly family: string;
+  };
+};
+
 interface Ports {
   connection(): Pick<
     ConnectionService,
@@ -310,7 +318,10 @@ export class TransmissionService {
       throw error;
     }
   }
-  async probe(driverId?: string, probeId?: string): Promise<ExecutionResult> {
+  async probe(
+    driverId?: string,
+    probeId?: string,
+  ): Promise<FamilyProbeExecution> {
     const session = this.ports.connection().getSession();
     if (session.source !== "live")
       throw new Error(
@@ -442,6 +453,26 @@ export class TransmissionService {
           probeId: selectedProbeId ?? "unknown",
           responseTimedOut: result.responseTimedOut,
         });
-    return result;
+    return {
+      ...result,
+      identification: {
+        ...(interpretation?.matched
+          ? {
+              matched: true as const,
+              confidence: interpretation.confidence,
+              summary: interpretation.summary,
+            }
+          : {
+              matched: false as const,
+              reason:
+                interpretation && "reason" in interpretation
+                  ? interpretation.reason
+                  : "No family match was established by this probe.",
+            }),
+        driverId: driver.id,
+        probeId: selectedProbeId ?? "unknown",
+        family: driver.family,
+      },
+    };
   }
 }

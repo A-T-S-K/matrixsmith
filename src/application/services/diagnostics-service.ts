@@ -164,14 +164,14 @@ export class DiagnosticsService {
         step(
           "identify",
           "Get Device Info",
-          Boolean(result.response),
-          result.response?.summary ?? "No matching structured response.",
+          result.identification.matched,
+          result.identification.matched
+            ? result.identification.summary
+            : result.identification.reason,
           transactionIndex,
         );
-        if (!result.response)
-          throw new Error(
-            "Safe identification did not receive a matching structured response.",
-          );
+        if (!result.identification.matched)
+          throw new Error(result.identification.reason);
       } else if (tool.workflow === "refresh-device-info") {
         const from = this.ports.protocolEvidence().getTransactions().length;
         const result = await this.ports
@@ -336,7 +336,9 @@ export class DiagnosticsService {
           ? [
               tool.workflow === "brightness-round-trip"
                 ? "Brightness response and readback were validated; baseline restoration was verified."
-                : "The expected structured read-only response was received.",
+                : tool.workflow === "family-identification"
+                  ? steps[0]!.summary
+                  : "The expected structured read-only response was received.",
             ]
           : [error ?? "Diagnostic failed."],
       error,

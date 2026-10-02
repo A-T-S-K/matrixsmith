@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { ApplicationRuntime } from "../../src/application/runtime";
 import { DriverRegistry, builtInDrivers } from "../../src/drivers/registry";
 import { FakeTransport } from "../../src/transport/fake";
@@ -127,6 +127,70 @@ describe("test-only third-family contracts", () => {
     }
   });
 
+  it("keeps correlated execution separate from a rejected family interpretation", async () => {
+    const transport = new FakeTransport(syntheticFingerprint());
+    transport.notificationOnWrite = lumenFrame(0x91, [0x4c, 0x4d, 24, 8, 7]);
+    const rejecting = {
+      ...syntheticDriver,
+      familyProbes: (
+        context: Parameters<
+          NonNullable<typeof syntheticDriver.familyProbes>
+        >[0],
+      ) =>
+        syntheticDriver.familyProbes!(context).map((probe) => ({
+          ...probe,
+          identify: () => ({
+            matched: false as const,
+            reason: "Authored response rejected.",
+          }),
+        })),
+    };
+    const runtime = new ApplicationRuntime(
+      transport,
+      new TraceRecorder(),
+      new DriverRegistry([rejecting]),
+    );
+    try {
+      await runtime.connect();
+      runtime.session.enableExperimentalTx();
+      const result = await runtime.probe("test-lumen", "lumen-info");
+      expect(result.protocolAcknowledged).toBe(true);
+      expect(result.identification).toMatchObject({
+        matched: false,
+        reason: "Authored response rejected.",
+        driverId: "test-lumen",
+        probeId: "lumen-info",
+      });
+      expect(runtime.deviceTarget()?.kind).toBe("unresolved");
+      const run = await runtime.runDiagnostic("lumen-identify");
+      expect(run.status).toBe("failed");
+      expect(run.error).toBe("Authored response rejected.");
+      expect(runtime.deviceTarget()?.kind).toBe("unresolved");
+    } finally {
+      await runtime.dispose();
+    }
+  });
+
+  it("does not resolve a replacement connection from a late matched probe", async () => {
+    const { runtime, transport } = harness();
+    try {
+      await runtime.connect();
+      runtime.session.enableExperimentalTx();
+      transport.writeDelayMs = 200;
+      const pending = runtime
+        .probe("test-lumen", "lumen-info")
+        .catch((error: unknown) => error);
+      await vi.waitFor(() => expect(transport.writeAttempts).toHaveLength(1));
+      await runtime.disconnect();
+      await runtime.connect();
+      expect(await pending).toBeInstanceOf(Error);
+      expect(runtime.session.protocolResolution).toBeNull();
+      expect(runtime.deviceTarget()?.kind).toBe("unresolved");
+    } finally {
+      await runtime.dispose();
+    }
+  });
+
   it("decodes only intact distinct frames and matches the exact response expectation", () => {
     const fingerprint = syntheticFingerprint();
     const context = { fingerprint, profile: null, source: "fake" as const };
@@ -167,6 +231,8 @@ describe("test-only third-family contracts", () => {
       runtime.session.enableExperimentalTx();
       const run = await runtime.runDiagnostic("lumen-identify");
       expect(run.status).toBe("passed");
+      expect(run.findings[0]).toContain("Lumen");
+      expect(run.findings[0]).not.toContain("CoolLEDUX");
       expect(runtime.deviceTarget()).toMatchObject({
         kind: "protocol-identified",
         geometry: null,
@@ -314,6 +380,7 @@ describe("test-only third-family contracts", () => {
       transport.notificationOnWrite = null;
       const result = await runtime.probe("test-lumen", "lumen-info");
       expect(result.responseTimedOut).toBe(true);
+      expect(result.identification.matched).toBe(false);
       expect(runtime.deviceTarget()?.kind).toBe("unresolved");
       expect(transport.writeAttempts).toHaveLength(1);
       transport.failWriteAt = transport.writes.length;
