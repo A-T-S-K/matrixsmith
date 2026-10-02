@@ -1440,8 +1440,13 @@ main {
   }
 }
 @media (max-width: 899px) {
-  .app-shell:has(~ .toast) {
-    padding-top: 4rem;
+  .toast {
+    position: relative;
+    left: auto;
+    bottom: auto;
+    transform: none;
+    margin: 1rem auto calc(5rem + env(safe-area-inset-bottom));
+    max-width: calc(100% - 2rem);
   }
   .content-editor {
     padding-bottom: 6rem;

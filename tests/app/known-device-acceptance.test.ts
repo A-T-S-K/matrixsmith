@@ -163,7 +163,8 @@ describe("a fresh session on the known iLedHat is immediately usable", () => {
     });
     expect(store.getSnapshot().error).toBeNull();
     expect(store.getSnapshot().pendingSend).toBeNull();
-    expect(store.getSnapshot().info).toBe("Display updated.");
+    expect(store.getSnapshot().sendAttempt?.evidence?.hostAccepted).toBe(true);
+    expect(store.getSnapshot().info).toBeNull();
     expect(transport.writes.length).toBeGreaterThan(0);
     expect(controller.transactions.length).toBeGreaterThan(0);
   });

@@ -47,6 +47,7 @@ interface Ports {
   >;
   contentSendStore(): Pick<
     ContentSendStore,
+    | "getSendAttempt"
     | "getSendProgress"
     | "getWakeLock"
     | "getPendingSend"
@@ -283,6 +284,7 @@ export class SnapshotStore {
       observations: this.ports.workspaceStore().getController().observations,
       reportOpen: this.ports.reportStore().getReportOpen(),
       reportOptions: this.ports.reportStore().getReportOptions(),
+      sendAttempt: this.ports.contentSendStore().getSendAttempt(),
       sendProgress: this.ports.contentSendStore().getSendProgress(),
       wakeLockSupported: this.ports.contentSendStore().getWakeLock().supported,
       // Only generated while the dialog is open: it is the most expensive

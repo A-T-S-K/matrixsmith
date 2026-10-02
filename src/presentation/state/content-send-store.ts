@@ -12,10 +12,10 @@ import type {
   ScrollPlan,
   ContentPathId,
 } from "./dependencies";
-import { PERSISTENT_CONTENT_CONSEQUENCE } from "./types";
+import { PERSISTENT_CONTENT_CONSEQUENCE, type SendAttempt } from "./types";
 import { hexToRgb } from "./selectors";
 
-import type { ExecutionProgress } from "./dependencies";
+import type { ConnectionStore } from "./connection-store";
 
 import type { ContentEditorStore } from "./content-editor-store";
 import type { WorkspaceStore } from "./workspace-store";
@@ -32,11 +32,13 @@ interface Ports {
     | "getImageState"
     | "getGifSequence"
     | "getGifState"
+    | "retainDraftForReconnect"
   >;
   workspaceStore(): Pick<WorkspaceStore, "getController">;
   navigationStore(): Pick<NavigationStore, "_closeOverlay" | "_openOverlay">;
   snapshotStore(): Pick<SnapshotStore, "_emit">;
-  noticeStore(): Pick<NoticeStore, "setError" | "_run" | "setInfo">;
+  noticeStore(): Pick<NoticeStore, "setError" | "_run" | "setInfo" | "getBusy">;
+  connectionStore(): Pick<ConnectionStore, "disconnect" | "connect">;
 }
 export class ContentSendStore {
   private readonly scrollCache = new ContentCache<ScrollPlan | null>();
@@ -44,15 +46,47 @@ export class ContentSendStore {
   clearContentCaches(): void {
     this.scrollCache.clear();
     this.demoCache.clear();
-    this._pendingSend = null;
   }
-  async dispose(): Promise<void> {
+  invalidateContext(): void {
     this.clearContentCaches();
     this._pendingSend = null;
+    this.owner = null;
+    this.attempt = null;
+  }
+  async dispose(): Promise<void> {
+    this.disposed = true;
+    this.invalidateContext();
     await this._wakeLock.release();
   }
   private _pendingSend: PendingSendCommand | null = null;
-  private _sendProgress: ExecutionProgress | null = null;
+  private attempt: SendAttempt | null = null;
+  private owner: {
+    id: number;
+    workspace: ReturnType<WorkspaceStore["getController"]>;
+    connectionId: string | null;
+    width: number | undefined;
+    height: number | undefined;
+    profile: ReturnType<WorkspaceStore["getController"]>["session"]["profile"];
+  } | null = null;
+  private nextAttempt = 0;
+  private disposed = false;
+  private readonly wakeOwners = new Set<number>();
+  private current(owner = this.owner): boolean {
+    const workspace = this.ports.workspaceStore().getController();
+    return (
+      !this.disposed &&
+      owner !== null &&
+      this.owner === owner &&
+      owner.workspace === workspace &&
+      owner.connectionId === workspace.transport.connectionId &&
+      owner.profile === workspace.session.profile &&
+      owner.width === workspace.session.profile?.width &&
+      owner.height === workspace.session.profile?.height
+    );
+  }
+  getSendAttempt(): SendAttempt | null {
+    return this.current() ? this.attempt : null;
+  }
   private readonly _wakeLock: PresentationEnvironment["wakeLock"];
   constructor(
     private readonly ports: Ports,
@@ -61,13 +95,15 @@ export class ContentSendStore {
     this._wakeLock = environment.wakeLock;
   }
   getSendProgress() {
-    return this._sendProgress;
+    return this.getSendAttempt()?.phase === "sending"
+      ? (this.attempt?.progress ?? null)
+      : null;
   }
   getWakeLock() {
     return this._wakeLock;
   }
   getPendingSend() {
-    return this._pendingSend;
+    return this.current() ? this._pendingSend : null;
   }
   setPendingSend(value: ContentSendStore["_pendingSend"]): void {
     this._pendingSend = value;
@@ -199,15 +235,22 @@ export class ContentSendStore {
   }
 
   cancelPendingSend(): void {
+    if (this.attempt?.phase === "sending") return;
     this._pendingSend = null;
+    if (this.current() && this.attempt?.phase === "confirming")
+      this.attempt = null;
     this.ports.navigationStore()._closeOverlay("send");
     this.ports.snapshotStore()._emit();
   }
   async confirmPendingSend(): Promise<void> {
-    const pending = this._pendingSend;
-    if (!pending) return;
+    const pending = this.getPendingSend();
+    if (
+      !pending ||
+      this.attempt?.phase !== "confirming" ||
+      this.ports.noticeStore().getBusy()
+    )
+      return;
     await this._transmitContent(pending, true);
-    this.ports.snapshotStore()._emit();
   }
   async _requestContentSend(
     label: string,
@@ -218,16 +261,40 @@ export class ContentSendStore {
       extras?: Partial<ContentCompilationRecord>;
     },
   ): Promise<void> {
+    if (this.disposed || this.ports.noticeStore().getBusy()) return;
+    const workspace = this.ports.workspaceStore().getController();
+    if (
+      workspace.transport.state === "quarantined" &&
+      this.getSendAttempt()?.failure?.reconnectRequired
+    )
+      return;
+    const owner = {
+      id: ++this.nextAttempt,
+      workspace,
+      connectionId: workspace.transport.connectionId,
+      profile: workspace.session.profile,
+      width: workspace.session.profile?.width,
+      height: workspace.session.profile?.height,
+    };
+    this.owner = owner;
+    this._pendingSend = null;
+    this.attempt = {
+      id: owner.id,
+      path,
+      target: workspace.session.profile?.name ?? "Current display",
+      connectionId: owner.connectionId,
+      phase: "preparing",
+      progress: null,
+      evidence: null,
+      failure: null,
+    };
     try {
-      const gate = this.ports
-        .workspaceStore()
-        .getController()
+      const gate = workspace
         .contentGates()
         .find((candidate) => candidate.path === path);
       if (!gate?.allowed)
         throw new Error(gate?.reason ?? "This content path is unavailable.");
       const built = build();
-      this.ports.noticeStore().setError(null, `request-${path}`);
       const command: PendingSendCommand = {
         plan: built.plan,
         extras: built.extras,
@@ -243,57 +310,159 @@ export class ContentSendStore {
       };
       if (built.plan.validation === "verified")
         await this._transmitContent(command, false);
-      else {
+      else if (this.current(owner)) {
         this._pendingSend = command;
+        this.attempt = { ...this.attempt!, phase: "confirming" };
         this.ports.navigationStore()._openOverlay("send");
       }
     } catch (error) {
-      this.ports
-        .noticeStore()
-        .setError(
-          error instanceof Error ? error.message : String(error),
-          `request-${path}`,
-        );
+      if (this.current(owner)) this.fail(error, false);
     }
     this.ports.snapshotStore()._emit();
+  }
+  private fail(error: unknown, executionStarted: boolean): void {
+    this.attempt = {
+      ...this.attempt!,
+      phase: "failed",
+      evidence: null,
+      failure: {
+        stage: executionStarted ? "upload" : "preflight",
+        message: error instanceof Error ? error.message : String(error),
+        reconnectRequired:
+          this.owner!.workspace.transport.state === "quarantined",
+      },
+    };
   }
   async _transmitContent(
     pending: PendingSendCommand,
     confirmedConsequence: boolean,
   ): Promise<void> {
-    await this.ports.noticeStore()._run("Updating display…", async () => {
-      this._sendProgress = {
-        completedPackets: 0,
-        totalPackets: pending.plan.packets.length,
-        elapsedMs: 0,
-        estimatedRemainingMs: null,
-      };
+    const owner = this.owner;
+    if (!owner || !this.current(owner)) return;
+    await this.ports.noticeStore()._run("Sending upload…", async () => {
+      let executionStarted = false;
+      this.attempt = { ...this.attempt!, phase: "sending", progress: null };
+      this._pendingSend = null;
+      this.ports.navigationStore()._closeOverlay("send");
       this.ports.snapshotStore()._emit();
-      const locked = await this._wakeLock.acquire();
-      if (!locked && !this._wakeLock.supported)
-        this.ports
-          .noticeStore()
-          .setInfo("Keep this screen on until sending finishes.");
+      this.wakeOwners.add(owner.id);
       try {
-        await this.ports
-          .workspaceStore()
-          .getController()
-          .sendPersistentContent(pending.plan, {
+        await this._wakeLock.acquire();
+        if (!this.current(owner)) return;
+        const result = await owner.workspace.sendPersistentContent(
+          pending.plan,
+          {
             confirmedConsequence,
             extras: pending.extras,
+            onExecutionStarted: () => {
+              executionStarted = true;
+            },
             onProgress: (progress) => {
-              this._sendProgress = progress;
+              if (!this.current(owner)) return;
+              this.attempt = { ...this.attempt!, progress };
               this.ports.snapshotStore()._emit();
             },
-          });
-        this._pendingSend = null;
-        this.ports.navigationStore()._closeOverlay("send");
-        this.ports.noticeStore().setInfo("Display updated.");
+          },
+        );
+        if (this.current(owner))
+          this.attempt = {
+            ...this.attempt!,
+            phase: "completed",
+            evidence: {
+              hostAccepted: result.hostAccepted,
+              protocolAcknowledged: result.protocolAcknowledged,
+              deviceStateVerified: result.deviceStateVerified,
+              responseTimedOut: result.responseTimedOut,
+              completedAt: result.completedAt,
+              finalWriteAcceptedAt: result.finalWriteAcceptedAt,
+            },
+          };
+      } catch (error) {
+        if (this.current(owner)) this.fail(error, executionStarted);
       } finally {
-        this._sendProgress = null;
-        await this._wakeLock.release();
+        this.wakeOwners.delete(owner.id);
+        if (this.wakeOwners.size === 0) await this._wakeLock.release();
+        this.ports.snapshotStore()._emit();
       }
     });
+  }
+  async reconnectAndReviewDraft(): Promise<void> {
+    const owner = this.owner;
+    if (
+      !owner ||
+      !this.current(owner) ||
+      !this.attempt?.failure?.reconnectRequired ||
+      this.ports.noticeStore().getBusy()
+    )
+      return;
+    this._pendingSend = null;
+    this.attempt = { ...this.attempt, phase: "recovering" };
+    this.ports.snapshotStore()._emit();
+    const finishDraftRecovery = this.ports
+      .contentEditorStore()
+      .retainDraftForReconnect();
+    try {
+      await this.ports.connectionStore().disconnect();
+      if (
+        this.disposed ||
+        this.owner !== owner ||
+        this.ports.workspaceStore().getController() !== owner.workspace
+      )
+        return;
+      if (owner.workspace.transport.state !== "idle") return;
+      await this.ports.connectionStore().connect();
+      if (
+        this.disposed ||
+        this.owner !== owner ||
+        this.ports.workspaceStore().getController() !== owner.workspace
+      )
+        return;
+      if (
+        this.ports.workspaceStore().getController().transport.state ===
+          "connected" &&
+        owner.workspace.transport.connectionId !== owner.connectionId
+      ) {
+        this.owner = {
+          ...owner,
+          connectionId: owner.workspace.transport.connectionId,
+          profile: owner.workspace.session.profile,
+          width: owner.workspace.session.profile?.width,
+          height: owner.workspace.session.profile?.height,
+        };
+        this.attempt = {
+          ...this.attempt!,
+          connectionId: this.owner.connectionId,
+          target: owner.workspace.session.profile?.name ?? "Current display",
+          phase: "review",
+          progress: null,
+          evidence: null,
+          failure: null,
+        };
+        this.ports.noticeStore().setInfo(null);
+      } else {
+        this.owner = {
+          ...owner,
+          connectionId: owner.workspace.transport.connectionId,
+          profile: owner.workspace.session.profile,
+          width: owner.workspace.session.profile?.width,
+          height: owner.workspace.session.profile?.height,
+        };
+        this.attempt = {
+          ...this.attempt!,
+          connectionId: this.owner.connectionId,
+          phase: "failed",
+          failure: {
+            stage: "upload",
+            message:
+              "Reconnect did not complete. The previous upload outcome is still unknown. Review the connection error and reconnect before sending.",
+            reconnectRequired: true,
+          },
+        };
+      }
+    } finally {
+      finishDraftRecovery();
+      this.ports.snapshotStore()._emit();
+    }
   }
   _requireProfile(): { width: number; height: number } {
     const profile = this.ports.workspaceStore().getController().session.profile;

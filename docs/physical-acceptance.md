@@ -18,8 +18,8 @@ Record the browser/OS, deployment commit, display identifier label, and result f
 
 - [ ] Device-info notification decodes and retains exact raw bytes and RX endpoint.
 - [ ] Brightness round-trip changes, reads back, restores, and verifies the baseline.
-- [ ] Text updates with one **Display it** action and no confirmation dialog.
-- [ ] Image updates with one **Display it** action and no confirmation dialog.
+- [ ] Text updates with one **Send to display** action and no confirmation dialog.
+- [ ] Image updates with one **Send to display** action and no confirmation dialog.
 - [ ] Demo animation plays with the documented frame timing.
 - [ ] Screen lock is prevented during a transfer where Wake Lock is available.
 

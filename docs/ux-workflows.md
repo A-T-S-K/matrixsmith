@@ -25,11 +25,22 @@ change the Transactions URL, and returning to the view starts at Transactions.
 1. Connect the reviewed profile.
 2. Choose Text, Image, Demo animation, or GIF (converted locally to raster animation).
 3. Edit and preview content locally.
-4. Press **Display it**.
-5. The button area shows transfer progress and finishes with **Display updated.**
-   This is the current notification wording, not proof of physical rendering:
-   write-without-response completion establishes host acceptance only. Transaction
-   evidence separates host acceptance, protocol acknowledgement, and device state.
+4. Press **Send to display** beside the stored-content replacement consequence.
+5. Progress and the result appear beside that action. Host-only completion says
+   **Upload sent.** and **Check the display. Its appearance was not confirmed.**
+   Optional **Send details** separates host acceptance, protocol acknowledgement,
+   device readback, completion time, and unresolved physical/retention evidence.
+   A response timeout remains in the headline.
+
+A rejected gate, geometry mismatch, or planning error says **Send could not start**.
+Once execution may have begun, failure says **Upload did not finish. Check the
+display before sending again.** Accepted-packet progress is shown only when
+reported by execution; missing callbacks do not prove zero writes. Valid drafts
+and previews remain available. Quarantined writes require **Reconnect and review
+draft** through the existing disconnect/connect path. Recovery never sends:
+review and press Send explicitly to prepare a fresh target-bound plan, with a
+fresh confirmation for experimental content. Results and callbacks are scoped
+to their workspace, connection, target, and attempt; obsolete results are hidden.
 
 Verified routine content, including imported GIF through ShowAnimation on the
 reviewed profile, opens no confirmation. The target-bound digest and execution

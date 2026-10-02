@@ -39,6 +39,7 @@
             - option "Left"
             - option "Center" [selected]
             - option "Right"
-        - button "Display it" [disabled]
+        - paragraph: Replaces the display’s stored content. Previous content cannot be restored automatically.
+        - button "Send to display" [disabled]
         - paragraph: Enter text before sending.
     - group: Brightness and display status

@@ -30,7 +30,9 @@ export function App({
           <DeviceWorkspace snapshot={snapshot} store={store} />
         )}
       </div>
-      {(snapshot.error || snapshot.info || snapshot.busy) && (
+      {(snapshot.error ||
+        snapshot.info ||
+        (snapshot.busy && snapshot.sendAttempt?.phase !== "sending")) && (
         <NoticeRegion
           tone={snapshot.error ? "error" : "status"}
           onClose={!snapshot.busy ? () => store.clearMessage() : undefined}

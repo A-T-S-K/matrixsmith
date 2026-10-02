@@ -17,7 +17,7 @@ test("text budget rejection and valid recovery", async ({ page }) => {
     .getByRole("combobox", { name: "Display", exact: true })
     .selectOption("scroll");
   await expect(
-    page.getByRole("button", { name: "Display it", exact: true }),
+    page.getByRole("button", { name: "Send to display", exact: true }),
   ).toBeDisabled();
   await expect(
     page.getByText(/Shorten the message or choose Still/),
@@ -27,6 +27,8 @@ test("text budget rejection and valid recovery", async ({ page }) => {
   await page
     .getByRole("combobox", { name: "Display", exact: true })
     .selectOption("still");
-  await page.getByRole("button", { name: "Display it", exact: true }).click();
-  await expect(page.getByText("Display updated.")).toBeVisible();
+  await page
+    .getByRole("button", { name: "Send to display", exact: true })
+    .click();
+  await expect(page.getByText("Upload sent.")).toBeVisible();
 });

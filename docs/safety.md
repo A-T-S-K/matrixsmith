@@ -29,7 +29,7 @@ Read-only protocol probes are the narrow exception to ordinary ambiguity blockin
 - CoolLEDUX `SetBrightness` (`0x04`, raw 0–255): verified transient, live on deliberate Apply.
 - CoolLEDUX power: dry-run-only on this profile.
 - CoolLEDX brightness for this iLedHat: rejected hardware hypothesis and not live.
-- CoolLEDUX static frame, rendered text, image, and animation on the reviewed iLedHat profile: verified routine persistent operations, direct after the user presses **Display it**. Imported GIF is decoded locally and sent through this ShowAnimation path. Native ShowGif remains experimental and uses consequence confirmation where executable.
+- CoolLEDUX static frame, rendered text, image, and animation on the reviewed iLedHat profile: verified routine persistent operations, direct after the user presses **Send to display**. Imported GIF is decoded locally and sent through this ShowAnimation path. Native ShowGif remains experimental and uses consequence confirmation where executable.
 - Mirror, rotation, light modes, timers, reset, password, OTA, and firmware: not live.
 
 ## Persistent content writes
@@ -40,7 +40,7 @@ Execution results keep three claims separate: browser/host acceptance, a matchin
 
 Raster scrolling is preflighted before BLE. MatrixSmith may increase pixel step and proportional frame delay, but blocks a send that still exceeds the conservative 48-frame / 16 KiB-decoded-per-tile source-derived budget. This is a software guard, not a claimed physical iLedHat limit. Persistent sends never retry automatically; a partial failure makes panel state unknown and leaves retry as an explicit action.
 
-For write-without-response content, “host accepted” means only that the browser/Bluetooth stack accepted every write. The current presentation notification says “Display updated.”; it must not be read as evidence of physical rendering, firmware acceptance, or retention. Transactions record host, protocol, and device-state results separately. Screen Wake Lock is best effort and never changes transfer success.
+For write-without-response content, “host accepted” means only that the browser/Bluetooth stack accepted every write. Create reports “Upload sent.” with “Check the display. Its appearance was not confirmed.” Protocol response timeouts remain visible; optional Send details distinguish acknowledgement from device readback and never claim physical rendering, firmware acceptance, or retention. Preflight rejections do not claim an upload; execution failures preserve uncertainty and accepted-packet progress where known. Quarantined writes require explicit disconnect/reconnect and draft review before a fresh plan can be sent; recovery neither resends nor reuses confirmation. Transactions record host, protocol, and device-state results separately. Screen Wake Lock is best effort and never changes transfer success.
 
 The experimental unlock is memory-only and clears on disconnect or reload. It cannot bypass driver intent, validation, risk, source, confidence, or endpoint checks.
 
@@ -61,3 +61,5 @@ Current-session evidence is bound to one physical device session: only a matchin
 A running guided-test transfer cannot be dismissed as if canceled, and after transfer the only exit is "Stop observation and save as incomplete": an `abandoned` result records the exact operation and transaction ids with no claim conclusions, because the device WAS changed.
 
 Guided hardware tests transmit only fixed driver-defined diagnostic programs (`ShowDiagnostic` with declared ids and enumerated parameter values — e.g. stayTime ∈ {3, 0}); there is no general raw writer and no arbitrary raw-word entry. Persistent guided plans keep `maxAttempts: 1` with no retry conditions; a missing receipt notification never triggers automatic persistent retransmission. Local investigation history persists structured evidence only — never experimental unlocks, persistent-send confirmation tokens, safety bypasses, or content binaries.
+
+Driver diagnostic availability is an authored upper bound: live context never enables a tool declared unavailable. Imported context disables every diagnostic; direct execution checks this projection before any operation.

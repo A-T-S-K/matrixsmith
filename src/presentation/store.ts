@@ -54,6 +54,7 @@ export class PresentationStore {
     );
     this.contentSendStore = new ContentSendStore(
       {
+        connectionStore: () => this.connectionStore,
         contentEditorStore: () => this.contentEditorStore,
         workspaceStore: () => this.workspaceStore,
         navigationStore: () => this.navigationStore,
@@ -113,7 +114,7 @@ export class PresentationStore {
       {
         invalidateContent: () => {
           this.contentEditorStore.dispose();
-          this.contentSendStore.clearContentCaches();
+          this.contentSendStore.invalidateContext();
         },
         noticeStore: () => this.noticeStore,
         snapshotStore: () => this.snapshotStore,
@@ -229,6 +230,8 @@ export class PresentationStore {
     this.loadGif = this.contentEditorStore.loadGif.bind(
       this.contentEditorStore,
     );
+    this.reconnectAndReviewDraft =
+      this.contentSendStore.reconnectAndReviewDraft.bind(this.contentSendStore);
     this.requestSendText = this.contentSendStore.requestSendText.bind(
       this.contentSendStore,
     );
@@ -356,6 +359,7 @@ export class PresentationStore {
   readonly setTransactionFilter: ReportStore["setTransactionFilter"];
   readonly setTransactionSearch: ReportStore["setTransactionSearch"];
   readonly connect: ConnectionStore["connect"];
+  readonly reconnectAndReviewDraft: ContentSendStore["reconnectAndReviewDraft"];
   readonly disconnect: ConnectionStore["disconnect"];
   readonly identify: ConnectionStore["identify"];
   readonly runDiagnostic: ConnectionStore["runDiagnostic"];

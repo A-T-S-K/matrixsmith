@@ -167,7 +167,9 @@ it("blocks retained geometry mismatch at send without planning", async () => {
   const plan = vi.spyOn(runtime, "plan");
   store.requestSendGif();
   expect(plan).not.toHaveBeenCalled();
-  expect(store.getSnapshot().error).toMatch(/another display size/);
+  expect(store.getSnapshot().sendAttempt?.failure?.message).toMatch(
+    /another display size/,
+  );
   await store.dispose();
 });
 
@@ -230,5 +232,29 @@ it("workspace identity invalidates pending owner work", async () => {
   expect(s.decoders[0]!.close).toHaveBeenCalledOnce();
   editor.dispose();
   await current.dispose();
+  await s.store.dispose();
+});
+
+it("retains GIF sequence identity through upload failure and reconnect without sending", async () => {
+  const s = await setup();
+  await s.store.loadGif(file(), "kept.gif");
+  const selected = s.store.getSnapshot().content.gif!;
+  const send = vi
+    .spyOn(s.runtime, "sendPersistentContent")
+    .mockImplementation(async (_plan, options) => {
+      options?.onExecutionStarted?.();
+      s.runtime.transport.quarantine("scripted indeterminate upload");
+      throw new Error("Unknown write outcome");
+    });
+  s.store.requestSendGif();
+  await vi.waitFor(() =>
+    expect(s.store.getSnapshot().sendAttempt?.failure?.stage).toBe("upload"),
+  );
+  expect(s.store.getSnapshot().content.gif).toBe(selected);
+  await s.store.reconnectAndReviewDraft();
+  expect(s.store.getSnapshot().sendAttempt?.phase).toBe("review");
+  expect(s.store.getSnapshot().content.gif?.sequence).toBe(selected.sequence);
+  expect(send).toHaveBeenCalledOnce();
+  expect(s.decoders).toHaveLength(1);
   await s.store.dispose();
 });

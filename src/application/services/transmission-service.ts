@@ -80,6 +80,7 @@ export class TransmissionService {
       readonly confirmedConsequence?: boolean;
       readonly extras?: Partial<ContentCompilationRecord>;
       readonly onProgress?: (progress: ExecutionProgress) => void;
+      readonly onExecutionStarted?: () => void;
     } = {},
   ): Promise<ExecutionResult> {
     if (plan.risk !== "persistent" && plan.persistence !== "persistent")
@@ -109,6 +110,7 @@ export class TransmissionService {
         "operation",
         null,
         options.onProgress,
+        options.onExecutionStarted,
       );
       this.ports
         .protocolEvidence()
@@ -199,6 +201,7 @@ export class TransmissionService {
     source: TransactionSource,
     diagnosticRunIdValue: string | null,
     onProgress?: (progress: ExecutionProgress) => void,
+    onExecutionStarted?: () => void,
   ): Promise<ExecutionResult> {
     const session = this.ports.connection().getSession();
     const connectionId = this.ports.connection().getTransport().connectionId;
@@ -227,6 +230,7 @@ export class TransmissionService {
     const staged = this.ports.investigation().getStagedPanelProgram();
     this.ports.investigation().setStagedPanelProgram(null);
     try {
+      onExecutionStarted?.();
       const result = await this._executor.execute(
         decision.authorized,
         driver,

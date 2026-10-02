@@ -425,10 +425,14 @@ it("blocks conflicting Home operations while keeping disconnect available", asyn
   s.store.updateContentSettings({ textColor: "#123456" });
   fail(new Error("current write failed"));
   await vi.waitFor(() =>
-    expect(s.store.getSnapshot().error).toBe("current write failed"),
+    expect(s.store.getSnapshot().sendAttempt?.failure?.message).toBe(
+      "current write failed",
+    ),
   );
   s.store.updateContentSettings({ textColor: "#abcdef" });
-  expect(s.store.getSnapshot().error).toBe("current write failed");
+  expect(s.store.getSnapshot().sendAttempt?.failure?.message).toBe(
+    "current write failed",
+  );
   await s.store.disconnect();
   expect(disconnect).toHaveBeenCalledOnce();
   await s.store.dispose();

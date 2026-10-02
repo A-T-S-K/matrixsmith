@@ -25,8 +25,8 @@ test("known display updates routine text directly and remains visible from Home"
   await page.getByRole("button", { name: "Connect a display" }).click();
   await expect(page.getByRole("heading", { name: "Create" })).toBeVisible();
   await page.getByRole("textbox", { name: "Text" }).fill("HI");
-  await page.getByRole("button", { name: "Display it" }).click();
-  await expect(page.getByText("Display updated.")).toBeVisible({
+  await page.getByRole("button", { name: "Send to display" }).click();
+  await expect(page.getByText("Upload sent.")).toBeVisible({
     timeout: 10_000,
   });
   await page.getByRole("button", { name: /back to MatrixSmith home/i }).click();
@@ -167,7 +167,7 @@ for (const width of [320, 390, 768, 1024, 1280]) {
     await connectKnown(page);
     await expect(page.getByRole("heading", { name: "Create" })).toBeVisible();
     await expect(
-      page.getByRole("button", { name: "Display it" }),
+      page.getByRole("button", { name: "Send to display" }),
     ).toBeVisible();
     const tabs = await page.getByRole("tab").evaluateAll((elements) =>
       elements.map((element) => ({
@@ -254,7 +254,7 @@ for (const width of [390, 1024, 1440, 1920]) {
           expect(row.y).toBeGreaterThanOrEqual(rows[index - 1]!.bottom);
       }
       const send = await page
-        .getByRole("button", { name: "Display it", exact: true })
+        .getByRole("button", { name: "Send to display", exact: true })
         .boundingBox();
       expect(send!.height).toBeLessThan(80);
       expect(

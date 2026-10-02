@@ -170,13 +170,17 @@ export function ImageEditor({
           Choose a local image to see how it will look on the display.
         </p>
       )}
+      <p class="fineprint">
+        Replaces the display’s stored content. Previous content cannot be
+        restored automatically.
+      </p>
       <UnavailableAction
         class="primary send"
         available={canSend && Boolean(content.image)}
         reason={!content.image ? "Choose an image before sending." : sendTitle}
         onClick={() => store.requestSendImage()}
       >
-        Display it
+        Send to display
       </UnavailableAction>
     </>
   );

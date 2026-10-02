@@ -50,7 +50,7 @@ export function ExperimentalSendDialog({
             disabled={snapshot.busy !== null}
             onClick={() => void store.confirmPendingSend()}
           >
-            {pending.label}
+            Send to display
           </button>
           <button
             class="secondary"

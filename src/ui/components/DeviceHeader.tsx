@@ -114,6 +114,8 @@ function protocolProblem(
 ): { label: string; action?: { label: string; run: () => void } } | null {
   const device = snapshot.device;
   if (!device) return null;
+  if (snapshot.connection === "quarantined" && snapshot.source === "live")
+    return { label: "Reconnect required before sending" };
   if (snapshot.connection !== "connected" && snapshot.source === "live") {
     return { label: "Display disconnected" };
   }

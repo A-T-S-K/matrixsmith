@@ -35,6 +35,7 @@ export class ContentEditorStore {
     this.textCache.clear();
   }
   dispose(): void {
+    this.reconnectDraft = null;
     this.clearTextCache();
     this._imageVersion++;
     this._gifVersion++;
@@ -49,7 +50,9 @@ export class ContentEditorStore {
   private _settings: ContentSettings;
   private imageOwner: {
     workspace: ReturnType<ReturnType<Ports["workspaceStore"]>["getController"]>;
-    profile: unknown;
+    profile: ReturnType<
+      ReturnType<Ports["workspaceStore"]>["getController"]
+    >["session"]["profile"];
     width: number;
     height: number;
   } | null = null;
@@ -71,10 +74,48 @@ export class ContentEditorStore {
   getSettings() {
     return this._settings;
   }
+  private reconnectDraft: { finished: boolean } | null = null;
+  /** Hold the existing preview through this explicit disconnect/connect only. */
+  retainDraftForReconnect(): () => void {
+    const token = { finished: false };
+    const owner = this.imageOwner;
+    this.reconnectDraft = token;
+    return () => {
+      if (this.reconnectDraft !== token || this.imageOwner !== owner) return;
+      token.finished = true;
+      const workspace = this.ports.workspaceStore().getController();
+      const profile = workspace.session.profile;
+      if (!profile && owner?.workspace === workspace) return;
+      this.reconnectDraft = null;
+      if (
+        owner &&
+        owner.workspace === workspace &&
+        profile &&
+        owner.width === profile.width &&
+        owner.height === profile.height &&
+        owner.profile?.id === profile.id
+      ) {
+        this.imageOwner = { ...owner, profile };
+      }
+    };
+  }
   getImageState() {
     const current = this.ports.workspaceStore().getController();
+    if (this.reconnectDraft?.finished && current.session.profile) {
+      const owner = this.imageOwner;
+      const profile = current.session.profile;
+      if (
+        owner?.workspace === current &&
+        owner.width === profile.width &&
+        owner.height === profile.height &&
+        owner.profile?.id === profile.id
+      )
+        this.imageOwner = { ...owner, profile };
+      this.reconnectDraft = null;
+    }
     if (
       this.imageOwner &&
+      !(this.reconnectDraft && this.imageOwner.workspace === current) &&
       (this.imageOwner.workspace !== current ||
         this.imageOwner.profile !== current.session.profile ||
         this.imageOwner.width !== current.session.profile?.width ||
@@ -179,6 +220,7 @@ export class ContentEditorStore {
         this._imageFile = file;
         this._imageSource = source;
         this._imageName = name;
+        this.reconnectDraft = null;
         this.imageOwner = {
           workspace,
           profile,
@@ -345,6 +387,7 @@ export class ContentEditorStore {
               )
             ).frame;
         if (!isCurrent()) return;
+        this.reconnectDraft = null;
         this.imageOwner = {
           workspace,
           profile,

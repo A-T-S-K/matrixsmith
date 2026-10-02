@@ -11,6 +11,7 @@ import { FramePreview } from "../../components/FramePreview";
 import { AnimatedFramePreview } from "../../components/AnimatedFramePreview";
 import { FileButton } from "../../components/FileButton";
 import { UnavailableAction } from "../../components/UnavailableAction";
+import { SendResult } from "./SendResult";
 import { ImageEditor } from "./ImageEditor";
 
 export function ContentEditor({
@@ -45,12 +46,6 @@ export function ContentEditor({
     <div class="content-editor">
       {!gate.allowed && (
         <LockedNotice snapshot={snapshot} store={store} reason={gate.reason} />
-      )}
-      {snapshot.sendProgress && (
-        <div class="notice" role="status" aria-live="polite">
-          Updating display: {snapshot.sendProgress.completedPackets} of{" "}
-          {snapshot.sendProgress.totalPackets} packets
-        </div>
       )}
 
       {selected === "text" && (
@@ -172,6 +167,10 @@ export function ContentEditor({
               </select>
             </label>
           </div>
+          <p class="fineprint">
+            Replaces the display’s stored content. Previous content cannot be
+            restored automatically.
+          </p>
           <UnavailableAction
             class="primary send"
             available={canSend && Boolean(settings.text.trim())}
@@ -180,7 +179,7 @@ export function ContentEditor({
             }
             onClick={() => store.requestSendText()}
           >
-            Display it
+            Send to display
           </UnavailableAction>
         </>
       )}
@@ -210,13 +209,17 @@ export function ContentEditor({
               ),
             )}
           </div>
+          <p class="fineprint">
+            Replaces the display’s stored content. Previous content cannot be
+            restored automatically.
+          </p>
           <UnavailableAction
             class="primary send"
             available={canSend}
             reason={sendReason}
             onClick={() => store.requestSendAnimation()}
           >
-            Display demo
+            Send to display
           </UnavailableAction>
         </>
       )}
@@ -254,16 +257,21 @@ export function ContentEditor({
               display.
             </p>
           )}
+          <p class="fineprint">
+            Replaces the display’s stored content. Previous content cannot be
+            restored automatically.
+          </p>
           <UnavailableAction
             class="primary send"
             available={canSend && Boolean(content.gif)}
             reason={!content.gif ? "Choose a GIF before sending." : sendReason}
             onClick={() => store.requestSendGif()}
           >
-            Display GIF
+            Send to display
           </UnavailableAction>
         </>
       )}
+      <SendResult snapshot={snapshot} store={store} />
     </div>
   );
 }

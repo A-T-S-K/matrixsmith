@@ -8,6 +8,9 @@ Actual browser/OS and release-build hardware support must be filled from physica
 
 ## Changes
 
+- Driver-declared diagnostic restrictions survive live projection and are enforced before execution.
+- Create uses **Send to display**, host-only **Upload sent** completion, separate protocol/readback details, visible response timeouts, and conservative upload failures. Quarantined writes offer explicit reconnect and draft review; no automatic resend or restoration.
+
 - Composed application/presentation services replace shared-state inheritance and the presentation `any` escape hatch.
 - Explicit workspace disposal, browser dependency injection, and retained-live/offline separation.
 - Earlier image/file budget enforcement, visible import errors, truthful persistence failures, and stale-preview protection.

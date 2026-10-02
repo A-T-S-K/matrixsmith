@@ -79,16 +79,17 @@ export class ConnectionStore {
         mode === "registered" ? "Connecting display…" : "Opening BLE explorer…",
         async () => {
           this.ports.investigationStore()._persistInvestigation();
-          await this.ports
-            .workspaceStore()
-            .getController()
-            .connect(mode, serviceHints);
+          await workspace.connect(mode, serviceHints);
+          if (workspace !== this.ports.workspaceStore().getController()) return;
+          const connectionId = workspace.transport.connectionId;
           this.ports.investigationStore()._persistDetachedInvestigation();
-          await this.ports
-            .workspaceStore()
-            .getController()
-            .enableDriverNotifications()
-            .catch(() => undefined);
+          await workspace.enableDriverNotifications().catch(() => undefined);
+          if (
+            workspace !== this.ports.workspaceStore().getController() ||
+            connectionId !== workspace.transport.connectionId ||
+            workspace.transport.state !== "connected"
+          )
+            return;
           this.ports.navigationStore().setPage("workspace");
           // Known/usable displays open the Device Workspace; unknown or
           // incomplete hardware naturally enters the guided investigation.
@@ -119,8 +120,14 @@ export class ConnectionStore {
       );
   }
   async disconnect(): Promise<void> {
+    const workspace = this.ports.workspaceStore().getController();
     await this.ports.noticeStore()._run("Disconnecting…", async () => {
-      await this.ports.workspaceStore().getController().disconnect();
+      await workspace.disconnect();
+      if (
+        workspace !== this.ports.workspaceStore().getController() ||
+        workspace.transport.connectionId !== null
+      )
+        return;
       this.ports.navigationStore().setPage("home");
       this.ports.navigationStore().setViewState("control");
       this.ports.navigationStore().getRouter()?.navigate("home");

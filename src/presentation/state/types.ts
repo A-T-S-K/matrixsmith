@@ -72,6 +72,7 @@ export interface AppSnapshot {
   readonly liveWorkspaceAvailable: boolean;
   readonly busy: string | null;
   readonly sendProgress: ExecutionProgress | null;
+  readonly sendAttempt: SendAttempt | null;
   readonly wakeLockSupported: boolean;
   readonly error: string | null;
   readonly info: string | null;
@@ -200,9 +201,81 @@ export interface PendingSend {
 }
 /** Exact consequence shown before every persistent content transmission. */
 export const PERSISTENT_CONTENT_CONSEQUENCE =
-  "This replaces the currently stored display program with the new content. " +
-  "The device's hardware reset path is known to restore its factory/default content, " +
-  "but automatic content restoration has not been verified.";
+  "Replaces the display’s stored content. Previous content cannot be restored automatically.";
+
+/** Presentation evidence only; never authorization or a physical observation. */
+export interface SendAttempt {
+  readonly id: number;
+  readonly path: ContentPathId;
+  readonly target: string;
+  readonly connectionId: string | null;
+  readonly phase:
+    | "preparing"
+    | "confirming"
+    | "sending"
+    | "completed"
+    | "failed"
+    | "recovering"
+    | "review";
+  readonly progress: ExecutionProgress | null;
+  readonly evidence: Pick<
+    import("../../app/executor").ExecutionResult,
+    | "hostAccepted"
+    | "protocolAcknowledged"
+    | "deviceStateVerified"
+    | "responseTimedOut"
+    | "completedAt"
+    | "finalWriteAcceptedAt"
+  > | null;
+  readonly failure: {
+    readonly stage: "preflight" | "upload";
+    readonly message: string;
+    readonly reconnectRequired: boolean;
+  } | null;
+}
+
+/** Short outcome copy derived only from attempt evidence. */
+export function sendMessage(
+  attempt: SendAttempt,
+): { headline: string; guidance: string } | null {
+  if (attempt.phase === "recovering")
+    return {
+      headline: "Reconnecting…",
+      guidance: "Your draft is kept for review.",
+    };
+  if (attempt.phase === "review")
+    return {
+      headline: "Review your draft.",
+      guidance:
+        "Reconnected. Nothing was resent. Review the preview, then send when ready.",
+    };
+  if (attempt.failure)
+    return attempt.failure.stage === "preflight"
+      ? {
+          headline: "Send could not start.",
+          guidance:
+            "Review the draft and the send requirements before trying again.",
+        }
+      : {
+          headline: "Upload did not finish.",
+          guidance: "Check the display before sending again.",
+        };
+  if (attempt.phase === "sending")
+    return {
+      headline: "Sending upload…",
+      guidance: "Keep this screen on until sending finishes.",
+    };
+  const evidence = attempt.evidence;
+  if (!evidence) return null;
+  return {
+    headline: !evidence.hostAccepted
+      ? "Upload completion was not confirmed."
+      : evidence.responseTimedOut
+        ? "Upload sent; response timed out."
+        : "Upload sent.",
+    guidance: "Check the display. Its appearance was not confirmed.",
+  };
+}
 
 export interface ImportSummary {
   readonly deviceName: string | null;

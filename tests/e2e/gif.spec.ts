@@ -151,8 +151,10 @@ test("local GIF codec compositing, timing, preview and synchronized raster send"
     if (index === 2) expect(pixels[1]!.b).toBeGreaterThan(230);
     if (index === 3) expect(pixels[1]!.r).toBeLessThan(25);
   }
-  await page.getByRole("button", { name: "Display GIF", exact: true }).click();
-  await expect(page.getByText("Display updated.")).toBeVisible();
+  await page
+    .getByRole("button", { name: "Send to display", exact: true })
+    .click();
+  await expect(page.getByText("Upload sent.")).toBeVisible();
   await expect(page.getByRole("dialog")).toHaveCount(0);
   const records = await page.evaluate(() => {
     const store = (
