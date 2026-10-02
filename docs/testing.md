@@ -24,6 +24,12 @@ Release-specific tests exercise pre-decode limits, malformed files, unavailable 
 
 ## Hardware boundary
 
+The injected-family and second-profile contract tests use authored fixtures in
+`tests/helpers/synthetic-driver.ts` and `tests/helpers/second-coolledux-profile.ts`.
+They exercise the real registry/application interfaces without adding production
+drivers or profiles. The scripted fake transport can exercise live command paths,
+but its replies and scope-spoofing import fixtures confer no physical verification.
+
 Automated tests use fixtures, fake transports, or the development simulator. They do not establish that a display rendered content correctly. Run `docs/physical-acceptance.md` against the exact candidate on the stable HTTPS origin before publishing support claims. Record build ID, commit, browser/OS, device label, and observed outcome.
 
 ## Reviewing a failure

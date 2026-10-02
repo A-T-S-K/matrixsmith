@@ -1,16 +1,29 @@
 # Adding a MatrixSmith driver
 
-This workflow is designed so a contributor can add a second device family without reading the entire UI.
+Drivers contribute discovery, matching, codecs, plans, and evidence through typed
+interfaces. Adding a profile and adding a protocol family have different current
+limits; implementing a codec alone does not establish product support.
 
 ## 1. Collect portable evidence
 
-From Home choose **Explore unknown BLE device**; Web Bluetooth permission is established in the browser chooser. The controller accepts suspected service UUID hints for the chooser; a UI field for them is planned. Connect, inspect accessible services/characteristics/properties, perform only explicit safe reads, subscribe explicitly to notifications, label the physical action, add manual observations, and export a diagnostic bundle. Unknown-device mode intentionally has no writer.
+From Home use **Explore unknown BLE** → **Choose device**; Web Bluetooth permission
+is established in the browser chooser. Enter suspected service UUIDs in the
+existing **Optional service UUIDs** field before choosing. Connect, inspect
+accessible services/characteristics/properties, perform only explicit safe reads,
+subscribe explicitly to notifications, label the physical action, add manual
+observations, and export a diagnostic bundle. Unknown-device mode intentionally
+has no arbitrary writer.
 
 Turn the reviewed bundle into `tests/fixtures/devices/<profile>.json`. Preserve raw advertisement/GATT/notification bytes. Separate browser-observable facts from boot strings, physical geometry, labels, teardown observations, and other manual evidence.
 
 ## 2. Define family and profile separately
 
-Add a driver under `src/drivers/<family>/` and add it once to `builtInDrivers`. A driver owns discovery hints, matching, endpoints, semantic probes, codecs, planning, notification decoding, and response matching. Physical profiles live under `src/profiles/`, not under whichever driver was first hypothesized.
+Add a driver under `src/drivers/<family>/`. Exercise it first through an injected
+`DriverRegistry` in `ApplicationRuntime`; add it to `builtInDrivers` only when
+shipping reviewed support. A driver owns discovery hints, matching, endpoints,
+semantic probes, codecs, planning, notification decoding, and response matching.
+Physical profiles live under `src/profiles/`, not under whichever driver was first
+hypothesized. Test-only families must stay outside the production registry.
 
 Never make a profile dimension a global framebuffer constant. Never treat a generic UUID or name substring as protocol identity.
 
@@ -38,13 +51,36 @@ Start new operations dry-run only. Use `FakeTransport` for order/failure/timeout
 
 Contribute named diagnostic tools through the driver contract (kind `identify` / `inspect` / `validate`, semantic workflow, risk, persistence, assurance, and a plain-language explanation). `ApplicationRuntime.runDiagnostic` executes only semantic operations under the safety policy and records serializable steps, transactions, restoration state, and findings. Reversible tests restore and re-verify the original state. If a family has no safe probe, say so rather than inventing one. Capability metadata and atomic evidence feed the canonical `DeviceAssessment` used by every UI and report surface.
 
+Today `DiagnosticTool.workflow` is limited to `family-identification`,
+`refresh-device-info`, and `brightness-round-trip`; it is not an extensible workflow
+runner. The round-trip assumes `brightnessRaw` and an unsigned-byte range. Generic
+device-info, brightness, and power assessment currently requires
+`protocol.coolledux`. Identification success copy also names CoolLEDUX. A distinct
+family can exercise discovery, bounded probing, planning, decoding, and export
+through registry injection, but cannot honestly reuse that protocol claim to
+unlock unrelated controls. Shared claim IDs and bundle validation also constrain
+new family-specific facts. Record such gaps instead of disguising a family as
+CoolLEDUX or weakening assessment.
+
 ## 8. Validate hardware deliberately
 
 Choose the least risky transient/read-only experiment supported by provenance. Capabilities and explicit plan intent drive policy; do not add driver/opcode/profile special cases. Require deliberate action, raw notification retention, separate host/protocol/state claims, and exported trace. Keep retry count one until safe retry behavior is proven.
 
 After repeated reviewed hardware evidence, promote the specific profile capability from unverified to experimental to verified. Do not promote the entire family or other profiles by association.
 
-Persistent content operations are supported through a dedicated path: declare the plan `persistent`, attach compiler metadata and per-packet `delayAfterMs` pacing (the executor owns timing), and route live sends through `sendPersistentContent`, which enforces a single-use explicit consequence confirmation. Pair each new persistent capability with a guided validation workflow (`src/diagnostics/validation.ts`) so the first hardware run records structured evidence. Destructive, reset, password, storage erase, OTA, and firmware operations remain blocked and require dedicated policy work. MatrixSmith must not acquire an arbitrary live writer as a reverse-engineering shortcut.
+Persistent content operations use `sendPersistentContent`: declare the plan
+`persistent`, attach compiler metadata and per-packet `delayAfterMs` pacing (the
+executor owns timing). Verified routine content uses direct target/digest-bound
+authorization; experimental persistent content requires a single-use exact-plan
+consequence confirmation. Pair a new persistent capability with driver-contributed
+`GuidedTestDefinition`s (`src/investigation/tests.ts`); application catalog,
+orchestration, and observation services own execution and recording. There is no
+`src/diagnostics/validation.ts`. Guided transfer currently routes through
+`sendPersistentContent`, so a read-only guided operation needs shared execution
+work rather than a false persistent classification. Destructive, reset, password,
+storage erase, OTA, and firmware operations remain blocked and require dedicated
+policy work. MatrixSmith must not acquire an arbitrary live writer as a
+reverse-engineering shortcut.
 
 ## 9. Contribute guided tests and claims (2026-08-31 revision)
 
@@ -61,3 +97,11 @@ Additional contracts from the hardening revision:
 - **Evidence-aware operations**: when a test's exact operation depends on established evidence, implement `buildOperation(context)` — the result must still be a fixed diagnostic id with enumerated parameters. Optionally implement `validate(values)` for cross-field coherence; the controller enforces generic structural validation regardless.
 - **Measured timelines**: physical timing uses the multi-phase timer (`GuidedTestTimer.phases`); durations are measured from the final host-accepted write and only MatrixSmith-measured values verify claims. Attach measured quantities as `metrics` and structured outcome facts as `details` on claim updates — `details` is what activates session-resolved behavior (`src/investigation/session-behavior.ts`) and powers report clarity.
 - **Do not write `static.strategy` evidence**: it is derived. Contribute the atomic requirement claims and let `src/investigation/static-viability.ts` decide.
+
+For another profile, contribute separate matching/resolution, geometry, evidence,
+capabilities, quirks, and applicable tests. CoolLEDUX currently scopes characterized
+capabilities, baseline physical claims, and its guided/core suite to the exact
+iLedHat profile ID; adding an entry to `profiles()` alone is insufficient. See
+`tests/drivers/second-profile-contract.test.ts` and
+`tests/drivers/synthetic-family-contract.test.ts` for software-only injection
+examples. Neither fixture is hardware evidence or production support.

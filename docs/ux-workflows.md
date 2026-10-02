@@ -13,15 +13,29 @@ MatrixSmith separates three jobs: use a known display, characterize/troubleshoot
 
 Browser navigation changes presentation state only. Home keeps a connected display visible with **Return to display** and **Disconnect / change display**.
 
+Home also exposes **Diagnose / identify**, **Explore unknown BLE** with an
+**Optional service UUIDs** field, **Open diagnostic report**, and **Import external
+capture**. The workspace calls its primary surfaces **Create** and **Investigate**;
+the secondary **Protocol workbench** link opens a view titled **Develop**. Workbench
+section selection currently stays in component state: selecting GATT does not
+change the Transactions URL, and returning to the view starts at Transactions.
+
 ## Known display
 
 1. Connect the reviewed profile.
-2. Choose Text, Image, or Demo animation.
+2. Choose Text, Image, Demo animation, or GIF (converted locally to raster animation).
 3. Edit and preview content locally.
 4. Press **Display it**.
 5. The button area shows transfer progress and finishes with **Display updated.**
+   This is the current notification wording, not proof of physical rendering:
+   write-without-response completion establishes host acceptance only. Transaction
+   evidence separates host acceptance, protocol acknowledgement, and device state.
 
-Verified routine content opens no confirmation. The target-bound digest and execution policy still enforce safety. GIF and other experimental persistent content use one concise consequence-specific confirmation without a checkbox.
+Verified routine content, including imported GIF through ShowAnimation on the
+reviewed profile, opens no confirmation. The target-bound digest and execution
+policy still enforce safety. Experimental persistent content uses one concise
+consequence-specific confirmation without a checkbox. The native GIF compiler
+remains a separate experimental workbench capability.
 
 ## Unknown display
 
@@ -30,6 +44,9 @@ Verified routine content opens no confirmation. The target-bound digest and exec
 3. If the family is identified but geometry is unavailable, confirm width and height explicitly.
 4. MatrixSmith creates a provisional target; it inherits no reviewed product-profile evidence.
 5. Run only the family tests and actions marked executable for that target.
+
+The geometry form currently starts at 32×16; those defaults are not device
+evidence. The resulting provisional profile has no reviewed profile evidence.
 
 The UI renders application-provided actions. It never branches on driver IDs or reconstructs availability.
 
@@ -49,6 +66,11 @@ The workflow stages are About, Transfer, timed observation or questions, Result,
 - Full local archive: complete identifiers and trace, explicitly labeled unsafe to share by default.
 
 Bundle V3 validates fully and enforces resource budgets before application mutation. Live and offline workspaces stay separate.
+
+Opening a bundle retains an already-connected live workspace, with **Return to
+live display** on Home. Returning retires the offline runtime; the report must
+be reopened to review it again. An offline-only report has no live-workspace
+factory, so Home explains that starting a live connection requires a reload.
 
 ## Accessibility
 

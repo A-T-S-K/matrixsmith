@@ -1,31 +1,42 @@
 # Diagnostics and offline evidence
 
-MatrixSmith exports a versioned JSON bundle only when the user taps Download. Nothing is uploaded.
+MatrixSmith downloads a versioned JSON bundle only when the user requests it.
+Markdown previews, copy, and downloads are supervised separately. Nothing is uploaded.
 
-## Version 2 shape
+## Version 3 shape
 
 ```text
-schemaVersion (2), matrixsmithVersion, createdAt
+schemaVersion (3), privacy, matrixsmithVersion, createdAt
 fingerprint
 driverMatches, selectedDriver, selectedProfile
 capabilities
+assessment
 trace
 observations
 advertisementEvidence
 transactions
 diagnosticRuns
-validations          — structured hardware-validation results
 contentCompilations  — compiled-program metadata (type, tiles, CRC, sizes, chunks, pacing)
 importedEvidence     — external-import summaries (provenance, counts, warnings)
+investigation        — guided tests, observations, claims, device binding and orchestration
 ```
 
-Version 1 bundles remain readable: import migrates them by defaulting the new collections to empty. Binary image/GIF payloads are never embedded in the bundle; content evidence is metadata plus the exact TX packet hex already retained by transactions.
+Version 1 and 2 bundles are rejected; no automatic migration is implemented.
+Original image/GIF files are never embedded in the bundle; compiled content
+evidence is metadata plus exact TX packet hex retained by transactions. Packet
+data can still reveal display content.
 
 `transactions` are higher-level serializable protocol transactions (semantic operation, driver/profile, safety, ordered TX packets, raw RX packets, decoded response, host/protocol/device verification, timeout/error, findings). `diagnosticRuns` capture named workflow executions with per-step results and restoration state. Raw `trace` events remain the lowest-level ground truth underneath both.
 
 Raw RX/TX bytes serialize as uppercase hexadecimal. The fingerprint contains portable observations, not browser Bluetooth objects. Trace types cover app startup, selection, matching, GATT lifecycle, reads/notifications, plan creation/authorization/blocking, packet host acceptance/failure, decoded notifications, observations, disconnect, and errors. Unknown notifications remain as raw events.
 
-Import validates top-level metadata, fingerprint shape, match/trace/observation collections, and schema version. It creates an offline `imported` session. Matching, profile resolution, capabilities, Diagnose/Develop review, trace display, and decoder work can run offline, but policy rejects every imported transmission. `ReplayTransport` similarly replays notifications and throws on write.
+Import enforces input budgets, then runs the generated structural validator
+(`src/diagnostics/generated/bundle-validator.js`) and semantic validation in
+`src/diagnostics/bundle.ts` before workspace mutation. It creates an offline
+`imported` session. Matching, profile resolution, capabilities, Investigate/Develop
+review, trace display, and decoder work can run offline, but policy rejects every
+imported transmission. `ReplayTransport` similarly replays notifications and
+throws on write.
 
 ## External capture import (nRF Connect)
 
@@ -33,7 +44,16 @@ Import validates top-level metadata, fingerprint shape, match/trace/observation 
 
 ## Hardware validation results
 
-Guided validation workflows (`src/diagnostics/validation.ts`) transfer diagnostic content once after an explicit consequence confirmation, then record structured yes/no/unsure answers about the physical panel. Results are session-scoped `SessionValidationResult` records with validated and rejected areas; they drive the Diagnose support matrix, the report's support table, and the deterministic suggested next tests. Profile metadata is never silently promoted by a runtime result — the report provides the reviewable evidence for any permanent change.
+Driver-contributed guided tests (`src/investigation/tests.ts`) transfer fixed
+diagnostic content after explicit consequence confirmation, then record structured
+observations in completed guided tests and claim evidence. Application catalog,
+orchestration, and observation services own execution and validation. There is no
+`SessionValidationResult` collection or `src/diagnostics/validation.ts` module.
+The canonical assessment drives availability and reports; recommendations also
+consider historical evidence and execution history. Profile metadata is never
+silently promoted by a runtime result — reports provide reviewable evidence for a
+permanent source change. Simulator and authored fixture results are software
+evidence only.
 
 ## Privacy
 
@@ -47,13 +67,19 @@ Before sharing, review free-form device names, browser device IDs, notes, displa
 
 ## Useful device-support bundle
 
-From Home choose **Explore unknown BLE device** to open the inspection chooser (the controller accepts extra service UUID hints; a UI field for them is planned), select the device, inspect permitted GATT, perform only explicit reads, subscribe only to intended notify characteristics, reproduce one labeled behavior, add manual observations, and export. State what Chrome could not enumerate. Web Bluetooth reveals only services granted through chooser filters/`optionalServices`; missing services are not evidence that the peripheral lacks them.
+From Home use **Explore unknown BLE** → **Choose device**, entering suspected
+services in **Optional service UUIDs** first. Select the device, inspect permitted
+GATT, perform only explicit reads, subscribe only to intended notify
+characteristics, reproduce one labeled behavior, add manual observations, and
+export. State what Chrome could not enumerate. Web Bluetooth reveals only services
+granted through chooser filters/`optionalServices`; missing services are not
+evidence that the peripheral lacks them.
 
 ## Guided investigation evidence (2026-08-31 revision)
 
 Bundle V3 additionally carries the canonical assessment and active investigation (goal, device binding, completed guided tests with structured observations, and session claim evidence). Importing structurally demotes every investigation claim-evidence entry to `imported-external`; serialized scope fields are never trusted. Imported evidence never authorizes live operations.
 
-The portable contract is published as [`public/bundle-v3.schema.json`](../public/bundle-v3.schema.json). The runtime codec remains authoritative and validates nested values plus byte/count budgets before any workspace mutation; the schema regression test keeps its required top-level fields, version, assessment, fingerprint, and transaction definitions aligned with serialized Bundle V3 output.
+The portable contract is published as [`public/bundle-v3.schema.json`](../public/bundle-v3.schema.json). Its generated standalone validator executes in the browser before semantic checks and sanitization; `schema:check` verifies generated output. Runtime checks also validate nested values and byte/count budgets before workspace mutation. Schema tests keep the published contract aligned with serialized Bundle V3 output.
 
 Three report formats exist beyond the classic device report:
 

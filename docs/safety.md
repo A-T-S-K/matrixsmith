@@ -29,7 +29,7 @@ Read-only protocol probes are the narrow exception to ordinary ambiguity blockin
 - CoolLEDUX `SetBrightness` (`0x04`, raw 0–255): verified transient, live on deliberate Apply.
 - CoolLEDUX power: dry-run-only on this profile.
 - CoolLEDX brightness for this iLedHat: rejected hardware hypothesis and not live.
-- CoolLEDUX static frame, rendered text, image, and animation on the reviewed iLedHat profile: verified routine persistent operations, direct after the user presses **Display it**. GIF remains experimental and uses one confirmation.
+- CoolLEDUX static frame, rendered text, image, and animation on the reviewed iLedHat profile: verified routine persistent operations, direct after the user presses **Display it**. Imported GIF is decoded locally and sent through this ShowAnimation path. Native ShowGif remains experimental and uses consequence confirmation where executable.
 - Mirror, rotation, light modes, timers, reset, password, OTA, and firmware: not live.
 
 ## Persistent content writes
@@ -40,7 +40,7 @@ Execution results keep three claims separate: browser/host acceptance, a matchin
 
 Raster scrolling is preflighted before BLE. MatrixSmith may increase pixel step and proportional frame delay, but blocks a send that still exceeds the conservative 48-frame / 16 KiB-decoded-per-tile source-derived budget. This is a software guard, not a claimed physical iLedHat limit. Persistent sends never retry automatically; a partial failure makes panel state unknown and leaves retry as an explicit action.
 
-For write-without-response content, “host accepted” means only that the browser/Bluetooth stack accepted every write. Normal UI says “Upload sent to display” and explicitly states when firmware acceptance and retention were not confirmed. Screen Wake Lock is best effort and never changes transfer success.
+For write-without-response content, “host accepted” means only that the browser/Bluetooth stack accepted every write. The current presentation notification says “Display updated.”; it must not be read as evidence of physical rendering, firmware acceptance, or retention. Transactions record host, protocol, and device-state results separately. Screen Wake Lock is best effort and never changes transfer success.
 
 The experimental unlock is memory-only and clears on disconnect or reload. It cannot bypass driver intent, validation, risk, source, confidence, or endpoint checks.
 
@@ -50,7 +50,7 @@ Per-path gates derive from OPERATIONAL TRUST (`operationalTrust` in `src/investi
 
 - text / image → require trusted `stored-program.upload` and a truly VIABLE static strategy: `static.strategy` is derived from the atomic requirements in `src/investigation/static-viability.ts` (upload, tiling, orientation, initial render, a measured ≥15 s stable hold, characterized black semantics, raw channel map, and encoder correctness). A casually asserted `static.strategy` entry has no authority, and a known-incorrect logical channel mapping keeps image/text gated. Optional visual color calibration is deliberately NOT required.
 - animation → require trusted `animation.frames`, `animation.timing`, `animation.tile-sync`
-- GIF → require trusted `gif.playback` on this device
+- native GIF → require trusted `gif.playback` on this device; imported GIF in Create uses the animation prerequisites after bounded local decoding
 
 Only `current-session` or `built-in-profile` evidence grants operational trust; previous local sessions and imported evidence inform the investigation, surface conflicts, and boost revalidation recommendations, but never unlock sends — and they also cannot revoke a shipped basis (only a trusted current-session rejection can). An inconclusive Graffiti validation cannot unlock unrelated content, and a successful Animation never silently proves Graffiti.
 
