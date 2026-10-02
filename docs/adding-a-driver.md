@@ -53,14 +53,18 @@ Contribute named diagnostic tools through the driver contract (kind `identify` /
 
 Today `DiagnosticTool.workflow` is limited to `family-identification`,
 `refresh-device-info`, and `brightness-round-trip`; it is not an extensible workflow
-runner. The round-trip assumes `brightnessRaw` and an unsigned-byte range. Generic
-device-info, brightness, and power assessment currently requires
-`protocol.coolledux`. Identification success copy also names CoolLEDUX. A distinct
-family can exercise discovery, bounded probing, planning, decoding, and export
-through registry injection, but cannot honestly reuse that protocol claim to
-unlock unrelated controls. Shared claim IDs and bundle validation also constrain
-new family-specific facts. Record such gaps instead of disguising a family as
-CoolLEDUX or weakening assessment.
+runner. The round-trip assumes `brightnessRaw` and an unsigned-byte range. Shared device-info, brightness, and power readiness requires a bound current
+family plus trusted semantic capability evidence. Family identity derives from a
+live probe or a recognized contributed profile; it does not verify arbitrary
+physical capabilities. Historical identity cannot authorize execution.
+`operationRequirements` may add conservative family-specific prerequisites;
+CoolLEDUX keeps `protocol.coolledux` as its own fact. Driver operations can narrow
+canonical assessment, never promote it. Ordinary sends enforce both, then all
+central policy checks, including explicit experimental permission. Probe results
+carry the actual driver/probe identity and a typed match or rejection separately
+from response correlation; UI copy uses the current interpretation.
+Shared claim IDs and Bundle V3 remain unchanged. New family-specific claim
+vocabulary and a general extension framework remain deferred.
 
 ## 8. Validate hardware deliberately
 

@@ -176,6 +176,15 @@ export interface MatrixDriver {
   readonly id: string;
   readonly family: string;
   readonly identificationClaimId?: import("../investigation/claims").ClaimId;
+  /** Additional conservative evidence requirements for shared ordinary controls. */
+  readonly operationRequirements?: Readonly<
+    Partial<
+      Record<
+        keyof typeof import("../domain/device/assessment").SHARED_OPERATIONS,
+        readonly import("../investigation/claims").ClaimId[]
+      >
+    >
+  >;
   discoveryHints(): DiscoveryHints;
   match(fingerprint: DeviceFingerprint): DriverMatch;
   profiles(): readonly DeviceProfile[];

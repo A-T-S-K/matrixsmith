@@ -1,3 +1,4 @@
+import { fingerprintIdentityKey } from "../../investigation/device-identity";
 import type { DeviceFingerprint } from "../../core/device";
 import type { GattEndpoint } from "../../core/device";
 import { ApplicationState } from "../state";
@@ -114,6 +115,29 @@ export class IdentificationService {
       ),
     };
   }
+  familyReadiness(): import("../../domain/device/assessment").FamilyReadiness {
+    const session = this.ports.connection().getSession();
+    const driver = session.selection?.selected;
+    return {
+      fingerprintKey: session.fingerprint
+        ? fingerprintIdentityKey(session.fingerprint)
+        : null,
+      driverId: driver?.id ?? null,
+      profileId: session.profile?.id ?? null,
+      basis:
+        session.source !== "live"
+          ? "historical"
+          : !driver
+            ? "unknown"
+            : session.protocolResolution?.driverId === driver.id &&
+                session.protocolResolution.source === "live-probe"
+              ? "current-live"
+              : session.profile &&
+                  !session.profile.id.startsWith("provisional:")
+                ? "built-in-profile"
+                : "unknown",
+    };
+  }
   assessment(
     live = this.ports.connection().getSession().source === "live" &&
       this.ports.connection().getTransport().state === "connected",
@@ -123,7 +147,33 @@ export class IdentificationService {
     const profile = session.profile;
     return assessDevice({
       target: this.deviceTarget(),
-      evidence: this.ports.investigation().allClaimEvidence(),
+      family: this.familyReadiness(),
+      operationRequirements: driver?.operationRequirements,
+      evidence: [
+        ...this.ports.investigation().allClaimEvidence(),
+        ...(session.protocolResolution?.driverId === driver?.id &&
+        session.protocolResolution?.source === "live-probe"
+          ? (
+              driver
+                ?.familyProbes?.({
+                  fingerprint: session.fingerprint!,
+                  endpoints: candidateEndpoints(session.fingerprint!),
+                  source: session.source,
+                })
+                .find(({ id }) => id === session.protocolResolution?.probeId)
+                ?.establishesClaims ?? []
+            ).map((claimId) => ({
+              claimId,
+              status: "verified" as const,
+              scope:
+                session.source === "live"
+                  ? ("current-session" as const)
+                  : ("imported-external" as const),
+              provenance: "observed" as const,
+              summary: session.protocolResolution!.summary,
+            }))
+          : []),
+      ],
       capabilities: driver && profile ? driver.capabilities(profile) : [],
       operations: driver?.operations,
       live,
@@ -194,6 +244,9 @@ export class IdentificationService {
     const session = this.ports.connection().getSession();
     const fingerprint = session.fingerprint;
     if (!fingerprint) return;
+    const changed =
+      session.selection?.selected?.id !== driver.id ||
+      session.profile?.id !== profile?.id;
     this.ports.connection().patchSession({
       selection: this.registry.resolve(
         driver.id,
@@ -210,6 +263,7 @@ export class IdentificationService {
         source,
       },
     });
+    if (changed) this.ports.investigation()._reconcileDeviceBoundary();
     this.ports
       .protocolEvidence()
       .getTrace()

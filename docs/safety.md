@@ -63,3 +63,14 @@ A running guided-test transfer cannot be dismissed as if canceled, and after tra
 Guided hardware tests transmit only fixed driver-defined diagnostic programs (`ShowDiagnostic` with declared ids and enumerated parameter values — e.g. stayTime ∈ {3, 0}); there is no general raw writer and no arbitrary raw-word entry. Persistent guided plans keep `maxAttempts: 1` with no retry conditions; a missing receipt notification never triggers automatic persistent retransmission. Local investigation history persists structured evidence only — never experimental unlocks, persistent-send confirmation tokens, safety bypasses, or content binaries.
 
 Driver diagnostic availability is an authored upper bound: live context never enables a tool declared unavailable. Imported context disables every diagnostic; direct execution checks this projection before any operation.
+
+Ordinary GetDeviceInfo, SetBrightness, and SetPower execution requires both the
+canonical shared capability assessment and the selected driver’s operation
+contribution to allow it. Experimental availability still requires explicit
+per-session permission. Family identity is a separate current-live or recognized
+profile basis; historical identity and evidence remain non-authorizing. CoolLEDUX
+adds its own protocol prerequisite without imposing it on other families. A
+correlated probe response may be rejected by family interpretation. Registered
+bounded probes alone use profile-free candidate eligibility. Investigation
+continuity requires the same authorized device, fingerprint context, and profile;
+geometry/profile or family changes detach previous evidence.

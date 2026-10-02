@@ -53,7 +53,10 @@ describe("device identity binding", () => {
     const a = deviceIdentityBinding(knownIledHatFingerprint(), "profile");
     const b = deviceIdentityBinding(knownIledHatFingerprint(), null);
     expect(compareBindings(a, b)).toBe("same-authorized-device");
-    expect(bindingAllowsSessionContinuity(a, b)).toBe(true);
+    expect(bindingAllowsSessionContinuity(a, b)).toBe(false);
+    expect(
+      bindingAllowsSessionContinuity(a, { ...b!, profileId: "profile" }),
+    ).toBe(true);
   });
 
   it("distinguishes two identical units by browser device id", () => {

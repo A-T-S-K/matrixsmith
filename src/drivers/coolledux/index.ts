@@ -50,6 +50,11 @@ import { diagnosticRasterStrategy } from "./diagnostics";
 
 export const coolLedUxDriver: MatrixDriver = {
   id: "coolledux",
+  operationRequirements: {
+    GetDeviceInfo: ["protocol.coolledux"],
+    SetBrightness: ["protocol.coolledux"],
+    SetPower: ["protocol.coolledux"],
+  },
   family: "CoolLEDUX",
   identificationClaimId: "protocol.coolledux",
   // 0x31AE is the observed iLedHat company identifier; requesting it lets the
@@ -292,7 +297,8 @@ export function coolLedUxCapabilities(
       id: "device-info",
       label: "Device information",
       supported: true,
-      live: exact,
+      // Bounded query is live after family evidence; geometry is not physical validation.
+      live: true,
       risk: "read-only",
       persistence: "none",
       evidenceConfidence: "observed",

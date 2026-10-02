@@ -254,6 +254,20 @@ describe("test-only third-family contracts", () => {
         targetBinding: { connectionId: transport.connectionId },
         digest: expect.any(String),
       });
+      expect(runtime.assessment().capabilities["device-info"]).toMatchObject({
+        availability: "available",
+        confidence: "experimental",
+        missingClaims: [],
+      });
+      expect(
+        runtime
+          .assessment()
+          .actions.find(({ operationId }) => operationId === "GetDeviceInfo")
+          ?.availability,
+      ).toBe("available");
+      expect(runtime.assessment().capabilities["device-info"].reason).toContain(
+        "permission",
+      );
       expect(runtime.evaluate(plan).allowed).toBe(true);
       const result = await runtime.send(plan);
       expect(result).toMatchObject({
@@ -291,6 +305,93 @@ describe("test-only third-family contracts", () => {
     }
   });
 
+  it("keeps ordinary readiness, driver restrictions, and experimental permission as independent gates", async () => {
+    for (const restriction of [
+      "none",
+      "blocked",
+      "rejected",
+      "unsupported",
+    ] as const) {
+      const transport = new FakeTransport(syntheticFingerprint());
+      transport.notificationOnWrite = lumenFrame(0x91, [0x4c, 0x4d, 24, 8, 7]);
+      const driver = {
+        ...syntheticDriver,
+        capabilities: (profile: typeof syntheticProfile) =>
+          syntheticDriver.capabilities(profile).map((capability) =>
+            capability.id !== "device-info"
+              ? capability
+              : {
+                  ...capability,
+                  ...(restriction === "rejected"
+                    ? { validation: "rejected" as const }
+                    : {}),
+                  ...(restriction === "unsupported"
+                    ? { supported: false }
+                    : {}),
+                },
+          ),
+        operations: (
+          context: Parameters<typeof syntheticDriver.operations>[0],
+        ) =>
+          syntheticDriver.operations(context).map((operation) =>
+            restriction === "blocked"
+              ? {
+                  ...operation,
+                  availability: "blocked" as const,
+                  reason: "Authored restriction.",
+                }
+              : operation,
+          ),
+      };
+      const runtime = new ApplicationRuntime(
+        transport,
+        new TraceRecorder(),
+        new DriverRegistry([driver]),
+      );
+      try {
+        await runtime.connect();
+        runtime.session.enableExperimentalTx();
+        // A target-bound arbitrary probe plan cannot use the registered probe exception.
+        const { prepareTransmission } =
+          await import("../../src/core/transmission");
+        const arbitrary = prepareTransmission(
+          driver.plan(
+            { type: "GetDeviceInfo" },
+            {
+              profile: syntheticProfile,
+              fingerprint: syntheticFingerprint(),
+              source: "live",
+            },
+          ),
+          {
+            connectionId: transport.connectionId!,
+            browserDeviceId: "synthetic-only",
+            fingerprintKey: "authored",
+          },
+        );
+        await expect(runtime.send(arbitrary)).rejects.toThrow();
+        expect(transport.writeAttempts).toHaveLength(0);
+        await runtime.probe("test-lumen", "lumen-info");
+        runtime.confirmProvisionalGeometry(24, 8);
+        const plan = runtime.plan({ type: "GetDeviceInfo" });
+        runtime.session.disableExperimentalTx();
+        expect(runtime.evaluate(plan).allowed).toBe(false);
+        await expect(runtime.send(plan)).rejects.toThrow();
+        runtime.session.enableExperimentalTx();
+        if (restriction === "none") {
+          expect(runtime.evaluate(plan).allowed).toBe(true);
+          await runtime.send(plan);
+        } else {
+          expect(runtime.evaluate(plan).allowed).toBe(false);
+          await expect(runtime.send(plan)).rejects.toThrow();
+          expect(transport.writeAttempts).toHaveLength(1);
+        }
+      } finally {
+        await runtime.dispose();
+      }
+    }
+  });
+
   it("resolves a local profile after probing without inheriting another family's claims", async () => {
     const { runtime } = harness(true);
     try {
@@ -301,6 +402,37 @@ describe("test-only third-family contracts", () => {
         kind: "profile-resolved",
         profile: syntheticProfile,
       });
+      expect(runtime.baselineClaimEvidence()).toEqual([]);
+    } finally {
+      await runtime.dispose();
+    }
+  });
+
+  it("detaches capability evidence when geometry/profile changes on the same authorized device", async () => {
+    const { runtime } = harness();
+    try {
+      await runtime.connect();
+      runtime.session.enableExperimentalTx();
+      await runtime.probe("test-lumen", "lumen-info");
+      runtime.confirmProvisionalGeometry(24, 8);
+      const investigation = runtime.ensureInvestigation();
+      runtime.adoptInvestigation({
+        ...investigation,
+        claimEvidence: [
+          {
+            claimId: "brightness.control",
+            status: "verified",
+            scope: "current-session",
+            provenance: "observed",
+            summary: "Authored context-bound evidence.",
+          },
+        ],
+      });
+      runtime.confirmProvisionalGeometry(16, 8);
+      expect(runtime.investigation).toBeNull();
+      expect(runtime.assessment().capabilities.brightness.availability).toBe(
+        "unsupported",
+      );
       expect(runtime.baselineClaimEvidence()).toEqual([]);
     } finally {
       await runtime.dispose();

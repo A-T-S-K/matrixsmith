@@ -124,6 +124,7 @@ function provisionalAssessment(
       evidence,
       capabilities: driver.capabilities(profile),
       operations: driver.operations,
+      operationRequirements: driver.operationRequirements,
       live: true,
     }),
   };
@@ -223,7 +224,7 @@ describe("known-profile operation contract", () => {
     ).toMatchObject({
       availability: "blocked",
       confidence: "experimental",
-      missingClaims: ["protocol.coolledux", "device-info.query"],
+      missingClaims: ["device-info.query", "protocol.coolledux"],
     });
   });
 });

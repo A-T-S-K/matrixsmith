@@ -1,3 +1,4 @@
+import { SHARED_OPERATIONS } from "../../domain/device/assessment";
 import { TransmissionAuthorization } from "../../app/transmission-authorization";
 import type { MatrixOperation } from "../../core/operations";
 import type {
@@ -64,7 +65,7 @@ interface Ports {
   >;
   identification(): Pick<
     IdentificationService,
-    "getRegistry" | "_resolveProtocol"
+    "getRegistry" | "_resolveProtocol" | "assessment"
   >;
 }
 export class TransmissionService {
@@ -184,6 +185,36 @@ export class TransmissionService {
     return decision;
   }
   evaluate(plan: TransmissionPlan): PolicyDecision {
+    const capabilityId =
+      SHARED_OPERATIONS[plan.operation.type as keyof typeof SHARED_OPERATIONS];
+    const readinessReasons: string[] = [];
+    if (capabilityId) {
+      const assessment = this.ports.identification().assessment();
+      const capability = assessment.capabilities[capabilityId];
+      if (
+        capability.confidence === "experimental" &&
+        !this.authority.experimentalTxEnabled
+      )
+        readinessReasons.push(
+          "Experimental operation availability still requires explicit per-session experimental permission.",
+        );
+      if (capability.availability !== "available")
+        readinessReasons.push(capability.reason);
+      const action = assessment.actions.find(
+        ({ operationId }) => operationId === plan.operation.type,
+      );
+      if (!action || action.availability !== "available")
+        readinessReasons.push(
+          action?.reason ??
+            "The selected driver does not offer this ordinary operation.",
+        );
+    }
+    const decision = this.evaluatePolicy(plan);
+    return readinessReasons.length
+      ? { allowed: false, reasons: [...readinessReasons, ...decision.reasons] }
+      : decision;
+  }
+  private evaluatePolicy(plan: TransmissionPlan): PolicyDecision {
     const session = this.ports.connection().getSession();
     const bestMatch =
       session.selection?.matches.find(
@@ -380,7 +411,7 @@ export class TransmissionService {
         probeId: selectedProbeId ?? "unknown",
         planId: plan.id,
       });
-    const decision = this.authorize(plan);
+    const decision = this.evaluatePolicy(plan);
     if (!decision.allowed || !decision.authorized)
       throw new Error(decision.reasons.join(" "));
     await this.ports.connection().enableDriverNotifications(driver);

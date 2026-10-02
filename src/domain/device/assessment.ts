@@ -1,3 +1,4 @@
+import { fingerprintIdentityKey } from "../../investigation/device-identity";
 import type { Capability, CapabilityId } from "../../core/capabilities";
 import type { Persistence, RiskClass } from "../../core/risk";
 import {
@@ -78,12 +79,31 @@ export interface DeviceAssessment {
   readonly conflicts: readonly ClaimState[];
 }
 
+/** Family identity is independent of semantic capability verification. */
+export interface FamilyReadiness {
+  readonly fingerprintKey: string | null;
+  readonly driverId: string | null;
+  readonly profileId: string | null;
+  readonly basis:
+    "current-live" | "built-in-profile" | "historical" | "unknown";
+}
+
+export const SHARED_OPERATIONS = {
+  GetDeviceInfo: "device-info",
+  SetBrightness: "brightness",
+  SetPower: "power",
+} as const satisfies Partial<
+  Record<import("../../core/operations").MatrixOperation["type"], CapabilityId>
+>;
+
 export interface AssessmentInput {
   readonly target: DeviceTarget | null;
   readonly evidence: readonly ClaimEvidence[];
   readonly capabilities: readonly Capability[];
   readonly live: boolean;
   readonly inspecting?: boolean;
+  readonly family?: FamilyReadiness;
+  readonly operationRequirements?: import("../../drivers/types").MatrixDriver["operationRequirements"];
   /** Selected driver's operation contribution for operational targets. */
   readonly operations?: (
     context: OperationalContext,
@@ -105,9 +125,9 @@ const CAPABILITY_LABELS: Readonly<Record<CapabilityId, string>> = {
 const REQUIREMENTS: Readonly<
   Partial<Record<CapabilityId, readonly ClaimId[]>>
 > = {
-  "device-info": ["protocol.coolledux", "device-info.query"],
-  brightness: ["protocol.coolledux", "brightness.control"],
-  power: ["protocol.coolledux", "power.control"],
+  "device-info": ["device-info.query"],
+  brightness: ["brightness.control"],
+  power: ["power.control"],
   "static-frame": ["stored-program.upload", "static.strategy"],
   text: ["stored-program.upload", "static.strategy"],
   animation: [
@@ -160,15 +180,6 @@ function persistenceFor(
   return "unknown";
 }
 
-function missingClaims(
-  id: CapabilityId,
-  evidence: readonly ClaimEvidence[],
-): readonly ClaimId[] {
-  return (REQUIREMENTS[id] ?? []).filter(
-    (claimId) => !operationalTrust(claimId, evidence).trusted,
-  );
-}
-
 function confidenceFor(
   capability: Capability | undefined,
   claims: readonly ClaimId[],
@@ -199,8 +210,36 @@ function capabilityAssessment(
   capability: Capability | undefined,
   input: AssessmentInput,
 ): CapabilityAssessment {
-  const claims = REQUIREMENTS[id] ?? [];
-  const missing = missingClaims(id, input.evidence);
+  const operation = Object.entries(SHARED_OPERATIONS).find(
+    ([, capabilityId]) => capabilityId === id,
+  )?.[0] as keyof typeof SHARED_OPERATIONS | undefined;
+  const claims = [
+    ...(REQUIREMENTS[id] ?? []),
+    ...(operation ? (input.operationRequirements?.[operation] ?? []) : []),
+  ];
+  const missing = claims.filter(
+    (claimId) => !operationalTrust(claimId, input.evidence).trusted,
+  );
+  const family = input.family ?? {
+    fingerprintKey: input.target
+      ? fingerprintIdentityKey(input.target.fingerprint)
+      : null,
+    driverId:
+      input.target && input.target.kind !== "unresolved"
+        ? input.target.driverId
+        : null,
+    profileId:
+      input.target?.kind === "profile-resolved"
+        ? input.target.profile.id
+        : null,
+    basis: !input.live
+      ? "historical"
+      : input.target?.kind === "profile-resolved"
+        ? "built-in-profile"
+        : input.target && input.target.kind !== "unresolved"
+          ? "current-live"
+          : "unknown",
+  };
   const safety = safetyFor(capability);
   const gate = CONTENT_PATH[id]
     ? allContentGates(input.evidence).find(
@@ -220,10 +259,30 @@ function capabilityAssessment(
       input.target && input.target.kind !== "unresolved"
         ? "This driver does not provide this operation."
         : reason;
+  } else if (
+    operation &&
+    (capability.validation === "rejected" ||
+      capability.validation === "unverified" ||
+      !capability.live)
+  ) {
+    reason =
+      "This driver has not validated this capability for live execution.";
   } else if (!input.live) {
     reason = "Reconnect the physical display to use this operation.";
   } else if (!input.target || input.target.kind === "unresolved") {
     reason = "Identify the protocol family before using this operation.";
+  } else if (
+    operation &&
+    (family.driverId !== input.target.driverId ||
+      family.fingerprintKey !==
+        fingerprintIdentityKey(input.target.fingerprint) ||
+      (input.target.kind === "profile-resolved" &&
+        family.profileId !== input.target.profile.id) ||
+      family.basis === "unknown" ||
+      family.basis === "historical")
+  ) {
+    reason =
+      "Establish the selected family in the current physical context first.";
   } else if (CONTENT_PATH[id] && !targetCanPlanContent(input.target)) {
     reason = "Confirm the display geometry before sending content.";
   } else if (gate && !gate.allowed) {
@@ -235,7 +294,7 @@ function capabilityAssessment(
     reason =
       safety.assurance === "verified"
         ? "Available with trusted device evidence."
-        : "Available as an experimental operation.";
+        : "Available as an experimental operation; explicit per-session experimental permission is still required.";
   }
   const evidence = claims
     .flatMap((claimId) =>
@@ -254,7 +313,21 @@ function capabilityAssessment(
   };
 }
 
-function actionFor(operation: OperationDefinition): DeviceAction {
+function actionFor(
+  operation: OperationDefinition,
+  assessment: DeviceAssessment,
+): DeviceAction {
+  const capability = assessment.capabilities[operation.capabilityId];
+  if (capability.availability !== "available")
+    return {
+      ...operation,
+      availability: capability.availability,
+      confidence: capability.confidence,
+      reason: capability.reason,
+      missingClaims: capability.missingClaims,
+      evidence: capability.evidence,
+      safety: capability.safety,
+    };
   return {
     id: operation.id,
     operationId: operation.operationId,
@@ -384,7 +457,7 @@ export function assessDevice(input: AssessmentInput): DeviceAssessment {
         target: input.target,
         assessment: baseAssessment,
       })
-      .map(actionFor);
+      .map((operation) => actionFor(operation, baseAssessment));
   }
   const preferred =
     state.readiness === "ready"

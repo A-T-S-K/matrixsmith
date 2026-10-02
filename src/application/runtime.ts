@@ -45,6 +45,7 @@ export class ApplicationRuntime {
       this.transmission.authority,
     );
     this.diagnostics = new DiagnosticsService({
+      investigation: () => this.investigationService,
       connection: () => this.connection,
       identification: () => this.identification,
       protocolEvidence: () => this.protocolEvidence,

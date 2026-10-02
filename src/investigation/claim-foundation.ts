@@ -110,11 +110,12 @@ export const CLAIM_DEFINITIONS: readonly ClaimDefinition[] = Object.freeze([
     label: "Bluetooth transport",
     category: "core",
     prerequisites: [],
-    description: "FFF0/FFF1 GATT transport connects and accepts writes.",
+    description:
+      "The selected driver’s Bluetooth GATT transport connects and accepts writes.",
   },
   {
     id: "protocol.coolledux",
-    label: "Protocol identified",
+    label: "CoolLEDUX protocol identified",
     category: "core",
     prerequisites: ["transport.bluetooth"],
     description:
@@ -124,23 +125,25 @@ export const CLAIM_DEFINITIONS: readonly ClaimDefinition[] = Object.freeze([
     id: "device-info.query",
     label: "Device state",
     category: "core",
-    prerequisites: ["protocol.coolledux"],
+    prerequisites: ["transport.bluetooth"],
     description:
-      "Device info (power, brightness) reads back as structured fields.",
+      "The selected family’s device-info query reads back structured fields.",
   },
   {
     id: "brightness.control",
     label: "Brightness",
     category: "core",
-    prerequisites: ["protocol.coolledux"],
-    description: "Brightness opcode 0x04 changes and reads back correctly.",
+    prerequisites: ["transport.bluetooth"],
+    description:
+      "The selected family’s brightness control changes and reads back correctly.",
   },
   {
     id: "power.control",
     label: "Power",
     category: "optional",
-    prerequisites: ["protocol.coolledux"],
-    description: "Power opcode changes the panel's power state.",
+    prerequisites: ["transport.bluetooth"],
+    description:
+      "The selected family’s power control changes the panel’s power state.",
   },
   {
     id: "stored-program.upload",

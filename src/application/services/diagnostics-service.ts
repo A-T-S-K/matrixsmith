@@ -22,6 +22,10 @@ interface Ports {
     ProtocolEvidenceService,
     "getTrace" | "getTransactions"
   >;
+  investigation(): Pick<
+    import("./investigation-service").InvestigationService,
+    "_reconcileDeviceBoundary"
+  >;
   transmission(): Pick<TransmissionService, "probe" | "_execute" | "plan">;
 }
 export class DiagnosticsService {
@@ -77,6 +81,7 @@ export class DiagnosticsService {
       metadata: { provisional: true, geometrySource: "user-confirmed" },
     };
     this.ports.connection().patchSession({ profile: profile });
+    this.ports.investigation()._reconcileDeviceBoundary();
     const target = this.ports.identification().deviceTarget();
     const connectionState = this.ports.connection().getConnectionState();
     if (target && connectionState.value === "connected")

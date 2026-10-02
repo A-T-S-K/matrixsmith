@@ -91,5 +91,9 @@ export function bindingAllowsSessionContinuity(
   bound: InvestigationDeviceBinding | null | undefined,
   connected: InvestigationDeviceBinding | null | undefined,
 ): boolean {
-  return compareBindings(bound, connected) === "same-authorized-device";
+  return (
+    compareBindings(bound, connected) === "same-authorized-device" &&
+    bound?.profileId === connected?.profileId &&
+    bound?.fingerprintKey === connected?.fingerprintKey
+  );
 }
