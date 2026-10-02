@@ -20,7 +20,14 @@ interface Ports {
     InvestigationStore,
     "_persistInvestigation" | "_persistDetachedInvestigation"
   >;
-  workspaceStore(): Pick<WorkspaceStore, "getController">;
+  workspaceStore(): Pick<
+    WorkspaceStore,
+    | "getController"
+    | "prepareLiveWorkspace"
+    | "activateConnectedLive"
+    | "transitionReason"
+    | "returnToLiveWorkspace"
+  >;
   navigationStore(): Pick<
     NavigationStore,
     "setPage" | "setViewState" | "getRouter" | "getView"
@@ -37,6 +44,14 @@ export class ConnectionStore {
       "authorizedDevices"
     >,
   ) {}
+  captureContext() {
+    return { lastImport: this._lastImport };
+  }
+  restoreContext(
+    state: ReturnType<ConnectionStore["captureContext"]> | null,
+  ): void {
+    this._lastImport = state?.lastImport ?? null;
+  }
   getPreviouslyAuthorized(): Readonly<
     ConnectionStore["_previouslyAuthorized"]
   > {
@@ -59,65 +74,66 @@ export class ConnectionStore {
     mode: "registered" | "inspection" = "registered",
     serviceHints: readonly BluetoothServiceUUID[] = [],
   ): Promise<void> {
-    const workspace = this.ports.workspaceStore().getController();
-    if (
-      this.ports.noticeStore().getBusy() ||
-      workspace.session.source !== "live" ||
-      workspace.transport.state === "connected"
-    ) {
-      this.ports
-        .noticeStore()
-        .setError(
-          "Finish the current operation and disconnect the active display before connecting.",
-        );
+    const owner = this.ports.workspaceStore();
+    const reason = owner.transitionReason();
+    if (reason) {
+      this.ports.noticeStore().setError(reason);
       this.ports.snapshotStore()._emit();
       return;
     }
-    await this.ports
-      .noticeStore()
-      ._run(
-        mode === "registered" ? "Connecting display…" : "Opening BLE explorer…",
-        async () => {
+    const fromOffline = owner.getController().session.source === "imported";
+    await this.ports.noticeStore()._run("Connecting display…", async () => {
+      const workspace = fromOffline
+        ? owner.prepareLiveWorkspace().controller
+        : owner.getController();
+      const connected = () => workspace.transport.state === "connected";
+      if (connected()) {
+        if (fromOffline) owner.activateConnectedLive(workspace);
+        else
+          throw new Error(
+            "Disconnect the active display before choosing another device.",
+          );
+      } else {
+        // No await before connect: the chooser is reached from this user action.
+        // Imported investigations must never be adopted or persisted as live.
+        if (!fromOffline)
           this.ports.investigationStore()._persistInvestigation();
-          await workspace.connect(mode, serviceHints);
-          if (workspace !== this.ports.workspaceStore().getController()) return;
-          const connectionId = workspace.transport.connectionId;
+        await workspace.connect(mode, serviceHints);
+        const connectionId = workspace.transport.connectionId;
+        await workspace.enableDriverNotifications().catch(() => undefined);
+        if (connectionId !== workspace.transport.connectionId || !connected())
+          return;
+        if (fromOffline) {
+          if (!owner.activateConnectedLive(workspace)) return;
+        } else {
+          if (workspace !== owner.getController()) return;
           this.ports.investigationStore()._persistDetachedInvestigation();
-          await workspace.enableDriverNotifications().catch(() => undefined);
-          if (
-            workspace !== this.ports.workspaceStore().getController() ||
-            connectionId !== workspace.transport.connectionId ||
-            workspace.transport.state !== "connected"
-          )
-            return;
-          this.ports.navigationStore().setPage("workspace");
-          // Known/usable displays open the Device Workspace; unknown or
-          // incomplete hardware naturally enters the guided investigation.
-          this.ports
-            .navigationStore()
-            .setViewState(
-              mode === "inspection"
-                ? "develop"
-                : this.ports.workspaceStore().getController().session.selection
-                      ?.selected
-                  ? "control"
-                  : "diagnose",
-            );
-          this.ports
-            .navigationStore()
-            .getRouter()
-            ?.navigate(
-              this.ports.navigationStore().getView() === "control"
-                ? "create"
-                : this.ports.navigationStore().getView() === "diagnose"
-                  ? "investigate"
-                  : "develop-transactions",
-            );
-          this.ports
-            .noticeStore()
-            .setInfo("Display connected. Review the recommended next action.");
-        },
-      );
+        }
+      }
+      this.ports.navigationStore().setPage("workspace");
+      this.ports
+        .navigationStore()
+        .setViewState(
+          mode === "inspection"
+            ? "develop"
+            : workspace.session.selection?.selected
+              ? "control"
+              : "diagnose",
+        );
+      this.ports
+        .navigationStore()
+        .getRouter()
+        ?.navigate(
+          this.ports.navigationStore().getView() === "control"
+            ? "create"
+            : this.ports.navigationStore().getView() === "diagnose"
+              ? "investigate"
+              : "develop-transactions",
+        );
+      this.ports
+        .noticeStore()
+        .setInfo("Display connected. Review the recommended next action.");
+    });
   }
   async disconnect(): Promise<void> {
     const workspace = this.ports.workspaceStore().getController();

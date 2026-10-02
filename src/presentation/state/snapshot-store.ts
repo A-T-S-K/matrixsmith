@@ -26,12 +26,20 @@ import type { PresentationEnvironment } from "../environment";
 interface Ports {
   workspaceStore(): Pick<
     WorkspaceStore,
-    "getController" | "getTransport" | "getLiveWorkspace"
+    | "getController"
+    | "getTransport"
+    | "getLiveWorkspace"
+    | "getLiveConnection"
+    | "getOfflineAvailable"
+    | "getContextIdentity"
+    | "getContextLabel"
+    | "transitionReason"
   >;
   reportStore(): Pick<
     ReportStore,
     | "getTransactionFilter"
     | "getTransactionSearch"
+    | "getReviewNote"
     | "getReportOpen"
     | "getReportOptions"
     | "_reportMarkdownForKind"
@@ -72,6 +80,7 @@ interface Ports {
   contentEditorStore(): Pick<
     ContentEditorStore,
     | "getSettings"
+    | "getSelection"
     | "_renderTextFrame"
     | "getImageState"
     | "getGifState"
@@ -169,6 +178,15 @@ export class SnapshotStore {
       liveConnected,
       liveWorkspaceAvailable:
         this.ports.workspaceStore().getLiveWorkspace() !== null,
+      retainedLiveConnection: this.ports.workspaceStore().getLiveConnection(),
+      offlineWorkspaceAvailable: this.ports
+        .workspaceStore()
+        .getOfflineAvailable(),
+      contextLabel: this.ports.workspaceStore().getContextLabel(),
+      contextIdentity: this.ports.workspaceStore().getContextIdentity(),
+      contextTransitionReason: this.ports.workspaceStore().transitionReason(),
+      reviewNote: this.ports.reportStore().getReviewNote(),
+      contentSelection: this.ports.contentEditorStore().getSelection(),
       busy: this.ports.noticeStore().getBusy(),
       error: this.ports.noticeStore().getError(),
       info: this.ports.noticeStore().getInfo(),

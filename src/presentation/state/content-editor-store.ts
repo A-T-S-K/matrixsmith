@@ -30,7 +30,7 @@ interface Ports {
   workspaceStore(): Pick<WorkspaceStore, "getController">;
 }
 export class ContentEditorStore {
-  private readonly textCache = new ContentCache<Framebuffer | null>();
+  private textCache = new ContentCache<Framebuffer | null>();
   clearTextCache(): void {
     this.textCache.clear();
   }
@@ -69,7 +69,62 @@ export class ContentEditorStore {
     private readonly ports: Ports,
     private readonly environment: Pick<PresentationEnvironment, "storage">,
   ) {
-    this._settings = loadContentSettings(environment.storage);
+    this._settings = { ...loadContentSettings(environment.storage), text: "" };
+  }
+  captureContext() {
+    return {
+      settings: this._settings,
+      selection: this.selection,
+      textCache: this.textCache,
+      imageOwner: this.imageOwner,
+      imageFile: this._imageFile,
+      imageSource: this._imageSource,
+      imageName: this._imageName,
+      imageState: this._imageState,
+      gifSequence: this._gifSequence,
+      gifState: this._gifState,
+    };
+  }
+  restoreContext(
+    state: ReturnType<ContentEditorStore["captureContext"]> | null,
+  ): void {
+    this._imageVersion++;
+    this._gifVersion++;
+    this._gifAbort?.abort();
+    this._gifAbort = null;
+    this.reconnectDraft = null;
+    this._settings = state?.settings ?? {
+      ...loadContentSettings(this.environment.storage),
+      text: "",
+    };
+    this.selection = state?.selection ?? "text";
+    this.textCache = state?.textCache ?? new ContentCache<Framebuffer | null>();
+    this.imageOwner = state?.imageOwner ?? null;
+    this._imageFile = state?.imageFile ?? null;
+    this._imageSource = state?.imageSource ?? null;
+    this._imageName = state?.imageName ?? "";
+    this._imageState = state?.imageState ?? null;
+    this._gifSequence = state?.gifSequence ?? null;
+    this._gifState = state?.gifState ?? null;
+    this.getImageState();
+    const profile = this.ports.workspaceStore().getController().session.profile;
+    if (
+      this._gifState &&
+      (!profile ||
+        this._gifState.targetWidth !== profile.width ||
+        this._gifState.targetHeight !== profile.height)
+    ) {
+      this._gifState = null;
+      this._gifSequence = null;
+    }
+  }
+  private selection: import("./dependencies").ContentPathId = "text";
+  getSelection() {
+    return this.selection;
+  }
+  setSelection(value: import("./dependencies").ContentPathId): void {
+    this.selection = value;
+    this.ports.snapshotStore()._emit();
   }
   getSettings() {
     return this._settings;
@@ -150,7 +205,10 @@ export class ContentEditorStore {
     }
     this.ports.noticeStore().setError(null, "text-limit");
     this._settings = { ...this._settings, ...partial, schemaVersion: 1 };
-    const saved = saveContentSettings(this._settings, this.environment.storage);
+    const saved = saveContentSettings(
+      { ...this._settings, text: "" },
+      this.environment.storage,
+    );
     if (!saved.ok)
       this.ports
         .noticeStore()
@@ -160,7 +218,10 @@ export class ContentEditorStore {
   }
   resetContentSettings(): void {
     this._settings = DEFAULT_CONTENT_SETTINGS;
-    const saved = saveContentSettings(this._settings, this.environment.storage);
+    const saved = saveContentSettings(
+      { ...this._settings, text: "" },
+      this.environment.storage,
+    );
     if (!saved.ok)
       this.ports
         .noticeStore()
@@ -182,9 +243,13 @@ export class ContentEditorStore {
       workspace.session.profile?.height === height;
     if (file.size > INPUT_LIMITS.captureBytes)
       throw new Error("Image file exceeds the 25 MiB input budget.");
-    const { decodeImageFile, decodeImageSource, ILEDHAT_RGB444, processImage } =
-      await import("../../render/image");
     await this.ports.noticeStore()._run("Decoding image…", async () => {
+      const {
+        decodeImageFile,
+        decodeImageSource,
+        ILEDHAT_RGB444,
+        processImage,
+      } = await import("../../render/image");
       if (!isCurrent()) return;
       if (!profile)
         throw new Error(

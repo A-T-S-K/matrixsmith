@@ -16,7 +16,7 @@ type WorkbenchRoute = {
   readonly context: WorkspaceContext;
   readonly section: WorkbenchSection;
 };
-export type AppRoute =
+type RouteSpec =
   | { readonly id: "home"; readonly hash: "#/home" }
   | {
       readonly id: "create";
@@ -34,6 +34,8 @@ export type AppRoute =
       readonly context: "offline";
     }
   | WorkbenchRoute;
+
+export type AppRoute = RouteSpec & { readonly reportGeneration?: string };
 
 export function workbenchRoute(
   context: WorkspaceContext,
@@ -69,7 +71,11 @@ export function parseRoute(hash: string): AppRoute {
 
 export interface HashRouter {
   readonly current: AppRoute;
-  navigate(route: AppRoute["id"], replace?: boolean): void;
+  navigate(
+    route: AppRoute["id"],
+    replace?: boolean,
+    reportGeneration?: string,
+  ): void;
   dispose(): void;
   subscribe(listener: (route: AppRoute) => void): () => void;
 }
@@ -80,11 +86,25 @@ export function createHashRouter(
     "location" | "history" | "addEventListener" | "removeEventListener"
   >,
 ): HashRouter {
-  let current = parseRoute(browserWindow.location.hash);
+  const readRoute = (): AppRoute => {
+    const route = parseRoute(browserWindow.location.hash);
+    const generation: unknown =
+      browserWindow.history.state?.matrixsmithReportGeneration;
+    return "context" in route &&
+      route.context === "offline" &&
+      typeof generation === "string"
+      ? { ...route, reportGeneration: generation }
+      : route;
+  };
+  let current = readRoute();
   const listeners = new Set<(route: AppRoute) => void>();
   const notify = (): void => {
-    const next = parseRoute(browserWindow.location.hash);
-    if (next.id === current.id) return;
+    const next = readRoute();
+    if (
+      next.id === current.id &&
+      next.reportGeneration === current.reportGeneration
+    )
+      return;
     current = next;
     for (const listener of listeners) listener(current);
   };
@@ -94,13 +114,22 @@ export function createHashRouter(
     get current() {
       return current;
     },
-    navigate(id, replace = false) {
+    navigate(id, replace = false, reportGeneration) {
       const route = ROUTES.find((candidate) => candidate.id === id);
       if (!route) throw new Error(`Unknown route ${id}.`);
-      if (route.id === current.id) return;
-      if (replace) browserWindow.history.replaceState(null, "", route.hash);
-      else browserWindow.history.pushState(null, "", route.hash);
-      current = route;
+      if (
+        route.id === current.id &&
+        current.reportGeneration === reportGeneration
+      )
+        return;
+      const state =
+        reportGeneration === undefined
+          ? null
+          : { matrixsmithReportGeneration: reportGeneration };
+      if (replace) browserWindow.history.replaceState(state, "", route.hash);
+      else browserWindow.history.pushState(state, "", route.hash);
+      current =
+        reportGeneration === undefined ? route : { ...route, reportGeneration };
       for (const listener of listeners) listener(current);
     },
     dispose() {

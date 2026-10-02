@@ -53,3 +53,18 @@ covers source labels, report-kind/control/privacy transitions, Markdown download
 and an accessible failed-download/retry path using the actual report generators.
 
 Presentation hardening regressions count text/scroll/demo generation and storage reads, assert preview identity and exact input invalidation, and exercise workspace/profile changes, history refresh/demotion, persistence failures, and concurrent errors. Browser regressions verify scrolling during unrelated publications, target-sized image modes and retry, connected Home diagnosis, external-store replacement/cleanup, and Device actions focus restoration with Escape/Browser Back. Timed observation elapsed displays update locally. Desktop timing measurements are supporting evidence, not pass/fail thresholds or Android acceptance.
+
+Workspace continuity is covered by `tests/presentation/workspace-continuity.test.ts`
+using real presentation/application owners and injected scripted/deferred
+transports, plus `tests/e2e/workspace-continuity.spec.ts` in Chromium. The checks
+cover offline-only connection and cancellation, candidate reuse, context-local
+search/notes/drafts/privacy/errors, stable decoded preview identity, atomic
+replacement and disposal, retained disconnect authority revocation, stale copy
+and connection completions, pending confirmations, busy/observation guards,
+routes, history generations, missing data, and modal/focus behavior. Run the
+existing send-result, GIF, privacy/import, lifecycle and history regressions,
+`npm run verify`, and `npm run test:e2e:offline` for bootstrap/router changes.
+Review intended ARIA changes individually; do not regenerate visual baselines.
+Simulator and browser scripts provide software evidence only. Real chooser
+activation on a stable secure origin and physical live/offline disconnect and
+recovery acceptance remain manual checks in `docs/physical-acceptance.md`.

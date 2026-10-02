@@ -87,3 +87,40 @@ and offline-report links retain their meaning. Section memory is keyed by the
 runtime identity; search and filters remain presentation state, outside URLs.
 Routes select views only. Missing session/report data presents a connect/reopen
 state; unknown routes return Home without creating transport authority.
+
+WorkspaceStore bounds continuity to one live runtime and one retained offline
+report, with one active context. A synchronous live factory at composition
+creates a fresh trace, transport, application/session state and transmission
+subscriptions; static registry configuration can be shared. Cold Home remains
+lazy. Connecting from an offline report never imports its investigation into
+the live runtime or saves it as a live investigation. Chooser cancellation or
+failure retains the report and reuses the prepared live candidate on retry.
+
+Each runtime keeps its own identity and listeners until explicit close,
+replacement, or application disposal. Switching does not disconnect live.
+Retained live disconnects still reach the connection service and revoke
+transmission authority and panel certainty; only its connection indicator is
+projected into offline review. Replacement reports are parsed and built before
+activation. Retired listeners are detached and each runtime is disposed once.
+
+The composed presentation owners expose narrow typed, in-memory UI capture and
+restore methods: navigation view/section; report search, filter, review note,
+privacy/kind and errors; editor selection, settings and valid decoded previews;
+notice errors/info; external-capture summary; and content render caches.
+Restore never writes storage. Text drafts are context-local; saved content
+preferences retain the existing schema with an empty text field. Decoded media
+is retained by reference and checked against current profile/geometry.
+Snapshots contain no ApplicationState, transport authority, running execution,
+wake-lock ownership, confirmation digest or experimental unlock. Switching
+cancels pending send confirmation and consumes session confirmation/unlock.
+Report action generations advance even on a switch away and back.
+
+Transfers, decode/import activity and guided flows block conflicting context
+changes. Guided observation must be finished or explicitly closed as incomplete;
+disconnect recovery remains available. Browser history can select available
+contexts and sections, but cannot connect or confirm execution. Offline history
+entries carry a report generation in history state, never in the URL; replaced
+or closed generations show a reopen state. Reload loses in-memory contexts and
+media and never reconnects. Modal Back closes the modal first; Forward restores
+only the view. Heading focus changes with context/view/section, not ordinary
+snapshot publications, and modal close returns to its trigger or heading.

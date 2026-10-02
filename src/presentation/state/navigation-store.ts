@@ -17,7 +17,13 @@ import type { GuidedController } from "./guided-controller";
 import type { PresentationEnvironment } from "../environment";
 
 interface Ports {
-  workspaceStore(): Pick<WorkspaceStore, "getController">;
+  workspaceStore(): Pick<
+    WorkspaceStore,
+    | "getController"
+    | "selectContext"
+    | "transitionReason"
+    | "getReportGeneration"
+  >;
   projectionStore(): Pick<ProjectionStore, "refreshHistory">;
   snapshotStore(): Pick<SnapshotStore, "_emit">;
   reportStore(): Pick<ReportStore, "setReportOpen">;
@@ -28,10 +34,21 @@ interface Ports {
   >;
 }
 export class NavigationStore {
+  private readonly views = new WeakMap<
+    ReturnType<WorkspaceStore["getController"]>,
+    WorkspaceView
+  >();
+  getContextView(): WorkspaceView {
+    return (
+      this.views.get(this.ports.workspaceStore().getController()) ??
+      (this.context() === "offline" ? "diagnose" : "control")
+    );
+  }
   private readonly sections = new WeakMap<
     ReturnType<WorkspaceStore["getController"]>,
     WorkbenchSection
   >();
+  private acceptedRoute: AppRoute | null = null;
   private missingContext: WorkspaceContext | null = null;
   private _page: AppSnapshot["page"] = "home";
   private _view: WorkspaceView = "control";
@@ -87,6 +104,7 @@ export class NavigationStore {
   }
   setViewState(value: NavigationStore["_view"]): void {
     this._view = value;
+    this.views.set(this.ports.workspaceStore().getController(), value);
   }
   getRouter() {
     return this._router;
@@ -122,6 +140,7 @@ export class NavigationStore {
     this._view =
       this.context() === "offline" && view === "control" ? "diagnose" : view;
     view = this._view;
+    this.views.set(this.ports.workspaceStore().getController(), view);
     this._router?.navigate(
       view === "develop"
         ? workbenchRoute(this.context(), this.getWorkbenchSection())
@@ -130,6 +149,10 @@ export class NavigationStore {
           : view === "control"
             ? "create"
             : "investigate",
+      false,
+      this.context() === "offline"
+        ? this.ports.workspaceStore().getReportGeneration()
+        : undefined,
     );
     this.ports.snapshotStore()._emit();
   }
@@ -149,7 +172,29 @@ export class NavigationStore {
     this._overlayKind = null;
     if (!this._closingOverlayFromHistory) this.environment.back();
   }
+  cancelContextOverlays(): void {
+    this._overlayKind = null;
+    this.ports.reportStore().setReportOpen(false);
+    this.ports.contentSendStore().setPendingSend(null);
+  }
   _applyRoute(route: AppRoute): void {
+    if (
+      route.id !== "home" &&
+      route.context !== this.context() &&
+      this.ports.workspaceStore().transitionReason()
+    ) {
+      this.ports
+        .workspaceStore()
+        .selectContext(route.context, route.reportGeneration);
+      if (this.acceptedRoute)
+        this._router?.navigate(
+          this.acceptedRoute.id,
+          true,
+          this.acceptedRoute.reportGeneration,
+        );
+      return;
+    }
+    this.acceptedRoute = route;
     this.missingContext = null;
     if (route.id === "home") {
       this.ports.projectionStore().refreshHistory();
@@ -158,8 +203,9 @@ export class NavigationStore {
     }
     this._page = "workspace";
     if (
-      route.context !== this.context() ||
-      !this.ports.workspaceStore().getController().session.fingerprint
+      !this.ports
+        .workspaceStore()
+        .selectContext(route.context, route.reportGeneration)
     )
       this.missingContext = route.context;
     if ("section" in route) {
@@ -170,5 +216,7 @@ export class NavigationStore {
           route.section,
         );
     } else this._view = route.id === "create" ? "control" : "diagnose";
+    if (!this.missingContext)
+      this.views.set(this.ports.workspaceStore().getController(), this._view);
   }
 }

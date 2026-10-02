@@ -1,134 +1,242 @@
-import { ApplicationRuntime } from "./dependencies";
-import type { MatrixTransport } from "./dependencies";
-
 import { parseDiagnosticBundle } from "./dependencies";
-
+import type { ApplicationRuntime, MatrixTransport } from "./dependencies";
 import type { NoticeStore } from "./notice-store";
 import type { SnapshotStore } from "./snapshot-store";
 import type { NavigationStore } from "./navigation-store";
+import type { ContentEditorStore } from "./content-editor-store";
+import type { ContentSendStore } from "./content-send-store";
+import type { ReportStore } from "./report-store";
+import type { ConnectionStore } from "./connection-store";
 import type { PresentationEnvironment } from "../environment";
+import type { WorkspaceContext } from "../app/routes";
 
+/** In-memory UI only. No session, transport, execution, confirmation or unlock. */
+export interface WorkspaceUiState {
+  readonly view: ReturnType<NavigationStore["getView"]>;
+  readonly editor: ReturnType<ContentEditorStore["captureContext"]>;
+  readonly caches: ReturnType<ContentSendStore["captureCaches"]>;
+  readonly report: ReturnType<ReportStore["captureContext"]>;
+  readonly notice: ReturnType<NoticeStore["captureContext"]>;
+  readonly connection: ReturnType<ConnectionStore["captureContext"]>;
+}
+interface Workspace {
+  readonly controller: ApplicationRuntime;
+  readonly transport: MatrixTransport;
+  readonly generation: string;
+  established: boolean;
+  label: string;
+  ui: WorkspaceUiState | null;
+  cleanups: (() => void)[];
+}
 interface Ports {
-  invalidateContent(): void;
+  captureUi(): WorkspaceUiState;
+  restoreUi(state: WorkspaceUiState | null): void;
+  cancelConfirmations(): void;
+  guidedActive(): boolean;
   noticeStore(): Pick<NoticeStore, "setError" | "setInfo" | "getBusy">;
   snapshotStore(): Pick<SnapshotStore, "_emit">;
   navigationStore(): Pick<
     NavigationStore,
-    "setPage" | "setViewState" | "getRouter" | "getView"
+    | "setPage"
+    | "setViewState"
+    | "setView"
+    | "getView"
+    | "cancelContextOverlays"
+    | "goHome"
   >;
 }
 export class WorkspaceStore {
-  private controller: ApplicationRuntime;
-  private transport: MatrixTransport;
-  private _liveWorkspace: {
-    readonly controller: ApplicationRuntime;
-    readonly transport: MatrixTransport;
-  } | null = null;
-  private cleanups: (() => void)[] = [];
-  private retired = new Set<ApplicationRuntime>();
+  private active: Workspace;
+  private live: Workspace | null;
+  private offline: Workspace | null = null;
+  private nextGeneration = 0;
+  private readonly lifetime =
+    globalThis.crypto?.randomUUID?.() ?? `${Date.now()}:${Math.random()}`;
   private disposed = false;
   private disposal: Promise<void> | null = null;
+  private retired = new WeakSet<ApplicationRuntime>();
+  private retirements = new Map<ApplicationRuntime, Promise<void>>();
   constructor(
     private readonly ports: Ports,
     private readonly environment: Pick<
       PresentationEnvironment,
-      "createOfflineWorkspace"
+      "createOfflineWorkspace" | "createLiveWorkspace" | "fileActivity"
     >,
     controller: ApplicationRuntime,
     transport: MatrixTransport,
   ) {
-    this.controller = controller;
-    this.transport = transport;
+    this.active = this.makeWorkspace({ controller, transport });
+    this.live = this.active;
+  }
+  private makeWorkspace(runtime: {
+    controller: ApplicationRuntime;
+    transport: MatrixTransport;
+  }): Workspace {
+    return {
+      ...runtime,
+      generation: `${this.lifetime}:${++this.nextGeneration}`,
+      established: Boolean(runtime.controller.session.fingerprint),
+      label: runtime.controller.session.fingerprint?.name ?? "Live display",
+      ui: null,
+      cleanups: [],
+    };
   }
   initialize(): void {
-    this.watchActive();
+    this.watch(this.active);
   }
-  private watchActive(): void {
-    for (const cleanup of this.cleanups.splice(0)) cleanup();
-    this.cleanups.push(
-      this.controller.trace.subscribe(() => this.ports.snapshotStore()._emit()),
+  private watch(workspace: Workspace): void {
+    const emit = () => {
+      if (workspace.controller.session.fingerprint) {
+        workspace.established = true;
+        workspace.label =
+          workspace.controller.session.fingerprint.name ?? "Unnamed display";
+      }
+      if (
+        !this.disposed &&
+        (this.live === workspace || this.offline === workspace)
+      )
+        this.ports.snapshotStore()._emit();
+    };
+    workspace.cleanups.push(workspace.controller.trace.subscribe(emit));
+    const unsubscribe = workspace.transport.subscribeState?.(emit);
+    if (unsubscribe) workspace.cleanups.push(unsubscribe);
+  }
+  private retire(workspace: Workspace): Promise<void> {
+    workspace.ui = null;
+    for (const cleanup of workspace.cleanups.splice(0)) cleanup();
+    const existing = this.retirements.get(workspace.controller);
+    if (existing) return existing;
+    if (this.retired.has(workspace.controller)) return Promise.resolve();
+    this.retired.add(workspace.controller);
+    const disposal = workspace.controller.dispose();
+    this.retirements.set(workspace.controller, disposal);
+    // Retirement errors belong to this runtime; never publish into another context.
+    void disposal.then(
+      () => this.retirements.delete(workspace.controller),
+      () => this.retirements.delete(workspace.controller),
     );
-    const unsubscribe = this.transport.subscribeState?.(() =>
-      this.ports.snapshotStore()._emit(),
-    );
-    if (unsubscribe) this.cleanups.push(unsubscribe);
+    return disposal;
   }
   dispose(): Promise<void> {
     if (this.disposal) return this.disposal;
     this.disposed = true;
-    for (const cleanup of this.cleanups.splice(0)) cleanup();
-    const runtimes = new Set([this.controller, ...this.retired]);
-    if (this._liveWorkspace) runtimes.add(this._liveWorkspace.controller);
-    this.disposal = Promise.all(
-      [...runtimes].map((runtime) => runtime.dispose()),
-    ).then(() => {
-      this.retired.clear();
+    const workspaces = new Set([this.active, this.live, this.offline]);
+    for (const workspace of workspaces)
+      if (workspace) void this.retire(workspace);
+    this.disposal = Promise.all(this.retirements.values()).then(() => {
+      this.live = null;
+      this.offline = null;
+      this.retirements.clear();
     });
     return this.disposal;
   }
-  private retire(runtime: ApplicationRuntime): void {
-    this.retired.add(runtime);
-    void runtime.dispose().then(
-      () => this.retired.delete(runtime),
-      (error: unknown) => {
-        if (!this.disposed) {
-          this.ports
-            .noticeStore()
-            .setError(`Workspace cleanup failed: ${String(error)}`);
-          this.ports.snapshotStore()._emit();
-        }
-      },
-    );
-  }
   getController() {
-    return this.controller;
+    return this.active.controller;
   }
   getTransport() {
-    return this.transport;
+    return this.active.transport;
   }
   getLiveWorkspace() {
-    return this._liveWorkspace;
+    return this.live !== this.active && this.live?.established
+      ? this.live
+      : null;
+  }
+  getLiveConnection() {
+    return this.live?.transport.state ?? null;
+  }
+  getOfflineAvailable() {
+    return this.offline !== null;
+  }
+  getContextLabel() {
+    return this.active.label;
+  }
+  getContextIdentity() {
+    return this.active.generation;
+  }
+  getReportGeneration() {
+    return this.offline?.generation;
+  }
+  transitionReason(includeFiles = true): string | null {
+    if (this.disposed) return "This application has been closed.";
+    if (this.ports.noticeStore().getBusy())
+      return "Finish the current operation before changing workspace. Use disconnect recovery if the transfer outcome is unknown.";
+    if (includeFiles && this.environment.fileActivity?.active)
+      return "Finish importing the file before changing workspace.";
+    if (this.ports.guidedActive())
+      return "Finish or explicitly close the guided test before changing workspace.";
+    return null;
+  }
+  private blocked(includeFiles = true): boolean {
+    const reason = this.transitionReason(includeFiles);
+    if (!reason) return false;
+    this.ports.noticeStore().setError(reason);
+    this.ports.snapshotStore()._emit();
+    return true;
+  }
+  private activate(workspace: Workspace): void {
+    if (this.active === workspace) return;
+    this.active.controller.session.disableExperimentalTx();
+    this.active.controller.session.consumePersistentConfirmation();
+    this.ports.cancelConfirmations();
+    this.ports.navigationStore().cancelContextOverlays();
+    this.active.ui = this.ports.captureUi();
+    this.active = workspace;
+    this.ports.restoreUi(workspace.ui);
+  }
+  /** Routing never creates a runtime or grants connection authority. */
+  selectContext(context: WorkspaceContext, reportGeneration?: string): boolean {
+    const target = context === "live" ? this.live : this.offline;
+    if (
+      this.disposed ||
+      !target ||
+      (context === "offline" &&
+        reportGeneration !== undefined &&
+        target.generation !== reportGeneration)
+    )
+      return false;
+    if (target !== this.active) {
+      if (this.blocked()) return false;
+      this.activate(target);
+    }
+    return target.established;
   }
   importBundle(json: string): void {
-    if (this.ports.noticeStore().getBusy()) {
-      this.ports
-        .noticeStore()
-        .setError(
-          "Finish the current operation before opening another workspace.",
-        );
-      this.ports.snapshotStore()._emit();
-      return;
-    }
-    let bundle: ReturnType<typeof parseDiagnosticBundle>;
+    if (this.blocked(false)) return;
+    let replacement: Workspace | null = null;
     try {
-      bundle = parseDiagnosticBundle(json);
+      const bundle = parseDiagnosticBundle(json);
+      replacement = this.makeWorkspace(
+        this.environment.createOfflineWorkspace(bundle.fingerprint),
+      );
+      replacement.controller.importBundle(json);
+      replacement.established = true;
+      replacement.label =
+        replacement.controller.session.fingerprint?.name ?? "Offline report";
     } catch (error) {
+      if (replacement) void this.retire(replacement);
       this.ports
         .noticeStore()
         .setError(error instanceof Error ? error.message : String(error));
       this.ports.snapshotStore()._emit();
       return;
     }
-    if (
-      this.controller.session.source === "live" &&
-      this.transport.state === "connected"
-    )
-      this._liveWorkspace = {
-        controller: this.controller,
-        transport: this.transport,
-      };
-    const { transport: replay, controller: offline } =
-      this.environment.createOfflineWorkspace(bundle.fingerprint);
-    offline.importBundle(json);
-    this.ports.invalidateContent();
-    const previous = this.controller;
-    this.controller = offline;
-    this.transport = replay;
-    this.watchActive();
-    if (previous !== this._liveWorkspace?.controller) this.retire(previous);
-    this.ports.navigationStore().setPage("workspace");
-    this.ports.navigationStore().setViewState("diagnose");
-    this.ports.navigationStore().getRouter()?.navigate("offline-report");
+    const previous = this.offline;
+    // A never-used bootstrap runtime is not a retained physical workspace.
+    const unusedLive =
+      this.live &&
+      !this.live.established &&
+      this.live.transport.state === "idle"
+        ? this.live
+        : null;
+    this.offline = replacement;
+    this.watch(replacement);
+    this.activate(replacement);
+    if (unusedLive) {
+      this.live = null;
+      void this.retire(unusedLive);
+    }
+    if (previous) void this.retire(previous);
+    this.ports.navigationStore().setView("diagnose");
     this.ports
       .noticeStore()
       .setInfo(
@@ -136,38 +244,57 @@ export class WorkspaceStore {
       );
     this.ports.snapshotStore()._emit();
   }
+  prepareLiveWorkspace() {
+    if (this.disposed) throw new Error("This application has been closed.");
+    if (!this.live) {
+      this.live = this.makeWorkspace(this.environment.createLiveWorkspace());
+      this.watch(this.live);
+    }
+    return this.live;
+  }
+  activateConnectedLive(controller: ApplicationRuntime): boolean {
+    if (
+      this.disposed ||
+      this.live?.controller !== controller ||
+      this.live.transport.state !== "connected"
+    )
+      return false;
+    this.activate(this.live);
+    return true;
+  }
   returnToLiveWorkspace(): void {
-    if (this.ports.noticeStore().getBusy()) return;
-    const live = this._liveWorkspace;
-    if (!live) return;
-    this.ports.invalidateContent();
-    const previous = this.controller;
-    this.controller = live.controller;
-    this.transport = live.transport;
-    this._liveWorkspace = null;
-    this.watchActive();
-    this.retire(previous);
-    this.ports.navigationStore().setPage("workspace");
-    this.ports
-      .navigationStore()
-      .setViewState(
-        this.controller.assessment().readiness === "ready"
+    this.returnTo("live");
+  }
+  returnToOfflineWorkspace(): void {
+    this.returnTo("offline");
+  }
+  private returnTo(context: WorkspaceContext): void {
+    if (this.blocked()) return;
+    const target = context === "live" ? this.live : this.offline;
+    if (!target) return;
+    this.activate(target);
+    const view =
+      target.ui?.view ??
+      (context === "offline"
+        ? "diagnose"
+        : target.controller.assessment().readiness === "ready"
           ? "control"
-          : "diagnose",
-      );
-    this.ports
-      .navigationStore()
-      .getRouter()
-      ?.navigate(
-        this.ports.navigationStore().getView() === "control"
-          ? "create"
-          : "investigate",
-      );
-    this.ports
-      .noticeStore()
-      .setInfo(
-        "Returned to the live display. Offline report evidence remains separate.",
-      );
+          : "diagnose");
+    this.ports.navigationStore().setView(view);
+  }
+  closeOfflineWorkspace(): void {
+    if (this.blocked() || !this.offline) return;
+    const previous = this.offline;
+    if (this.active === previous) {
+      if (!this.live) {
+        this.live = this.makeWorkspace(this.environment.createLiveWorkspace());
+        this.watch(this.live);
+      }
+      this.activate(this.live);
+      this.ports.navigationStore().goHome();
+    }
+    this.offline = null;
+    void this.retire(previous);
     this.ports.snapshotStore()._emit();
   }
 }

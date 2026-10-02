@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "preact/hooks";
 import type { JSX } from "preact";
 import { lazy, Suspense } from "preact/compat";
 import type {
@@ -33,9 +34,48 @@ export function DeviceWorkspace({
   readonly snapshot: AppSnapshot;
   readonly store: PresentationStore;
 }): JSX.Element {
+  const mainRef = useRef<HTMLElement>(null);
+  const focusedRoute = useRef("");
+  useEffect(() => {
+    const key = `${snapshot.contextIdentity}:${snapshot.view}:${snapshot.workbenchSection}:${snapshot.missingContext}`;
+    if (focusedRoute.current === key || snapshot.busy) return;
+    const main = mainRef.current;
+    if (!main || document.querySelector('[role="dialog"]')) return;
+    const focusHeading = () => {
+      const current = store.getSnapshot();
+      if (current.busy) return false;
+      if (current.sendAttempt?.phase === "review") {
+        focusedRoute.current = key;
+        return true;
+      }
+      const heading = main.querySelector<HTMLElement>("h1");
+      if (!heading) return false;
+      if (document.activeElement?.matches("input,textarea,select")) return true;
+      focusedRoute.current = key;
+      heading.tabIndex = -1;
+      heading.focus();
+      return true;
+    };
+    if (focusHeading()) return;
+    const observer = new MutationObserver(() => {
+      if (focusHeading()) observer.disconnect();
+    });
+    observer.observe(main, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, [
+    snapshot.contextIdentity,
+    snapshot.view,
+    snapshot.workbenchSection,
+    snapshot.missingContext,
+    snapshot.busy,
+  ]);
+  const primaryNav =
+    snapshot.source === "imported"
+      ? PRIMARY_NAV.filter(([id]) => id !== "control")
+      : PRIMARY_NAV;
   if (snapshot.missingContext)
     return (
-      <main class="workspace">
+      <main ref={mainRef} class="workspace">
         <h1 tabIndex={-1}>
           {snapshot.missingContext === "offline"
             ? "Reopen diagnostic report"
@@ -50,13 +90,65 @@ export function DeviceWorkspace({
       </main>
     );
   return (
-    <main class="workspace">
+    <main ref={mainRef} class="workspace">
       <DeviceHeader snapshot={snapshot} store={store} />
+      {(snapshot.offlineWorkspaceAvailable ||
+        snapshot.source === "imported") && (
+        <section class="notice" aria-label="Workspace contexts">
+          <strong>
+            {snapshot.source === "imported"
+              ? "Active: offline report · read-only"
+              : `Active: live display · ${snapshot.connection}`}
+          </strong>
+          <div class="inline-form">
+            {snapshot.source === "imported" ? (
+              snapshot.liveWorkspaceAvailable ? (
+                <button
+                  disabled={Boolean(snapshot.contextTransitionReason)}
+                  onClick={() => store.returnToLiveWorkspace()}
+                >
+                  Return to live display (
+                  {snapshot.retainedLiveConnection === "idle"
+                    ? "disconnected"
+                    : snapshot.retainedLiveConnection}
+                  )
+                </button>
+              ) : (
+                <button
+                  disabled={
+                    Boolean(snapshot.contextTransitionReason) ||
+                    !snapshot.bluetoothSupported
+                  }
+                  onClick={() => void store.connect()}
+                >
+                  Connect a display
+                </button>
+              )
+            ) : (
+              <button
+                disabled={Boolean(snapshot.contextTransitionReason)}
+                onClick={() => store.returnToOfflineWorkspace()}
+              >
+                Return to retained report
+              </button>
+            )}
+            <button
+              disabled={Boolean(snapshot.contextTransitionReason)}
+              onClick={() => store.closeOfflineWorkspace()}
+            >
+              Close retained report
+            </button>
+          </div>
+          {snapshot.contextTransitionReason && (
+            <p>{snapshot.contextTransitionReason}</p>
+          )}
+        </section>
+      )}
       <div class="workspace-shell">
         <aside class="sidebar">
           <p class="sidebar-label">DEVICE WORKSPACE</p>
           <nav>
-            {PRIMARY_NAV.map(([id, label, icon]) => (
+            {primaryNav.map(([id, label, icon]) => (
               <button
                 key={id}
                 class={snapshot.view === id ? "active" : ""}
@@ -108,7 +200,7 @@ export function DeviceWorkspace({
         </div>
       </div>
       <nav class="bottom-nav" aria-label="Device workspace">
-        {PRIMARY_NAV.map(([id, label, icon]) => (
+        {primaryNav.map(([id, label, icon]) => (
           <button
             key={id}
             class={snapshot.view === id ? "active" : ""}

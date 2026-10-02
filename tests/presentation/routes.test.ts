@@ -94,7 +94,8 @@ it("projects every workbench section from navigation and retains it on reentry",
     expect(store.getSnapshot().workbenchSection).toBe(section);
   }
   changed(parseRoute("#/device/create"));
-  expect(store.getSnapshot().missingContext).toBe("live");
+  expect(store.getSnapshot().missingContext).toBeNull();
+  expect(store.controller).toBe(runtime);
   await store.dispose();
 });
 

@@ -1,3 +1,6 @@
+import { fileActivity } from "../../application/file-input";
+import { WebBluetoothTransport } from "../../transport/web-bluetooth";
+import { TraceRecorder } from "../../diagnostics/trace";
 import { createHomeCapabilities } from "../browser-home";
 import { ApplicationRuntime } from "../../application/runtime";
 import { ReplayTransport } from "../../transport/replay";
@@ -10,6 +13,15 @@ export function createBrowserEnvironment(): PresentationEnvironment {
   const windowLike = typeof window === "undefined" ? null : window;
   const navigatorLike = typeof navigator === "undefined" ? {} : navigator;
   return {
+    fileActivity,
+    createLiveWorkspace() {
+      const trace = new TraceRecorder();
+      const transport = new WebBluetoothTransport(trace);
+      return {
+        transport,
+        controller: new ApplicationRuntime(transport, trace),
+      };
+    },
     createOfflineWorkspace(fingerprint) {
       const transport = new ReplayTransport(fingerprint);
       return { transport, controller: new ApplicationRuntime(transport) };
@@ -34,7 +46,7 @@ export function createBrowserEnvironment(): PresentationEnvironment {
     },
     pushOverlay(kind) {
       windowLike?.history.pushState(
-        { matrixsmithOverlay: kind },
+        { ...windowLike?.history.state, matrixsmithOverlay: kind },
         "",
         windowLike.location.href,
       );

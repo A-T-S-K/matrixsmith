@@ -14,6 +14,7 @@ import type { MatrixTransport } from "../application/ports/transport";
 import type { ApplicationRuntime } from "../application/runtime";
 import type { PresentationEnvironment } from "./environment";
 export class PresentationStore {
+  private readonly fileActivityCleanup: () => void;
   private readonly historyCleanup: () => void;
   private disposal: Promise<void> | null = null;
   private readonly connectionStore: ConnectionStore;
@@ -112,10 +113,23 @@ export class PresentationStore {
     );
     this.workspaceStore = new WorkspaceStore(
       {
-        invalidateContent: () => {
-          this.contentEditorStore.dispose();
-          this.contentSendStore.invalidateContext();
+        captureUi: () => ({
+          view: this.navigationStore.getContextView(),
+          editor: this.contentEditorStore.captureContext(),
+          caches: this.contentSendStore.captureCaches(),
+          report: this.reportStore.captureContext(),
+          notice: this.noticeStore.captureContext(),
+          connection: this.connectionStore.captureContext(),
+        }),
+        restoreUi: (state) => {
+          this.contentEditorStore.restoreContext(state?.editor ?? null);
+          this.contentSendStore.restoreCaches(state?.caches ?? null);
+          this.reportStore.restoreContext(state?.report ?? null);
+          this.noticeStore.restoreContext(state?.notice ?? null);
+          this.connectionStore.restoreContext(state?.connection ?? null);
         },
+        cancelConfirmations: () => this.contentSendStore.invalidateContext(),
+        guidedActive: () => this.guidedController.getGuidedFlow() !== null,
         noticeStore: () => this.noticeStore,
         snapshotStore: () => this.snapshotStore,
         navigationStore: () => this.navigationStore,
@@ -156,6 +170,9 @@ export class PresentationStore {
         this.projectionStore.refreshHistory();
         this.snapshotStore._emit();
       }) ?? (() => {});
+    this.fileActivityCleanup =
+      environment.fileActivity?.subscribe?.(() => this.snapshotStore._emit()) ??
+      (() => {});
     this.snapshotStore._rebuild();
     this.workspaceStore.initialize();
     this.navigationStore.initialize();
@@ -208,6 +225,15 @@ export class PresentationStore {
     );
     this.importBundle = this.workspaceStore.importBundle.bind(
       this.workspaceStore,
+    );
+    this.returnToOfflineWorkspace =
+      this.workspaceStore.returnToOfflineWorkspace.bind(this.workspaceStore);
+    this.closeOfflineWorkspace = this.workspaceStore.closeOfflineWorkspace.bind(
+      this.workspaceStore,
+    );
+    this.setReviewNote = this.reportStore.setReviewNote.bind(this.reportStore);
+    this.setContentSelection = this.contentEditorStore.setSelection.bind(
+      this.contentEditorStore,
     );
     this.returnToLiveWorkspace = this.workspaceStore.returnToLiveWorkspace.bind(
       this.workspaceStore,
@@ -375,6 +401,10 @@ export class PresentationStore {
   readonly subscribeNotifications: ConnectionStore["subscribeNotifications"];
   readonly recordObservation: ConnectionStore["recordObservation"];
   readonly importBundle: WorkspaceStore["importBundle"];
+  readonly returnToOfflineWorkspace: WorkspaceStore["returnToOfflineWorkspace"];
+  readonly closeOfflineWorkspace: WorkspaceStore["closeOfflineWorkspace"];
+  readonly setReviewNote: ReportStore["setReviewNote"];
+  readonly setContentSelection: ContentEditorStore["setSelection"];
   readonly returnToLiveWorkspace: WorkspaceStore["returnToLiveWorkspace"];
   readonly importExternalCapture: ConnectionStore["importExternalCapture"];
   readonly updateContentSettings: ContentEditorStore["updateContentSettings"];
@@ -437,6 +467,7 @@ export class PresentationStore {
     if (this.disposal) return this.disposal;
     this.snapshotStore.dispose();
     this.historyCleanup();
+    this.fileActivityCleanup();
     this.projectionStore.dispose();
     this.contentEditorStore.dispose();
     this.navigationStore.dispose();

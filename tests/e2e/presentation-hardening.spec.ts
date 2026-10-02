@@ -60,10 +60,9 @@ test("Home diagnosis preserves connection and blocked connection actions explain
   ).toBeDisabled();
   await expect(
     page
-      .getByText(
-        "Disconnect the active display before choosing another device.",
-        { exact: true },
-      )
+      .getByText("Return to the live display before choosing another device.", {
+        exact: true,
+      })
       .first(),
   ).toBeVisible();
   await page.getByRole("button", { name: "Start diagnosis →" }).click();
@@ -100,20 +99,22 @@ test("Home diagnosis preserves connection and blocked connection actions explain
   });
   await expect(
     page.getByRole("button", { name: "Connect a display" }),
-  ).toBeDisabled();
+  ).toBeEnabled();
   await expect(
     page.getByRole("button", { name: "Start diagnosis →" }),
-  ).toBeDisabled();
+  ).toBeEnabled();
   await expect(
     page.getByRole("button", { name: "Choose device →" }),
-  ).toBeDisabled();
+  ).toBeEnabled();
   await expect(
-    page
-      .getByText(
-        "Reload MatrixSmith to start a live connection from this offline-only report.",
-        { exact: true },
-      )
-      .first(),
+    page.getByRole("heading", { name: "Retained live display · disconnected" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Connect a display" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Create", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Return to retained report" }),
   ).toBeVisible();
 });
 

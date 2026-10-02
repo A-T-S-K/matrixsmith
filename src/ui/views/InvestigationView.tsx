@@ -32,6 +32,20 @@ export function InvestigationView({
   readonly snapshot: AppSnapshot;
   readonly store: PresentationStore;
 }): JSX.Element {
+  if (snapshot.source === "imported")
+    return (
+      <section class="view investigate">
+        <h1 class="view-title">Offline report</h1>
+        <p>
+          Read-only recorded evidence. Connect a display explicitly to begin a
+          separate live session.
+        </p>
+        <WhatWeKnow snapshot={snapshot} />
+        <CompletedTests snapshot={snapshot} store={store} />
+        <SupportMap snapshot={snapshot} />
+        <ReportActions store={store} />
+      </section>
+    );
   const started = Boolean(snapshot.investigation?.completedTests.length);
   return (
     <section class="view investigate">

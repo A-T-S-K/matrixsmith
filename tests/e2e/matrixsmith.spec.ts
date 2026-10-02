@@ -105,7 +105,9 @@ test("critical routes match reviewed ARIA snapshots and the axe gate", async ({
 
   await page.getByRole("button", { name: "Device actions" }).click();
   await page.getByRole("button", { name: "Developer tools" }).click();
-  await expect(page.getByRole("heading", { name: "Protocol workbench" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Protocol workbench" }),
+  ).toBeVisible();
   await expect(page.locator(".develop-view")).toMatchAriaSnapshot({
     name: "developer.aria.yml",
   });
@@ -284,7 +286,9 @@ test("Browser Back closes overlays before navigating feature history", async ({
   await page.getByRole("button", { name: /Investigate$/ }).click();
   await page.getByRole("button", { name: "Device actions" }).click();
   await page.getByRole("button", { name: "Developer tools" }).click();
-  await expect(page.getByRole("heading", { name: "Protocol workbench" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Protocol workbench" }),
+  ).toBeVisible();
   await page.goBack();
   await expect(
     page.getByRole("heading", { name: "Investigate" }),

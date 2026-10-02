@@ -75,8 +75,9 @@ export function TransactionSection({
             ))
         ) : (
           <p class="empty">
-            No matching transactions. Run a safe query or diagnostic to begin
-            the capture.
+            {snapshot.source === "imported"
+              ? "No matching transactions in this report. Adjust search or filters."
+              : "No matching transactions. Run a safe query or diagnostic to begin the capture."}
           </p>
         )}
       </div>

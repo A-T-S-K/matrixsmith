@@ -381,7 +381,7 @@ it("progress publications reuse previews and the cached display never authorizes
   await s.store.dispose();
 });
 
-it("workspace replacement and return invalidate content identity without borrowing offline authority", async () => {
+it("workspace round trips retain live content identity without borrowing offline authority", async () => {
   const s = await setup();
   s.store.updateContentSettings({ text: "HELLO", textDisplayMode: "scroll" });
   const first = s.store.getSnapshot().content;
@@ -396,7 +396,7 @@ it("workspace replacement and return invalidate content identity without borrowi
   });
   expect(offline.liveWorkspaceAvailable).toBe(true);
   s.store.returnToLiveWorkspace();
-  expect(s.store.getSnapshot().content.textPreview).not.toBe(first.textPreview);
+  expect(s.store.getSnapshot().content.textPreview).toBe(first.textPreview);
   expect(s.store.getSnapshot().liveConnected).toBe(true);
   await s.store.dispose();
 });

@@ -20,6 +20,41 @@ interface Ports {
   guidedController(): Pick<GuidedController, "getGuidedFlow">;
 }
 export class ReportStore {
+  captureContext() {
+    return {
+      kind: this._reportKind,
+      options: this._reportOptions,
+      filter: this._transactionFilter,
+      search: this._transactionSearch,
+      note: this.reviewNote,
+      lastValidMarkdown: this._lastValidMarkdown,
+      previewError: this._previewError,
+      actionError: this._actionError,
+    };
+  }
+  restoreContext(
+    state: ReturnType<ReportStore["captureContext"]> | null,
+  ): void {
+    this._actionGeneration++;
+    this._previewOwner = this.ports.workspaceStore().getController();
+    this._reportOpen = false;
+    this._reportKind = state?.kind ?? null;
+    this._reportOptions = state?.options ?? DEFAULT_REPORT_OPTIONS;
+    this._transactionFilter = state?.filter ?? "all";
+    this._transactionSearch = state?.search ?? "";
+    this.reviewNote = state?.note ?? "";
+    this._lastValidMarkdown = state?.lastValidMarkdown ?? "";
+    this._previewError = state?.previewError ?? null;
+    this._actionError = state?.actionError ?? null;
+  }
+  private reviewNote = "";
+  getReviewNote() {
+    return this.reviewNote;
+  }
+  setReviewNote(value: string): void {
+    this.reviewNote = value;
+    this.ports.snapshotStore()._emit();
+  }
   private _reportOpen = false;
   private _reportKind: ReportKind | null = null;
   private _reportOptions: ReportOptions = DEFAULT_REPORT_OPTIONS;

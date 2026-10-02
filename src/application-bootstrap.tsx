@@ -1,3 +1,4 @@
+import { ReplayTransport } from "./transport/replay";
 import { createBrowserEnvironment } from "./adapters/presentation/browser-environment";
 import type { UpdateManager } from "./app/update-manager";
 import { render } from "preact";
@@ -19,32 +20,51 @@ export async function startApplication(
   action?: ApplicationCommand,
   updates?: UpdateManager,
 ): Promise<void> {
-  const trace = new TraceRecorder();
   const simulation = import.meta.env.DEV
     ? new URLSearchParams(location.search).get("sim")
     : null;
   const simulated =
     import.meta.env.DEV && new URLSearchParams(location.search).has("sim");
-  const transport = simulated
-    ? new (await import("./dev/simulated-device")).SimulatedIledHatTransport(
-        simulation ? `simulated-iledhat-${simulation}` : "simulated-iledhat",
-        simulation === "unknown",
-      )
-    : new WebBluetoothTransport(trace);
+  // Resolve dev-only modules at composition, before any later user Connect.
+  const Simulator = simulated
+    ? (await import("./dev/simulated-device")).SimulatedIledHatTransport
+    : null;
   const registry =
     import.meta.env.DEV && simulation === "experimental"
       ? (await import("./dev/experimental-registry")).experimentalRegistry()
       : undefined;
-  const store = new PresentationStore(
-    new ApplicationRuntime(transport, trace, registry),
-    transport,
-    {
-      ...createBrowserEnvironment(),
-      ...(simulated ? { bluetoothSupported: true } : {}),
+  const createLiveWorkspace = () => {
+    const trace = new TraceRecorder();
+    const transport = Simulator
+      ? new Simulator(
+          simulation ? `simulated-iledhat-${simulation}` : "simulated-iledhat",
+          simulation === "unknown",
+        )
+      : new WebBluetoothTransport(trace);
+    const controller = new ApplicationRuntime(transport, trace, registry);
+    trace.record("app.started", {
+      webBluetoothSupported: "bluetooth" in navigator,
+    });
+    if (import.meta.env.DEV)
+      (globalThis as Record<string, unknown>).matrixsmithTransport = transport;
+    return { controller, transport };
+  };
+  const { controller, transport } = createLiveWorkspace();
+  const store = new PresentationStore(controller, transport, {
+    ...createBrowserEnvironment(),
+    createLiveWorkspace,
+    createOfflineWorkspace(fingerprint) {
+      const offlineTransport = new ReplayTransport(fingerprint);
+      return {
+        transport: offlineTransport,
+        controller: new ApplicationRuntime(
+          offlineTransport,
+          new TraceRecorder(),
+          registry,
+        ),
+      };
     },
-  );
-  trace.record("app.started", {
-    webBluetoothSupported: "bluetooth" in navigator,
+    ...(simulated ? { bluetoothSupported: true } : {}),
   });
   updates?.setBlocker(() => {
     const snapshot = store.getSnapshot();
@@ -56,8 +76,9 @@ export async function startApplication(
     );
   });
   render(<App store={store} updates={updates} />, root);
-  await store.initialize();
+  const initialization = store.initialize();
   if (action) await runApplicationEffect(store, action);
+  await initialization;
   window.addEventListener(
     "pagehide",
     (event) => {

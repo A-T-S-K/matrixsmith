@@ -23,6 +23,15 @@ export class NoticeStore {
   private _operationVersion = 0;
   private active = new Map<number, string>();
   constructor(private readonly ports: Ports) {}
+  captureContext() {
+    return { errors: this.errors, info: this._info };
+  }
+  restoreContext(
+    state: ReturnType<NoticeStore["captureContext"]> | null,
+  ): void {
+    this.errors = state?.errors ?? new Map();
+    this._info = state?.info ?? null;
+  }
   setInfo(value: NoticeStore["_info"]): void {
     this._info = value;
   }
@@ -61,16 +70,17 @@ export class NoticeStore {
     this.active.set(operation, label);
     this._busy = label;
     this._info = null;
-    const previousError = this.errors.get(label);
+    const originErrors = this.errors;
+    const previousError = originErrors.get(label);
     this.ownerOperations.set(label, operation);
     this.ports.snapshotStore()._emit();
     try {
       await action();
       if (
-        this.errors.get(label) === previousError &&
+        originErrors.get(label) === previousError &&
         this.ownerOperations.get(label) === operation
       )
-        this.errors.delete(label);
+        originErrors.delete(label);
     } catch (error) {
       if (
         this.ownerOperations.get(label) === operation &&

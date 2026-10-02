@@ -72,6 +72,13 @@ export interface AppSnapshot {
   readonly source: string;
   readonly liveConnected: boolean;
   readonly liveWorkspaceAvailable: boolean;
+  readonly retainedLiveConnection: ConnectionState | null;
+  readonly offlineWorkspaceAvailable: boolean;
+  readonly contextLabel: string;
+  readonly contextIdentity: string;
+  readonly contextTransitionReason: string | null;
+  readonly reviewNote: string;
+  readonly contentSelection: ContentPathId;
   readonly busy: string | null;
   readonly sendProgress: ExecutionProgress | null;
   readonly sendAttempt: SendAttempt | null;

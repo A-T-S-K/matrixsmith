@@ -88,3 +88,27 @@ factory, so Home explains that starting a live connection requires a reload.
 Shared Dialog, Tabs, MenuButton, NoticeRegion, FileButton, UnavailableAction, and EvidenceDisclosure primitives implement keyboard and screen-reader behavior. Animated previews honor reduced motion. Unavailable reasons are visible text. Notices and bottom navigation do not cover controls.
 
 Automated component tests and Playwright axe scans cover the critical routes; the stable-domain manual checklist is in [physical-acceptance.md](physical-acceptance.md).
+
+### Retained live display and offline report
+
+Open a JSON report to review read-only evidence in a separate context. From an
+offline-only report, **Connect a display** explicitly opens a fresh live session
+without reloading. Cancellation leaves searches, review notes and report choices
+in place for retry. An existing live display offers **Return to live display**
+with its current connection state. It is never silently replaced by another
+connected display.
+
+**Return to retained report** reopens the one retained report without importing
+again. Each context remembers its workbench section, search/filter, unsaved
+review note, content selection, draft/previews and report choices. Offline review
+has no Create/send action. **Close retained report** disposes that report; opening
+a valid replacement retires the previous report while preserving live. Invalid
+imports preserve both contexts. Finish an active transfer/import or finish/close
+a guided observation before switching. A physical disconnect while reviewing a
+report updates the retained live indicator and requires explicit recovery.
+
+All seven Protocol workbench sections have matching URLs. Back/Forward selects
+available contexts and sections; Back first closes an open modal. Forward never
+restores send confirmation. Reload/direct links to missing report data ask for
+the JSON to be reopened; missing live data asks for explicit connection. No
+complete report or decoded media is automatically persisted.

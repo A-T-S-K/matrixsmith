@@ -20,6 +20,9 @@ export interface HomeSnapshot {
   readonly error: string | null;
   readonly bluetoothSupported: boolean;
   readonly liveWorkspaceAvailable: boolean;
+  readonly retainedLiveConnection?: AppSnapshot["retainedLiveConnection"];
+  readonly offlineWorkspaceAvailable?: boolean;
+  readonly contextTransitionReason?: string | null;
   readonly previouslyAuthorized: AppSnapshot["previouslyAuthorized"];
   readonly storedInvestigation: AppSnapshot["storedInvestigation"];
 }
@@ -34,6 +37,7 @@ export interface HomeStore {
   importBundle(json: string): void | Promise<void>;
   importExternalCapture(content: string): void | Promise<void>;
   returnToLiveWorkspace(): void;
+  returnToOfflineWorkspace?(): void;
   reconnectAuthorized(deviceId: string): void | Promise<void>;
   resumeStoredInvestigation(): void;
   forgetLocalHistory(): void;
@@ -48,14 +52,15 @@ export function Home({
 }): JSX.Element {
   const [serviceHints, setServiceHints] = useState("");
   const connectionReason =
+    snapshot.contextTransitionReason ??
     snapshot.busy ??
-    (snapshot.liveConnected || snapshot.liveWorkspaceAvailable
-      ? "Disconnect the active display before choosing another device."
-      : snapshot.source === "imported"
-        ? "Reload MatrixSmith to start a live connection from this offline-only report."
-        : !snapshot.bluetoothSupported
-          ? "Web Bluetooth is unavailable in this browser."
-          : "");
+    (snapshot.liveConnected ||
+    (snapshot.liveWorkspaceAvailable &&
+      snapshot.retainedLiveConnection === "connected")
+      ? "Return to the live display before choosing another device."
+      : !snapshot.bluetoothSupported
+        ? "Web Bluetooth is unavailable in this browser."
+        : "");
   return (
     <main class="home">
       <header class="home-hero">
@@ -110,6 +115,9 @@ export function Home({
             Web Bluetooth is unavailable. Open a saved diagnostic report
             instead.
           </p>
+        )}
+        {connectionReason && !snapshot.liveConnected && (
+          <p>{connectionReason}</p>
         )}
         {snapshot.error && <p class="notice error">{snapshot.error}</p>}
       </header>
@@ -202,7 +210,12 @@ export function Home({
       </section>
       {snapshot.liveWorkspaceAvailable && (
         <section class="authorized">
-          <h2>Live display still connected</h2>
+          <h2>
+            Retained live display ·{" "}
+            {snapshot.retainedLiveConnection === "idle"
+              ? "disconnected"
+              : snapshot.retainedLiveConnection}
+          </h2>
           <p>The offline report is separate from the live workspace.</p>
           <button
             class="primary"
@@ -211,6 +224,19 @@ export function Home({
             onClick={() => store.returnToLiveWorkspace()}
           >
             Return to live display
+          </button>
+        </section>
+      )}
+      {snapshot.offlineWorkspaceAvailable && (
+        <section class="authorized">
+          <h2>Retained offline report</h2>
+          <button
+            disabled={Boolean(
+              snapshot.contextTransitionReason ?? snapshot.busy,
+            )}
+            onClick={() => store.returnToOfflineWorkspace?.()}
+          >
+            Return to retained report
           </button>
         </section>
       )}

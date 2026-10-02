@@ -35,8 +35,9 @@ export function DevelopView({
         <div class="safety-copy">
           <StatusBadge tone="good">Safety policy active</StatusBadge>
           <span>
-            Verified controls are available. Experimental, persistent,
-            destructive, firmware, and arbitrary operations remain restricted.
+            {snapshot.source === "imported"
+              ? "Offline evidence is read-only. Live operations require a separate connected display."
+              : "Verified controls are available. Experimental, persistent, destructive, firmware, and arbitrary operations remain restricted."}
           </span>
         </div>
       </div>

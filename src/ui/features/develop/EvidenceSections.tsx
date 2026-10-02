@@ -63,31 +63,38 @@ export function EvidenceSection({
   snapshot: AppSnapshot;
   store: PresentationStore;
 }): JSX.Element {
-  const [note, setNote] = useState("");
+  const note = snapshot.reviewNote;
   return (
     <section>
       <div class="section-heading">
         <h2>Evidence / observations</h2>
         <p>
-          Attach a lightweight note to this capture session. Electronically
-          verifiable state is recorded automatically.
+          Keep an unsaved review note for this context. Offline report evidence
+          is read-only; live session notes can be recorded explicitly.
         </p>
       </div>
       <article class="panel">
         <div class="inline-form">
           <input
             value={note}
+            aria-label="Unsaved review note"
             placeholder="What did you observe?"
             onInput={(event) =>
-              setNote((event.currentTarget as HTMLInputElement).value)
+              store.setReviewNote(
+                (event.currentTarget as HTMLInputElement).value,
+              )
             }
           />
           <button
             class="primary"
-            disabled={!note.trim()}
+            disabled={
+              !note.trim() ||
+              snapshot.source === "imported" ||
+              snapshot.busy !== null
+            }
             onClick={() => {
               store.recordObservation(note);
-              setNote("");
+              store.setReviewNote("");
             }}
           >
             Add session note
@@ -103,7 +110,9 @@ export function EvidenceSection({
           ))}
         </ul>
       </article>
-      <ImportPanel snapshot={snapshot} store={store} />
+      {snapshot.source !== "imported" && (
+        <ImportPanel snapshot={snapshot} store={store} />
+      )}
     </section>
   );
 }

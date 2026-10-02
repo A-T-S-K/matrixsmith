@@ -7,6 +7,10 @@ import type { TransferWakeLock } from "../app/wake-lock";
 import type { HashRouter } from "./app/routes";
 
 export interface PresentationEnvironment {
+  createLiveWorkspace(): {
+    controller: ApplicationRuntime;
+    transport: MatrixTransport;
+  };
   createOfflineWorkspace(fingerprint: DeviceFingerprint): {
     controller: ApplicationRuntime;
     transport: MatrixTransport;
@@ -25,4 +29,8 @@ export interface PresentationEnvironment {
   onBack(listener: () => void): () => void;
   pushOverlay(kind: string): void;
   back(): void;
+  readonly fileActivity?: {
+    readonly active: boolean;
+    subscribe?(listener: () => void): () => void;
+  };
 }

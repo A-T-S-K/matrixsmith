@@ -29,7 +29,21 @@ const DEVICE_INFO_40 =
 
 export class SimulatedIledHatTransport implements MatrixTransport {
   readonly kind = "web-bluetooth" as const;
-  state: ConnectionState = "idle";
+  private connectionState: ConnectionState = "idle";
+  private readonly stateListeners = new Set<(state: ConnectionState) => void>();
+  get state(): ConnectionState {
+    return this.connectionState;
+  }
+  set state(value: ConnectionState) {
+    if (value === this.connectionState) return;
+    this.connectionState = value;
+    for (const listener of this.stateListeners) listener(value);
+  }
+  subscribeState(listener: (state: ConnectionState) => void): () => void {
+    this.stateListeners.add(listener);
+    listener(this.state);
+    return () => this.stateListeners.delete(listener);
+  }
   fingerprint: DeviceFingerprint | null = null;
   connectionId: string | null = null;
   brightness = 0xcc;

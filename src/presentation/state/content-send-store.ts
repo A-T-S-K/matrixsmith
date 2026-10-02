@@ -41,14 +41,22 @@ interface Ports {
   connectionStore(): Pick<ConnectionStore, "disconnect" | "connect">;
 }
 export class ContentSendStore {
-  private readonly scrollCache = new ContentCache<ScrollPlan | null>();
-  private readonly demoCache = new ContentCache<FrameSequence>();
+  private scrollCache = new ContentCache<ScrollPlan | null>();
+  private demoCache = new ContentCache<FrameSequence>();
   clearContentCaches(): void {
     this.scrollCache.clear();
     this.demoCache.clear();
   }
+  captureCaches() {
+    return { scroll: this.scrollCache, demo: this.demoCache };
+  }
+  restoreCaches(
+    state: ReturnType<ContentSendStore["captureCaches"]> | null,
+  ): void {
+    this.scrollCache = state?.scroll ?? new ContentCache<ScrollPlan | null>();
+    this.demoCache = state?.demo ?? new ContentCache<FrameSequence>();
+  }
   invalidateContext(): void {
-    this.clearContentCaches();
     this._pendingSend = null;
     this.owner = null;
     this.attempt = null;
