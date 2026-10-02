@@ -1,21 +1,65 @@
+export const WORKBENCH_SECTIONS = [
+  "candidates",
+  "tools",
+  "gatt",
+  "transactions",
+  "raw",
+  "evidence",
+  "orchestration",
+] as const;
+export type WorkbenchSection = (typeof WORKBENCH_SECTIONS)[number];
+export type WorkspaceContext = "live" | "offline";
+type WorkbenchRoute = {
+  readonly id:
+    `develop-${WorkbenchSection}` | `offline-develop-${WorkbenchSection}`;
+  readonly hash: string;
+  readonly context: WorkspaceContext;
+  readonly section: WorkbenchSection;
+};
 export type AppRoute =
   | { readonly id: "home"; readonly hash: "#/home" }
-  | { readonly id: "create"; readonly hash: "#/device/create" }
-  | { readonly id: "investigate"; readonly hash: "#/device/investigate" }
   | {
-      readonly id: "develop-transactions";
-      readonly hash: "#/device/develop/transactions";
+      readonly id: "create";
+      readonly hash: "#/device/create";
+      readonly context: "live";
     }
-  | { readonly id: "develop-gatt"; readonly hash: "#/device/develop/gatt" }
-  | { readonly id: "offline-report"; readonly hash: "#/offline/report" };
+  | {
+      readonly id: "investigate";
+      readonly hash: "#/device/investigate";
+      readonly context: "live";
+    }
+  | {
+      readonly id: "offline-report";
+      readonly hash: "#/offline/report";
+      readonly context: "offline";
+    }
+  | WorkbenchRoute;
 
+export function workbenchRoute(
+  context: WorkspaceContext,
+  section: WorkbenchSection,
+): WorkbenchRoute["id"] {
+  return context === "live"
+    ? `develop-${section}`
+    : `offline-develop-${section}`;
+}
 export const ROUTES: readonly AppRoute[] = Object.freeze([
   { id: "home", hash: "#/home" },
-  { id: "create", hash: "#/device/create" },
-  { id: "investigate", hash: "#/device/investigate" },
-  { id: "develop-transactions", hash: "#/device/develop/transactions" },
-  { id: "develop-gatt", hash: "#/device/develop/gatt" },
-  { id: "offline-report", hash: "#/offline/report" },
+  { id: "create", hash: "#/device/create", context: "live" },
+  { id: "investigate", hash: "#/device/investigate", context: "live" },
+  ...WORKBENCH_SECTIONS.map((section): WorkbenchRoute => ({
+    id: workbenchRoute("live", section),
+    hash: `#/device/develop/${section}`,
+    context: "live",
+    section,
+  })),
+  { id: "offline-report", hash: "#/offline/report", context: "offline" },
+  ...WORKBENCH_SECTIONS.map((section): WorkbenchRoute => ({
+    id: workbenchRoute("offline", section),
+    hash: `#/offline/report/develop/${section}`,
+    context: "offline",
+    section,
+  })),
 ]);
 
 export function parseRoute(hash: string): AppRoute {

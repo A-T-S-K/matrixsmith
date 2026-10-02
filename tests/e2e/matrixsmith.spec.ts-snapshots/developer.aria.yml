@@ -1,8 +1,8 @@
 - paragraph: PROTOCOL WORKBENCH
-- heading "Develop" [level=1]
+- heading "Protocol workbench" [level=1]
 - paragraph: Decoded activity first, exact bytes always available underneath.
 - text: Safety policy active Verified controls are available. Experimental, persistent, destructive, firmware, and arbitrary operations remain restricted.
-- navigation "Develop sections":
+- navigation "Protocol workbench sections":
     - button "Protocol candidates"
     - button "Family probes & tests"
     - button "GATT explorer"

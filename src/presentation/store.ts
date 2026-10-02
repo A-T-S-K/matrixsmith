@@ -126,6 +126,7 @@ export class PresentationStore {
     );
     this.navigationStore = new NavigationStore(
       {
+        workspaceStore: () => this.workspaceStore,
         projectionStore: () => this.projectionStore,
         snapshotStore: () => this.snapshotStore,
         reportStore: () => this.reportStore,
@@ -160,6 +161,9 @@ export class PresentationStore {
     this.navigationStore.initialize();
     this.initialize = this.connectionStore.initialize.bind(
       this.connectionStore,
+    );
+    this.setWorkbenchSection = this.navigationStore.setWorkbenchSection.bind(
+      this.navigationStore,
     );
     this.setView = this.navigationStore.setView.bind(this.navigationStore);
     this.goHome = this.navigationStore.goHome.bind(this.navigationStore);
@@ -349,6 +353,7 @@ export class PresentationStore {
     );
   }
   readonly initialize: ConnectionStore["initialize"];
+  readonly setWorkbenchSection: NavigationStore["setWorkbenchSection"];
   readonly setView: NavigationStore["setView"];
   readonly goHome: NavigationStore["goHome"];
   readonly clearMessage: NoticeStore["clearMessage"];

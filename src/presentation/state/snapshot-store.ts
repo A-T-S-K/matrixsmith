@@ -39,7 +39,10 @@ interface Ports {
     | "getReportError"
     | "getReportPreviewFailed"
   >;
-  navigationStore(): Pick<NavigationStore, "getPage" | "getView">;
+  navigationStore(): Pick<
+    NavigationStore,
+    "getPage" | "getView" | "getWorkbenchSection" | "getMissingContext"
+  >;
   noticeStore(): Pick<NoticeStore, "getBusy" | "getError" | "getInfo">;
   connectionStore(): Pick<
     ConnectionStore,
@@ -159,6 +162,8 @@ export class SnapshotStore {
     this._snapshot = Object.freeze({
       page: this.ports.navigationStore().getPage(),
       view: this.ports.navigationStore().getView(),
+      workbenchSection: this.ports.navigationStore().getWorkbenchSection(),
+      missingContext: this.ports.navigationStore().getMissingContext(),
       connection: this.ports.workspaceStore().getTransport().state,
       source: session.source,
       liveConnected,

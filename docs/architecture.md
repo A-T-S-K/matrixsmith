@@ -79,3 +79,11 @@ packets, user messages, and free-form notes still require manual review.
 The report owner supervises generation, clipboard and download actions, retains
 valid prior previews separately from errors, and suppresses stale copy completion
 after workspace changes. Markdown controls do not change either named JSON mode.
+
+Workbench sections are projected by NavigationStore from typed hash routes.
+The seven sections have live `#/device/develop/<section>` and offline
+`#/offline/report/develop/<section>` routes. The existing transactions, GATT,
+and offline-report links retain their meaning. Section memory is keyed by the
+runtime identity; search and filters remain presentation state, outside URLs.
+Routes select views only. Missing session/report data presents a connect/reopen
+state; unknown routes return Home without creating transport authority.

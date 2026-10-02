@@ -1,3 +1,9 @@
+import {
+  workbenchRoute,
+  type WorkbenchSection,
+  type WorkspaceContext,
+} from "../app/routes";
+import type { WorkspaceStore } from "./workspace-store";
 import type { ProjectionStore } from "./projection-store";
 import type { HashRouter } from "./dependencies";
 import type { AppSnapshot, WorkspaceView } from "./types";
@@ -11,6 +17,7 @@ import type { GuidedController } from "./guided-controller";
 import type { PresentationEnvironment } from "../environment";
 
 interface Ports {
+  workspaceStore(): Pick<WorkspaceStore, "getController">;
   projectionStore(): Pick<ProjectionStore, "refreshHistory">;
   snapshotStore(): Pick<SnapshotStore, "_emit">;
   reportStore(): Pick<ReportStore, "setReportOpen">;
@@ -21,6 +28,11 @@ interface Ports {
   >;
 }
 export class NavigationStore {
+  private readonly sections = new WeakMap<
+    ReturnType<WorkspaceStore["getController"]>,
+    WorkbenchSection
+  >();
+  private missingContext: WorkspaceContext | null = null;
   private _page: AppSnapshot["page"] = "home";
   private _view: WorkspaceView = "control";
   private readonly _router: HashRouter | null;
@@ -85,15 +97,39 @@ export class NavigationStore {
   getPage() {
     return this._page;
   }
+  getWorkbenchSection(): WorkbenchSection {
+    return (
+      this.sections.get(this.ports.workspaceStore().getController()) ??
+      "transactions"
+    );
+  }
+  getMissingContext() {
+    return this.missingContext;
+  }
+  private context(): WorkspaceContext {
+    return this.ports.workspaceStore().getController().session.source ===
+      "imported"
+      ? "offline"
+      : "live";
+  }
+  setWorkbenchSection(section: WorkbenchSection): void {
+    this.sections.set(this.ports.workspaceStore().getController(), section);
+    this.setView("develop");
+  }
   setView(view: WorkspaceView): void {
+    this.missingContext = null;
     this._page = "workspace";
-    this._view = view;
+    this._view =
+      this.context() === "offline" && view === "control" ? "diagnose" : view;
+    view = this._view;
     this._router?.navigate(
-      view === "control"
-        ? "create"
-        : view === "diagnose"
-          ? "investigate"
-          : "develop-transactions",
+      view === "develop"
+        ? workbenchRoute(this.context(), this.getWorkbenchSection())
+        : this.context() === "offline"
+          ? "offline-report"
+          : view === "control"
+            ? "create"
+            : "investigate",
     );
     this.ports.snapshotStore()._emit();
   }
@@ -114,28 +150,25 @@ export class NavigationStore {
     if (!this._closingOverlayFromHistory) this.environment.back();
   }
   _applyRoute(route: AppRoute): void {
-    switch (route.id) {
-      case "home":
-        this.ports.projectionStore().refreshHistory();
-        this._page = "home";
-        return;
-      case "create":
-        this._page = "workspace";
-        this._view = "control";
-        return;
-      case "investigate":
-        this._page = "workspace";
-        this._view = "diagnose";
-        return;
-      case "develop-transactions":
-      case "develop-gatt":
-        this._page = "workspace";
-        this._view = "develop";
-        return;
-      case "offline-report":
-        this._page = "workspace";
-        this._view = "diagnose";
-        return;
+    this.missingContext = null;
+    if (route.id === "home") {
+      this.ports.projectionStore().refreshHistory();
+      this._page = "home";
+      return;
     }
+    this._page = "workspace";
+    if (
+      route.context !== this.context() ||
+      !this.ports.workspaceStore().getController().session.fingerprint
+    )
+      this.missingContext = route.context;
+    if ("section" in route) {
+      this._view = "develop";
+      if (!this.missingContext)
+        this.sections.set(
+          this.ports.workspaceStore().getController(),
+          route.section,
+        );
+    } else this._view = route.id === "create" ? "control" : "diagnose";
   }
 }

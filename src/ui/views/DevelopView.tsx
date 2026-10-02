@@ -1,5 +1,5 @@
 import type { JSX } from "preact";
-import { useState } from "preact/hooks";
+import type { WorkbenchSection } from "../../presentation/app/routes";
 import type { AppSnapshot, PresentationStore } from "../../presentation/store";
 import { StatusBadge } from "../components/StatusBadge";
 import {
@@ -21,13 +21,13 @@ export function DevelopView({
   readonly snapshot: AppSnapshot;
   readonly store: PresentationStore;
 }): JSX.Element {
-  const [section, setSection] = useState("transactions");
+  const section = snapshot.workbenchSection;
   return (
     <section class="view develop-view">
       <div class="view-heading">
         <div>
           <p class="eyebrow">PROTOCOL WORKBENCH</p>
-          <h1>Develop</h1>
+          <h1>Protocol workbench</h1>
           <p>
             Decoded activity first, exact bytes always available underneath.
           </p>
@@ -40,20 +40,23 @@ export function DevelopView({
           </span>
         </div>
       </div>
-      <nav class="subnav" aria-label="Develop sections">
-        {[
-          ["candidates", "Protocol candidates"],
-          ["tools", "Family probes & tests"],
-          ["gatt", "GATT explorer"],
-          ["transactions", "Transactions"],
-          ["raw", "Raw events"],
-          ["evidence", "Evidence / observations"],
-          ["orchestration", "Guided orchestration"],
-        ].map(([id, label]) => (
+      <nav class="subnav" aria-label="Protocol workbench sections">
+        {(
+          [
+            ["candidates", "Protocol candidates"],
+            ["tools", "Family probes & tests"],
+            ["gatt", "GATT explorer"],
+            ["transactions", "Transactions"],
+            ["raw", "Raw events"],
+            ["evidence", "Evidence / observations"],
+            ["orchestration", "Guided orchestration"],
+          ] satisfies readonly [WorkbenchSection, string][]
+        ).map(([id, label]) => (
           <button
             key={id}
             class={section === id ? "active" : ""}
-            onClick={() => setSection(id!)}
+            aria-current={section === id ? "page" : undefined}
+            onClick={() => store.setWorkbenchSection(id)}
           >
             {label}
           </button>

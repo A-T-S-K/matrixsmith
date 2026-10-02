@@ -33,6 +33,22 @@ export function DeviceWorkspace({
   readonly snapshot: AppSnapshot;
   readonly store: PresentationStore;
 }): JSX.Element {
+  if (snapshot.missingContext)
+    return (
+      <main class="workspace">
+        <h1 tabIndex={-1}>
+          {snapshot.missingContext === "offline"
+            ? "Reopen diagnostic report"
+            : "Connect a display"}
+        </h1>
+        <p>
+          {snapshot.missingContext === "offline"
+            ? "This link needs a report opened in this browser session. Reopen the JSON report from Home."
+            : "This link selects a live view. Connect a display explicitly from Home."}
+        </p>
+        <button onClick={() => store.goHome()}>Go to Home</button>
+      </main>
+    );
   return (
     <main class="workspace">
       <DeviceHeader snapshot={snapshot} store={store} />

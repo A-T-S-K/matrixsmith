@@ -66,6 +66,8 @@ export interface DriverCandidateView {
 export interface AppSnapshot {
   readonly page: "home" | "workspace";
   readonly view: WorkspaceView;
+  readonly workbenchSection: import("../app/routes").WorkbenchSection;
+  readonly missingContext: import("../app/routes").WorkspaceContext | null;
   readonly connection: ConnectionState;
   readonly source: string;
   readonly liveConnected: boolean;
