@@ -1,3 +1,4 @@
+import { COOLLEDX_ENDPOINT } from "../../src/drivers/coolledx/gatt";
 import { describe, expect, it } from "vitest";
 import { NotificationRouter } from "../../src/app/notifications";
 import {
@@ -7,6 +8,8 @@ import {
 
 const expected = {
   type: "notification",
+  endpoints: [COOLLEDX_ENDPOINT],
+  dispatchPacketIndex: 0,
   opcode: 0x1f,
   kind: "device-info",
   required: true,

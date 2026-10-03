@@ -110,6 +110,13 @@ function queryPlan(
     ],
     responseExpectation: {
       type: "notification",
+      endpoints: [
+        {
+          serviceUuid: SYNTHETIC_SERVICE,
+          characteristicUuid: SYNTHETIC_NOTIFY,
+        },
+      ],
+      dispatchPacketIndex: 0,
       required: true,
       timeoutMs: 30,
       opcode: 0x91,

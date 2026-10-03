@@ -216,6 +216,8 @@ describe("TransmissionExecutor", () => {
           validation: "verified",
           responseExpectation: {
             type: "notification",
+            endpoints: [COOLLEDX_ENDPOINT],
+            dispatchPacketIndex: 0,
             opcode: 0x04,
             kind: "command-echo",
             required: true,
@@ -263,6 +265,8 @@ it.each(["timeout", "reset", "write-failure", "indeterminate"])(
         ...base.plan,
         responseExpectation: {
           type: "notification",
+          endpoints: [COOLLEDX_ENDPOINT],
+          dispatchPacketIndex: 0,
           opcode: 4,
           kind: "command-echo",
           required: true,

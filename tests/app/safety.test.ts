@@ -154,6 +154,74 @@ describe("SafetyPolicy", () => {
       /changed after its digest/i,
     );
   });
+  const responseContract = {
+    type: "notification" as const,
+    endpoints: [{ ...COOLLEDX_ENDPOINT }],
+    dispatchPacketIndex: 0,
+    required: true,
+    timeoutMs: 50,
+    opcode: 4,
+    kind: "command-echo",
+    fulfillsOperation: false,
+  };
+  it.each([
+    { type: "none" },
+    { required: false },
+    { timeoutMs: 51 },
+    { opcode: 5 },
+    { kind: "device-info" },
+    { fulfillsOperation: true },
+    { dispatchPacketIndex: 1 },
+    { endpoints: [{ ...COOLLEDX_ENDPOINT, characteristicUuid: "1234" }] },
+  ])("invalidates a changed response contract: %j", (change) => {
+    const prepared = plan({ responseExpectation: responseContract });
+    Object.assign(prepared.responseExpectation, change);
+    expect(policy.authorize(prepared, context()).reasons.join(" ")).toMatch(
+      /changed after its digest/i,
+    );
+  });
+  it.each([
+    { driverId: "another-driver" },
+    { profileId: "another-profile" },
+    { evidenceRefs: ["another-source"] },
+  ])("invalidates changed contract identity/provenance: %j", (change) => {
+    const prepared = plan();
+    Object.assign(prepared, change);
+    expect(policy.authorize(prepared, context()).reasons.join(" ")).toMatch(
+      /changed after its digest/i,
+    );
+  });
+  it("owns nested response endpoints at preparation and authorization", () => {
+    const original = {
+      ...responseContract,
+      endpoints: [{ ...COOLLEDX_ENDPOINT }],
+    };
+    const evidenceRefs = ["reviewed-source"];
+    const prepared = plan({ responseExpectation: original, evidenceRefs });
+    const decision = policy.authorize(prepared, context());
+    expect(decision.allowed).toBe(true);
+    original.endpoints[0]!.characteristicUuid = "1234";
+    evidenceRefs[0] = "mutated-source";
+    expect(prepared.responseExpectation).toEqual(responseContract);
+    expect(prepared.evidenceRefs).toEqual(["reviewed-source"]);
+    if (prepared.responseExpectation.type !== "notification") throw new Error();
+    Object.assign(prepared.responseExpectation.endpoints[0]!, {
+      characteristicUuid: "5678",
+    });
+    expect(decision.authorized!.plan.responseExpectation).toEqual(
+      responseContract,
+    );
+    expect(policy.authorize(prepared, context()).allowed).toBe(false);
+  });
+  it("excludes random plan IDs and derived hex from deterministic integrity", () => {
+    const baseline = plan();
+    const equivalent = plan({
+      ...baseline,
+      id: "another-bookkeeping-id",
+      packets: [{ ...baseline.packets[0]!, hex: "regenerated from bytes" }],
+    });
+    expect(equivalent.digest).toBe(baseline.digest);
+  });
   it("binds authorization to the connection generation and browser device", () => {
     const prepared = plan();
     expect(

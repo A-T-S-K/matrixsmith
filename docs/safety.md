@@ -87,3 +87,31 @@ the attempt and retains transaction evidence without inventing panel replacement
 Persistent tests retain exact-plan consequence confirmation and panel uncertainty
 on partial writes. All central source, confidence, target/digest, endpoint, risk,
 validation and intent checks apply to both paths. No automatic retries are added.
+
+## Private prepared-plan integrity
+
+Preparation stays synchronous and target-bound. Its digest protects driver and
+profile IDs, evidence references, operation (including nested content), safety
+and execution intent, purpose, packet order/indexes, normalized TX endpoints,
+write modes, exact bytes, pacing, write deadline, recovery notes and metadata.
+These fields govern execution, interpretation, or the consequence reviewed for
+approval. The complete response contract is protected too: type, required flag,
+response deadline, opcode/kind, operation fulfillment, reviewed RX endpoints and
+explicit dispatch packet index. Current response-bearing plans dispatch one
+packet (index zero); stored-content multi-packet plans expect no response. Future
+multi-packet queries must declare the request packet that opens correlation.
+
+Plan IDs are bookkeeping and deliberately excluded so identical contracts compare
+deterministically. Packet hex is derived from authoritative bytes during copying;
+it is validated separately. The digest itself, authorization time and policy
+receipt are bookkeeping. Target binding is included; random connection IDs are
+necessary ownership boundaries, not portable protocol identity. Recovery notes,
+metadata and evidence references are conservative approval/provenance inputs.
+Preparation and authorization independently copy nested operations, endpoints,
+response contracts, buffers and provenance arrays.
+
+This is the private prepared-plan contract, not a support-package format. Existing
+built-in driver/profile IDs and real source references are bound here. When real
+loaded definition and interpretation-engine identities exist, they must join this
+identity/provenance input before approval. No definition hash or signing identity
+is invented today.

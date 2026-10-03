@@ -1,4 +1,4 @@
-import type { GattEndpoint } from "./device";
+import { normalizeUuid, type GattEndpoint } from "./device";
 import type { ValidationStatus } from "./evidence";
 import type { MatrixOperation } from "./operations";
 import type { Persistence, RiskClass } from "./risk";
@@ -9,6 +9,10 @@ export type ResponseExpectation =
   | { readonly type: "none" }
   | {
       readonly type: "notification";
+      /** Reviewed RX endpoints; these need not be the write endpoint. */
+      readonly endpoints: readonly GattEndpoint[];
+      /** Open correlation immediately before dispatching this packet index. */
+      readonly dispatchPacketIndex: number;
       readonly required: boolean;
       readonly timeoutMs: number;
       readonly opcode?: number;
@@ -125,6 +129,18 @@ export function transmissionDigest(
 ): string {
   const canonical = canonicalJson({
     targetBinding,
+    identity: { driverId: plan.driverId, profileId: plan.profileId },
+    evidenceRefs: plan.evidenceRefs,
+    responseExpectation:
+      plan.responseExpectation.type === "none"
+        ? plan.responseExpectation
+        : {
+            ...plan.responseExpectation,
+            endpoints: plan.responseExpectation.endpoints.map((endpoint) => ({
+              serviceUuid: normalizeUuid(endpoint.serviceUuid),
+              characteristicUuid: normalizeUuid(endpoint.characteristicUuid),
+            })),
+          },
     safety: {
       risk: plan.risk,
       persistence: plan.persistence,
@@ -135,8 +151,8 @@ export function transmissionDigest(
     packets: plan.packets.map((packet) => ({
       index: packet.index,
       endpoint: {
-        serviceUuid: packet.endpoint.serviceUuid.toLowerCase(),
-        characteristicUuid: packet.endpoint.characteristicUuid.toLowerCase(),
+        serviceUuid: normalizeUuid(packet.endpoint.serviceUuid),
+        characteristicUuid: normalizeUuid(packet.endpoint.characteristicUuid),
       },
       writeMode: packet.writeMode,
       bytes: [...packet.bytes],
@@ -166,7 +182,7 @@ function copyPlan(plan: TransmissionPlan): TransmissionPlan {
         hex: packetHex(bytes),
       };
     }),
-    responseExpectation: { ...plan.responseExpectation },
+    responseExpectation: structuredCloneValue(plan.responseExpectation),
     recoveryNotes: [...plan.recoveryNotes],
     metadata: { ...plan.metadata },
   };

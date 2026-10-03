@@ -190,6 +190,8 @@ function coolLedUxFamilyProbe(
         ]),
         responseExpectation: {
           type: "notification" as const,
+          endpoints: [COOLLED_ENDPOINT],
+          dispatchPacketIndex: 0,
           kind: "device-info",
           opcode: COOLLEDUX_OPCODES.deviceInfo,
           required: true,
@@ -406,6 +408,8 @@ export function createCoolLedUxPlan(
       execution = "live";
       responseExpectation = {
         type: "notification",
+        endpoints: [COOLLED_ENDPOINT],
+        dispatchPacketIndex: 0,
         kind: "device-info",
         opcode: COOLLEDUX_OPCODES.deviceInfo,
         required: true,
@@ -419,6 +423,8 @@ export function createCoolLedUxPlan(
       execution = "live";
       responseExpectation = {
         type: "notification",
+        endpoints: [COOLLED_ENDPOINT],
+        dispatchPacketIndex: 0,
         kind: "command-echo",
         opcode: COOLLEDUX_OPCODES.brightness,
         required: true,
