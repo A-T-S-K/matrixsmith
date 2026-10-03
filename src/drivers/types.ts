@@ -95,14 +95,39 @@ export interface ProbeResult {
 }
 
 export type IdentificationResult =
-  | { readonly matched: false; readonly reason: string }
+  | {
+      readonly matched: false;
+      readonly reason: string;
+      /** Only an authored protocol-negative meaning may contradict this scope. */
+      readonly rejection?: {
+        readonly driverId: string;
+        readonly configurationId?: string;
+      };
+    }
   | {
       readonly matched: true;
       readonly confidence: "strong" | "exact";
       readonly summary: string;
     };
 
+/** Reviewed application contribution. Parameters are fixed in this first slice. */
+export interface DiscoveryMetadata {
+  readonly available: boolean;
+  readonly question: string;
+  readonly distinguishes: readonly string[];
+  readonly prerequisites: readonly string[];
+  readonly parameters: "fixed";
+  readonly consequence: string;
+  readonly cost: {
+    readonly packets: number;
+    readonly bytes: number;
+    readonly elapsedMs: number;
+  };
+  readonly stopping: "identity" | "continue";
+}
+
 export interface FamilyProbeDefinition {
+  readonly discovery?: DiscoveryMetadata;
   readonly id: string;
   readonly label: string;
   readonly safety: OperationSafety;

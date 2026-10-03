@@ -11,11 +11,7 @@ import {
 import { packetHex } from "../../core/transmission";
 import type { TransactionSource } from "../../diagnostics/transactions";
 import { transactionId } from "../../diagnostics/transactions";
-import {
-  candidateEndpoints,
-  decodePriority,
-  duration,
-} from "./runtime-support";
+import { candidateEndpoints, duration } from "./runtime-support";
 
 import type { ManualObservation } from "../../core/evidence";
 import { type ImportedEvidenceSummary } from "../../diagnostics/bundle";
@@ -238,14 +234,23 @@ export class ProtocolEvidenceService {
         });
         if (decoded) candidates.push(decoded);
       }
-    const decoded =
-      candidates.sort((a, b) => decodePriority(b) - decodePriority(a))[0] ??
-      null;
+    // A malformed envelope cannot outrank a valid interpretation. Contradictory
+    // valid decoders remain ambiguous, regardless of global priority or order.
+    const valid = candidates.filter((candidate) => !candidate.envelopeError);
+    const distinct = new Map(
+      valid.map((candidate) => [JSON.stringify(candidate), candidate]),
+    );
+    const interpretationAmbiguous = distinct.size > 1;
+    const decoded = interpretationAmbiguous
+      ? null
+      : ([...distinct.values()][0] ??
+        (candidates.length === 1 ? candidates[0]! : null));
     const incoming = {
       timestamp: recordedAt ?? new Date().toISOString(),
       raw,
       rawHex: packetHex(raw),
       decoded,
+      interpretationAmbiguous,
       ...(endpoint ? { endpoint: { ...endpoint } } : {}),
     };
     const record =

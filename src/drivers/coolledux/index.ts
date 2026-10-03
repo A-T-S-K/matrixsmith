@@ -119,6 +119,18 @@ export const coolLedUxDriver: MatrixDriver = {
     {
       id: "get-device-info",
       label: "Identify CoolLEDUX with device info",
+      discovery: {
+        available: true,
+        question:
+          "Does this display return structured CoolLEDUX device information?",
+        distinguishes: ["coolledux"],
+        prerequisites: [],
+        parameters: "fixed",
+        consequence:
+          "Reads device information without replacing displayed content.",
+        cost: { packets: 1, bytes: 8, elapsedMs: 6500 },
+        stopping: "identity",
+      },
       risk: "read-only",
       persistence: "none",
       validation: "verified",
@@ -166,6 +178,18 @@ function coolLedUxFamilyProbe(
   return {
     id: "get-device-info",
     label: "Identify CoolLEDUX with device info",
+    discovery: {
+      available: true,
+      question:
+        "Does this display return structured CoolLEDUX device information?",
+      distinguishes: ["coolledux"],
+      prerequisites: [],
+      parameters: "fixed",
+      consequence:
+        "Reads device information without replacing displayed content.",
+      cost: { packets: 1, bytes: 8, elapsedMs: 6500 },
+      stopping: "identity",
+    },
     safety: { hazard: "routine", persistence: "none", assurance: "verified" },
     establishesClaims: ["protocol.coolledux", "device-info.query"],
     plan: () => {

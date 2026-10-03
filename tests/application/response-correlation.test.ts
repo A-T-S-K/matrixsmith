@@ -292,26 +292,19 @@ describe("live response evidence", () => {
       ]);
       expect(transport.state).toBe("connected");
       transport.notificationOnWriteEndpoint = rx;
-      const ambiguous = await runtime.probe("test-lumen", "lumen-info");
-      expect(ambiguous).toMatchObject({
-        responseAmbiguous: true,
-        responseTimedOut: false,
-        response: null,
-        identification: { matched: false },
-      });
+      await expect(
+        runtime.probe("test-lumen", "lumen-info"),
+      ).rejects.toMatchObject({ kind: "ambiguous" });
       expect(runtime.session.protocolResolution).toBeNull();
       expect(runtime.session.latestDeviceInfoRecord).toBeNull();
       expect(runtime.geometryProposal()).toBeNull();
-      expect(runtime.transactions.at(-1)!.findings.join(" ")).toMatch(
-        /ambiguous/,
-      );
       expect(
         runtime.transactions
           .at(-1)!
           .packets.some((packet) => packet.relation === "matched-response"),
       ).toBe(false);
-      expect(runtime.session.notifications).toHaveLength(2);
-      expect(transport.writeAttempts).toHaveLength(2);
+      expect(runtime.session.notifications).toHaveLength(1);
+      expect(transport.writeAttempts).toHaveLength(1);
       expect(vi.getTimerCount()).toBe(0);
       await runtime.disconnect();
       await runtime.connect();

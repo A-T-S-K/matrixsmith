@@ -1,3 +1,10 @@
+import { normalizeUuid } from "../../core/device";
+import { discoveryCatalog, nextDiscoveryStep } from "./discovery-planner";
+import {
+  machineOutcome,
+  ProbeStageError,
+  type MachineOutcomeKind,
+} from "./discovery-outcome";
 import { RESPONSE_AMBIGUITY_MESSAGE } from "../../app/notifications";
 import { SHARED_OPERATIONS } from "../../domain/device/assessment";
 import { TransmissionAuthorization } from "../../app/transmission-authorization";
@@ -30,6 +37,8 @@ import type { ProtocolEvidenceService } from "./protocol-evidence-service";
 import type { InvestigationService } from "./investigation-service";
 import type { IdentificationService } from "./identification-service";
 export type FamilyProbeExecution = ExecutionResult & {
+  readonly transactionId: string;
+  readonly outcome: MachineOutcomeKind;
   readonly identification: import("../../drivers/types").IdentificationResult & {
     readonly driverId: string;
     readonly probeId: string;
@@ -453,6 +462,12 @@ export class TransmissionService {
   async probe(
     driverId?: string,
     probeId?: string,
+    options: {
+      readonly automatic?: boolean;
+      readonly beforePlan?: () => void;
+      readonly reserve?: (plan: PreparedTransmission) => void;
+      readonly canAdopt?: () => boolean;
+    } = {},
   ): Promise<FamilyProbeExecution> {
     const session = this.ports.connection().getSession();
     if (session.source !== "live")
@@ -467,6 +482,28 @@ export class TransmissionService {
       throw new Error(
         "The requested probe driver is not available for this connection.",
       );
+    if (!driverId || !probeId) {
+      const steps = discoveryCatalog(
+        this.ports.identification().getRegistry(),
+        {
+          fingerprint,
+          endpoints: candidateEndpoints(fingerprint),
+          source: session.source,
+        },
+      );
+      const selected = nextDiscoveryStep(
+        steps.filter((step) => !driverId || step.driverId === driverId),
+        new Set(),
+        new Set(steps.map((step) => step.driverId)),
+      );
+      if (!selected)
+        throw new ProbeStageError(
+          "blocked",
+          "No eligible registered discovery check. Open Protocol workbench or review a profile.",
+        );
+      driverId = selected.driverId;
+      probeId = selected.probeId;
+    }
     const driver = driverId
       ? this.ports
           .identification()
@@ -493,7 +530,7 @@ export class TransmissionService {
       source: session.source,
     } as const;
     const familyProbes = driver.familyProbes?.(candidateContext) ?? [];
-    const selectedProbeId = probeId ?? familyProbes[0]?.id;
+    const selectedProbeId = probeId;
     const familyProbe = familyProbes.find(({ id }) => id === selectedProbeId);
     const profileContext = profile
       ? ({ profile, fingerprint, source: session.source } as const)
@@ -505,6 +542,34 @@ export class TransmissionService {
       throw new Error(
         `Probe ${selectedProbeId ?? "(none)"} is unavailable for this device candidate.`,
       );
+    const authoredTools =
+      driver
+        .diagnosticTools?.()
+        .filter(
+          (tool) =>
+            tool.workflow === "family-identification" &&
+            tool.probeId === selectedProbeId,
+        ) ?? [];
+    if (
+      authoredTools.some((tool) => !tool.available) ||
+      familyProbe?.discovery?.available === false
+    )
+      throw new ProbeStageError(
+        "blocked",
+        "The authored identification check is unavailable.",
+      );
+    if (
+      options.automatic &&
+      (!familyProbe?.discovery ||
+        familyProbe.safety.hazard !== "routine" ||
+        familyProbe.safety.assurance !== "verified" ||
+        familyProbe.safety.persistence !== "none")
+    )
+      throw new ProbeStageError(
+        "blocked",
+        "This check needs experimental review; interview permission does not unlock it.",
+      );
+    options.beforePlan?.();
     const rawPlan = familyProbe
       ? familyProbe.plan(candidateContext)
       : profileProbe!.plan(profileContext!);
@@ -529,17 +594,72 @@ export class TransmissionService {
         probeId: selectedProbeId ?? "unknown",
         planId: plan.id,
       });
-    const decision = this.evaluatePolicy(plan);
+    if (
+      options.automatic &&
+      (plan.operation.type !== "GetDeviceInfo" ||
+        plan.purpose !== "probe" ||
+        plan.risk !== "read-only" ||
+        plan.persistence !== "none" ||
+        plan.validation !== "verified")
+    )
+      throw new ProbeStageError(
+        "blocked",
+        "Machine discovery permits only reviewed read-only information probes.",
+      );
+    if (
+      !this.ports
+        .protocolEvidence()
+        .getNotificationRouter()
+        .canSchedule(plan.responseExpectation)
+    )
+      throw new ProbeStageError("ambiguous", RESPONSE_AMBIGUITY_MESSAGE);
+    const characteristic = (
+      endpoint: import("../../core/device").GattEndpoint,
+    ) =>
+      fingerprint.services
+        .find(
+          (service) =>
+            normalizeUuid(service.uuid) === normalizeUuid(endpoint.serviceUuid),
+        )
+        ?.characteristics.find(
+          (item) =>
+            normalizeUuid(item.uuid) ===
+            normalizeUuid(endpoint.characteristicUuid),
+        );
+    if (
+      plan.packets.some((packet) => {
+        const properties = characteristic(packet.endpoint)?.properties;
+        return packet.writeMode === "without-response"
+          ? !properties?.writeWithoutResponse
+          : !properties?.write;
+      }) ||
+      (plan.responseExpectation.type === "notification" &&
+        plan.responseExpectation.endpoints.some((endpoint) => {
+          const properties = characteristic(endpoint)?.properties;
+          return !properties?.notify && !properties?.indicate;
+        }))
+    )
+      throw new ProbeStageError(
+        "access",
+        "Required command or response endpoint access is missing. Inspect accessible services before retrying.",
+      );
+    options.reserve?.(plan);
+    let decision = this.evaluatePolicy(plan);
     if (!decision.allowed || !decision.authorized)
-      throw new Error(decision.reasons.join(" "));
-    await this.ports.connection().enableDriverNotifications(driver);
+      throw new ProbeStageError("blocked", decision.reasons.join(" "));
+    try {
+      await this.ports.connection().enableDriverNotifications(driver);
+    } catch (error) {
+      throw new ProbeStageError("access", errorMessage(error));
+    }
     if (
       connectionId !== this.ports.connection().getTransport().connectionId ||
       session.fingerprint !== fingerprint ||
       session.selection !== selection ||
       session.geometryRevision !== geometryRevision
     )
-      throw new Error(
+      throw new ProbeStageError(
+        "retired",
         "The probe belongs to a retired connection or changed target.",
       );
     const startedAt = new Date().toISOString();
@@ -547,6 +667,10 @@ export class TransmissionService {
       .protocolEvidence()
       .getNotificationRouter().receiveSequence;
     const sessionSource = session.source;
+    options.beforePlan?.();
+    decision = this.evaluatePolicy(plan);
+    if (!decision.allowed || !decision.authorized)
+      throw new ProbeStageError("blocked", decision.reasons.join(" "));
     let result: ExecutionResult;
     let transaction: import("../../diagnostics/transactions").ProtocolTransaction;
     try {
@@ -567,7 +691,7 @@ export class TransmissionService {
           sessionSource,
         );
     } catch (error) {
-      this.ports
+      const failedTransaction = this.ports
         .protocolEvidence()
         ._recordTransaction(
           decision.authorized.plan,
@@ -582,7 +706,14 @@ export class TransmissionService {
           errorMessage(error),
           sessionSource,
         );
-      throw error;
+      throw new ProbeStageError(
+        connectionId !== this.ports.connection().getTransport().connectionId ||
+          session.fingerprint !== fingerprint
+          ? "retired"
+          : "transport",
+        errorMessage(error),
+        failedTransaction.id,
+      );
     }
     const interpretation = result.responseAmbiguous
       ? {
@@ -606,10 +737,24 @@ export class TransmissionService {
       session.selection !== selection ||
       session.geometryRevision !== geometryRevision
     )
-      throw new Error(
+      throw new ProbeStageError(
+        "retired",
         "The probe belongs to a retired connection or changed target.",
+        transaction.id,
       );
-    if (interpretation?.matched) {
+    const normalized: import("../../drivers/types").IdentificationResult =
+      interpretation?.matched
+        ? {
+            matched: true,
+            confidence: interpretation.confidence,
+            summary: interpretation.summary,
+          }
+        : interpretation && "reason" in interpretation
+          ? interpretation
+          : { matched: false, reason: "Unmapped interpretation." };
+    const outcome = machineOutcome(result, normalized);
+    const identified = outcome === "identified" && normalized.matched;
+    if (identified && (options.canAdopt?.() ?? true)) {
       session.recordCorrelatedResponse(result.responseRecord);
       this.ports
         .identification()
@@ -617,7 +762,7 @@ export class TransmissionService {
           driver,
           profile,
           selectedProbeId ?? familyProbe?.id ?? profileProbe!.id,
-          interpretation.summary,
+          normalized.matched ? normalized.summary : "",
           "live-probe",
         );
       if (transaction && !result.responseTimedOut && result.response)
@@ -635,8 +780,10 @@ export class TransmissionService {
         });
     return {
       ...result,
+      transactionId: transaction.id,
+      outcome,
       identification: {
-        ...(interpretation?.matched
+        ...(identified && interpretation?.matched
           ? {
               matched: true as const,
               confidence: interpretation.confidence,
@@ -644,6 +791,9 @@ export class TransmissionService {
             }
           : {
               matched: false as const,
+              ...(interpretation && "rejection" in interpretation
+                ? { rejection: interpretation.rejection }
+                : {}),
               reason:
                 interpretation && "reason" in interpretation
                   ? interpretation.reason

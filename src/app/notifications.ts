@@ -7,6 +7,7 @@ export interface NotificationRecord {
   readonly raw: Uint8Array;
   readonly rawHex: string;
   readonly decoded: DecodedNotification | null;
+  readonly interpretationAmbiguous?: boolean;
   readonly endpoint?: GattEndpoint;
   /** Internal live context; never imported/exported as correlation authority. */
   readonly connectionGeneration?: number;
@@ -84,6 +85,13 @@ export class NotificationRouter {
     return owned;
   }
 
+  canSchedule(expectation: ResponseExpectation): boolean {
+    return (
+      expectation.type === "none" ||
+      !this.#expired.some((expired) => signaturesOverlap(expired, expectation))
+    );
+  }
+
   arm(
     expectation: NotificationExpectation,
     matches: Waiter["matches"],
@@ -150,7 +158,12 @@ export class NotificationRouter {
 
   publish(record: NotificationRecord): void {
     const owner = this.#ownership.get(record);
-    if (!owner || !sameContext(this.#context, owner) || !record.decoded) return;
+    if (
+      !owner ||
+      !sameContext(this.#context, owner) ||
+      (!record.decoded && !record.interpretationAmbiguous)
+    )
+      return;
     for (const waiter of this.#waiters) {
       if (
         !sameContext(owner, waiter.context) ||
@@ -162,7 +175,20 @@ export class NotificationRouter {
         )
       )
         continue;
-      if (!waiter.matches(record.decoded, waiter.expectation)) continue;
+      if (record.interpretationAmbiguous) {
+        this.#settle(
+          waiter,
+          new ResponseAmbiguityError(
+            "Multiple valid decoder interpretations remain; identity was not established.",
+          ),
+        );
+        continue;
+      }
+      if (
+        !record.decoded ||
+        !waiter.matches(record.decoded, waiter.expectation)
+      )
+        continue;
       clearTimeout(waiter.timer);
       this.#waiters.delete(waiter);
       waiter.resolve(record);
