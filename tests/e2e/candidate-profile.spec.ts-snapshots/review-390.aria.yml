@@ -1,0 +1,22 @@
+- region "Candidate profile":
+    - heading "Candidate profile" [level=2]
+    - button "Create candidate profile"
+    - paragraph: local-candidate:still-display · revision 1 · coolledux-reviewed-v1
+    - paragraph: "32×16 · Locally verified on one target · recommended route: animation-single-frame."
+    - paragraph: "Fixed RGB444, 16-row stride, eight-column tiles. Raw channels and actual encoder verification are separate checks."
+    - paragraph: "Manufacturer, firmware, model and chip: unknown. Company condition: unknown."
+    - paragraph: "Observed Bluetooth matching name: “generic led panel”. This may be personalized or identifying. Review the public label and exact matching name before sharing. Shared FFF0/FFF1 and name establish neither family nor physical-unit identity."
+    - text: Public label
+    - textbox "Public label": Owner reviewed still display
+    - text: Bluetooth matching name
+    - textbox "Bluetooth matching name": generic led panel
+    - text: Local profile ID
+    - textbox "Local profile ID": still-display
+    - button "Apply reviewed labels and matching"
+    - paragraph: Session-only loading. Reload disconnected, identify family live, compare matching and geometry, then repeat bootstrap → raw channels → encoder. Fresh evidence, experimental permission and exact persistent-send confirmation are required for text/images.
+    - paragraph: Separate shareable V3 evidence is available, with specimen identifiers projected out and historical test relationships preserved. Full local archives remain a separate report option. This profile retains its reviewed matching name.
+    - group: Limitations and sources
+    - button "Download candidate profile"
+    - button "Copy candidate profile"
+    - button "Download shareable candidate evidence"
+    - paragraph: Export failures preserve this review. Retry Copy or Download after resolving the error.

@@ -1,0 +1,19 @@
+- region "Local profile review":
+    - heading "Local profile review" [level=2]
+    - heading "Candidate still display" [level=3]
+    - paragraph: local-candidate:still-display · revision 1 · document v2
+    - paragraph: "Implementation: not-installed"
+    - paragraph: "Matches the exact name “generic led panel”, service 0000fff0-0000-1000-8000-00805f9b34fb, characteristic 0000fff1-0000-1000-8000-00805f9b34fb, with READ + NOTIFY + WRITE WITHOUT RESPONSE."
+    - paragraph: "Dimensions: 16×16. Company information is unknown; no company condition applies. Conflicting geometry or required properties withdraw matching. Missing information remains unknown."
+    - paragraph: "Brightness parameters: 0–255. Template: coolledux-source-v1."
+    - paragraph: "Candidate only · incomplete. Recommended route: unestablished. Fixed RGB444 / 16-row / eight-column codec assumptions."
+    - paragraph: Name and shared GATT describe matching conditions; they establish neither family identity nor physical-unit equivalence. Manufacturer, firmware, model and chip remain unknown.
+    - paragraph: "Reload requires live family identification and all three still checks: bootstrap, raw channels, then encoder. Historical observations and route preference grant no content permission. Loading lasts for this browser session."
+    - status: Evidence attachment is missing. The candidate remains inspectable; no historical evidence has been adopted.
+    - button "Inspect candidate evidence attachment"
+    - group: Provenance and limitations
+    - alert:
+        - paragraph: "Incompatible with the installed definitions:"
+        - list:
+            - listitem: Implementation not-installed is not installed.
+    - button "Load reviewed profile" [disabled]

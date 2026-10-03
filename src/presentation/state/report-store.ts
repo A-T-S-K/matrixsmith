@@ -131,10 +131,26 @@ export class ReportStore {
     content: () => { filename: string; text: string },
     copy: boolean,
     current: () => boolean,
+    kind: "profile" | "bundle" = "profile",
   ): Promise<void> {
     await this.action(
-      () => {
+      async () => {
         const value = content();
+        // Validate the exact formatted bytes the owner will reload, not just
+        // the smaller in-memory document. Keep failures inside supervision.
+        if (kind === "profile") {
+          const { parseProfileDocument } =
+            await import("../../profiles/document");
+          parseProfileDocument(value.text);
+        } else {
+          const { parseDiagnosticBundle } =
+            await import("../../diagnostics/bundle");
+          parseDiagnosticBundle(value.text);
+        }
+        if (!current())
+          throw new Error(
+            "Display context changed before export. Review it again.",
+          );
         return copy
           ? this.copyContent(value.text)
           : this._files.download(

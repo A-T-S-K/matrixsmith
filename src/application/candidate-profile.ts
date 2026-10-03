@@ -28,6 +28,8 @@ export function candidateContext(runtime: ApplicationRuntime): string {
     ),
     resolution: session.protocolResolution,
     evidence: runtime.investigation?.claimEvidence,
+    attempts: runtime.experiments,
+    transfers: runtime.transfers,
   });
 }
 
@@ -88,8 +90,14 @@ export function buildCandidateProfile(
       details.height === profile.height &&
       details.definitionIdentity === definitionIdentity &&
       attempt?.validity === "valid" &&
+      (entry.testId !== "coolledux-still-bootstrap" ||
+        (attempt.timing?.validity === "valid" &&
+          attempt.timing.t0 === transfer?.finalWriteAcceptedAt)) &&
       transfer &&
       !transfer.failureReason &&
+      transfer.finalWriteAcceptedAt !== null &&
+      transfer.fingerprint.testId === entry.testId &&
+      transfer.fingerprint.profileId === profile.id &&
       transfer.finalWriteAcceptedAt === details.finalWriteAcceptedAt &&
       transfer.fingerprint.physicalDeviceKey ===
         (session.fingerprint?.browserDeviceId ?? null) &&
@@ -156,7 +164,9 @@ export function buildCandidateProfile(
           createdAt: new Date().toISOString(),
           definitionIdentity,
           evidenceDigest: definitionDigest(parseDiagnosticBundle(evidence)),
-          testIds: [...new Set(pool.map((entry) => entry.testId!))],
+          testIds: STILL_TEST_IDS.filter((id) =>
+            pool.some((entry) => entry.testId === id),
+          ),
         },
       },
     }),

@@ -105,6 +105,11 @@ Copy/download use owner-supervised file ports. Invalid edits and export failures
 preserve the prior valid candidate and allow retry. A changed target, connection,
 geometry, definition, evidence or replacement review disables stale export and
 suppresses late success. Loaded-profile export uses the same supervised action.
+Attempt validity, measured timing and transfer provenance participate in the
+private review binding as well as generation checks. The supervised export
+validates the exact formatted profile or evidence bytes against reload bounds
+before calling file/clipboard ports; an oversized formatted export preserves
+the accepted source and reports an error.
 
 Reload uses the existing atomic local installation path, creates a disconnected
 runtime and never connects or sends automatically. Identity/matching collisions

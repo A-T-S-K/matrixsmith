@@ -5,6 +5,7 @@ import { createBrowserEnvironment } from "../../src/adapters/presentation/browse
 import { ApplicationRuntime } from "../../src/application/runtime";
 import { FakeTransport } from "../../src/transport/fake";
 import type { FilesPort } from "../../src/application/ports/files";
+import v1 from "../../src/profiles/data/authored-ux-banner.json";
 
 async function setup(files: FilesPort) {
   const { runtime, transport } = await setupStill();
@@ -22,6 +23,61 @@ async function setup(files: FilesPort) {
   return { store, runtime };
 }
 describe("supervised candidate/profile export", () => {
+  it("rejects an export whose formatted bytes exceed reload bounds without altering the loaded source", async () => {
+    const files = {
+      copyText: vi.fn().mockResolvedValue(true),
+      download: vi.fn(),
+    };
+    const { store, runtime } = await setup(files);
+    try {
+      const document = {
+        ...v1,
+        sources: Array(16).fill("x".repeat(481)),
+        limitations: Array(16).fill("x".repeat(481)),
+      };
+      expect(JSON.stringify(document).length).toBeLessThanOrEqual(16384);
+      expect(JSON.stringify(document, null, 2).length).toBeGreaterThan(16384);
+      await runtime.disconnect();
+      await store.reviewLocalProfile(JSON.stringify(document));
+      store.loadLocalProfile();
+      const source = store.controller.registry.acceptedProfiles[0]!.document;
+      await store.exportLoadedProfile(0);
+      expect(store.getSnapshot().error).toContain("byte limit");
+      expect(files.download).not.toHaveBeenCalled();
+      expect(store.controller.registry.acceptedProfiles[0]!.document).toBe(
+        source,
+      );
+      expect(source).toEqual(document);
+    } finally {
+      await store.dispose();
+    }
+  });
+  it("retires a verified review when its actual attempt is invalidated", async () => {
+    const files = {
+      copyText: vi.fn().mockResolvedValue(true),
+      download: vi.fn(),
+    };
+    const { store, runtime } = await setup(files);
+    try {
+      await verifyStill(runtime);
+      await store.createCandidateProfile();
+      const document = store.getSnapshot().candidateReview!.document;
+      runtime.settleAttempt(runtime.experiments[0]!.attempts[0]!.attemptId, {
+        validity: "invalid",
+      });
+      store.updateGeometryDraft("width", "32");
+      expect(store.getSnapshot().candidateReview!.stale).toBe(true);
+      await store.exportCandidateProfile();
+      expect(files.download).not.toHaveBeenCalled();
+      expect(store.getSnapshot().candidateReview!.document).toBe(document);
+      await store.createCandidateProfile();
+      expect(
+        store.getSnapshot().candidateReview!.document.candidate.history.status,
+      ).toBe("incomplete");
+    } finally {
+      await store.dispose();
+    }
+  });
   it("preserves valid content on clipboard/download/validation failures and retries without source mutation", async () => {
     const files = {
       copyText: vi.fn().mockResolvedValue(false),
@@ -86,6 +142,7 @@ describe("supervised candidate/profile export", () => {
       );
       await store.createCandidateProfile();
       const pending = store.exportCandidateProfile(true);
+      await vi.waitFor(() => expect(files.copyText).toHaveBeenCalledTimes(1));
       runtime.confirmProvisionalGeometry(16, 16);
       finish(true);
       await pending;
@@ -102,6 +159,7 @@ describe("supervised candidate/profile export", () => {
         store.getSnapshot().candidateReview!.document.dimensions.width,
       ).toBe(16);
       const copying = store.exportCandidateProfile(true);
+      await vi.waitFor(() => expect(files.copyText).toHaveBeenCalledTimes(2));
       await store.reviseCandidateProfile(
         "Public configuration",
         "public matching condition",

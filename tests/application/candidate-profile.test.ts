@@ -25,6 +25,55 @@ import { COOLLED_ENDPOINT } from "../../src/drivers/coolled/common/gatt";
 import v1 from "../../src/profiles/data/authored-ux-banner.json";
 
 describe("portable candidate configuration, never authority", () => {
+  it("requires retained valid measured attempts and matching successful transfers, even when claims remain", async () => {
+    const { runtime } = await setupStill();
+    try {
+      await verifyStill(runtime);
+      const context = candidateContext(runtime);
+      const bootstrap = runtime.experiments[0]!.attempts[0]!;
+      runtime.settleAttempt(bootstrap.attemptId, {
+        validity: "valid",
+        timing: null,
+      });
+      expect(candidateContext(runtime)).not.toBe(context);
+      expect(
+        buildCandidateProfile(runtime).document.candidate.history.status,
+      ).toBe("incomplete");
+      runtime.settleAttempt(bootstrap.attemptId, {
+        validity: "valid",
+        timing: bootstrap.timing,
+      });
+      expect(
+        buildCandidateProfile(runtime).document.candidate.history.status,
+      ).toBe("locally-verified");
+      const transfer = runtime.transfers.find(
+        (entry) => entry.attemptId === bootstrap.attemptId,
+      )!;
+      const fingerprint = transfer.fingerprint;
+      Object.assign(transfer, {
+        fingerprint: { ...fingerprint, testId: "unrelated-test" },
+      });
+      expect(
+        buildCandidateProfile(runtime).document.candidate.history.status,
+      ).toBe("incomplete");
+      Object.assign(transfer, {
+        fingerprint,
+        failureReason: "Interrupted transfer",
+      });
+      expect(
+        buildCandidateProfile(runtime).document.candidate.history.status,
+      ).toBe("incomplete");
+      Object.assign(transfer, {
+        failureReason: null,
+        finalWriteAcceptedAt: null,
+      });
+      expect(
+        buildCandidateProfile(runtime).document.candidate.history.status,
+      ).toBe("incomplete");
+    } finally {
+      await runtime.dispose();
+    }
+  });
   it("exports actual valid still attempts and reloads with fresh live revalidation", async () => {
     const { runtime } = await setupStill(
       32,

@@ -76,6 +76,11 @@ async function capture(page: Page, name: string) {
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
   ).toBe(true);
+  const review = page.locator(
+    '[aria-labelledby="candidate-review-title"], [aria-labelledby="profile-review-title"]',
+  );
+  if (await review.count())
+    await expect(review).toMatchAriaSnapshot({ name: `${name}.aria.yml` });
   mkdirSync("/tmp/matrixsmith-candidate-review/screenshots", {
     recursive: true,
   });

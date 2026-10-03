@@ -82,6 +82,8 @@ export class ConnectionStore {
     const fingerprint = owner.session.fingerprint;
     const connectionId = owner.transport.connectionId;
     const geometryRevision = owner.session.geometryRevision;
+    const evidence = owner.investigation?.claimEvidence;
+    const attempts = JSON.stringify([owner.experiments, owner.transfers]);
     try {
       const { buildCandidateProfile, candidateContext } =
         await import("../../application/candidate-profile");
@@ -89,7 +91,9 @@ export class ConnectionStore {
         owner.session.profile !== profile ||
         owner.session.fingerprint !== fingerprint ||
         owner.transport.connectionId !== connectionId ||
-        owner.session.geometryRevision !== geometryRevision
+        owner.session.geometryRevision !== geometryRevision ||
+        owner.investigation?.claimEvidence !== evidence ||
+        JSON.stringify([owner.experiments, owner.transfers]) !== attempts
       )
         throw new Error(
           "Display context changed during generation. Create the candidate again.",
@@ -189,6 +193,7 @@ export class ConnectionStore {
         candidate === this.candidate &&
         generation === this.candidateGeneration &&
         !this.getCandidateReview()?.stale,
+      evidence ? "bundle" : "profile",
     );
   }
   async exportLoadedProfile(index: number): Promise<void> {
