@@ -525,11 +525,15 @@ export class TransmissionService {
         },
       );
       const selected = nextDiscoveryStep(
-        steps.filter((step) => !driverId || step.driverId === driverId),
+        steps.filter(
+          (step) =>
+            step.kind === "write-probe" &&
+            (!driverId || step.driverId === driverId),
+        ),
         new Set(),
         new Set(steps.map((step) => step.driverId)),
       );
-      if (!selected)
+      if (!selected || selected.kind !== "write-probe")
         throw new ProbeStageError(
           "blocked",
           "No eligible registered discovery check. Open Protocol workbench or review a profile.",

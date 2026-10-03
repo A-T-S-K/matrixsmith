@@ -2,6 +2,7 @@ import type { IdentificationResult } from "../drivers/types";
 import type { ExecutionResult } from "../app/executor";
 
 export type MachineOutcomeKind =
+  | "service-observed"
   | "identified"
   | "rejected"
   | "inconclusive"

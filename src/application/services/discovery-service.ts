@@ -1,3 +1,6 @@
+import { executeReviewedRead } from "./reviewed-read-service";
+import { transactionId as newTransactionId } from "../../diagnostics/transactions";
+import type { ReadDiscoveryStep } from "./discovery-planner";
 import type { ConnectionService } from "./connection-service";
 import type { IdentificationService } from "./identification-service";
 import type { TransmissionService } from "./transmission-service";
@@ -15,6 +18,7 @@ import { ProbeStageError, type MachineOutcomeKind } from "../discovery-outcome";
 export const DISCOVERY_LIMITS = Object.freeze({
   attempts: 4,
   packets: 8,
+  reads: 4,
   bytes: 2048,
   elapsedMs: 30_000,
 });
@@ -29,6 +33,15 @@ export interface DiscoveryAttempt {
   readonly outcome: MachineOutcomeKind;
   readonly summary: string;
   readonly sources: readonly string[];
+  readonly readValue?: {
+    readonly timestamp: string;
+    readonly source: "live";
+    readonly pixels: readonly number[];
+    readonly hex: string;
+    readonly interpretation: string;
+  };
+  readonly failureStage?:
+    "authorization" | "read" | "deadline" | "value" | "ownership";
 }
 export interface DiscoveryHypothesis {
   readonly driverId: string;
@@ -45,6 +58,7 @@ export interface DiscoveryState {
   readonly question: string | null;
   readonly summary: string;
   readonly terminal:
+    | "service-observed"
     | "geometry"
     | "dimensions"
     | "configuration"
@@ -61,6 +75,7 @@ export interface DiscoveryState {
   readonly remaining: {
     readonly attempts: number;
     readonly packets: number;
+    readonly reads: number;
     readonly bytes: number;
     readonly elapsedMs: number;
   };
@@ -68,18 +83,29 @@ export interface DiscoveryState {
 interface Ports {
   connection(): Pick<
     ConnectionService,
-    "getSession" | "getTransport" | "getConnectionGeneration"
+    "getSession" | "getTransport" | "getConnectionGeneration" | "read"
   >;
   identification(): Pick<
     IdentificationService,
     "getRegistry" | "geometryProposal" | "_resolveProtocol" | "_proposeGeometry"
   >;
   transmission(): Pick<TransmissionService, "probe">;
-  evidence(): Pick<ProtocolEvidenceService, "getTrace" | "getTransactions">;
+  evidence(): Pick<
+    ProtocolEvidenceService,
+    "getTrace" | "getTransactions" | "editTransactions"
+  >;
 }
 export class DiscoveryService {
   private state: DiscoveryState | null = null;
   private owned = false;
+  private pendingRead: object | null = null;
+  private runGeneration = 0;
+  /** Called only after explicit transport disconnect has completed. Old work may settle as evidence. */
+  connectionRetired(): void {
+    if (!this.pendingRead) return;
+    this.pendingRead = null;
+    this.owned = false;
+  }
   private stopped = false;
   private disposed = false;
   private adopting = false;
@@ -152,6 +178,7 @@ export class DiscoveryService {
       throw new Error(
         "Connect a live display before setup. Imported and historical evidence cannot authorize discovery.",
       );
+    const runGeneration = ++this.runGeneration;
     const registry = this.ports.identification().getRegistry();
     const revision = session.geometryRevision;
     let profile = session.profile;
@@ -169,7 +196,8 @@ export class DiscoveryService {
       session.profile === profile &&
       session.selection === selection &&
       registry === this.ports.identification().getRegistry();
-    const current = () => this.binding!();
+    const binding = this.binding;
+    const current = () => runGeneration === this.runGeneration && binding();
     const steps = discoveryCatalog(registry, {
       fingerprint,
       source: session.source,
@@ -221,23 +249,32 @@ export class DiscoveryService {
           const review = steps.some(
             (item) => item.blocked === "review" && !exhausted.has(item.id),
           );
+          const access = steps.find(
+            (item) => item.kind === "characteristic-read" && item.blocked,
+          );
           this.finish(
-            review
-              ? "review"
-              : candidates.size > 1 && this.state.attempts.length > 0
-                ? "multiple"
-                : "no-check",
-            review
-              ? "Experimental review needed. Setup does not grant or restore experimental permission."
-              : candidates.size > 1 && this.state.attempts.length > 0
-                ? "Multiple candidates remain. No further registered check can answer this question. Review candidates in Protocol workbench or export a report; this does not mean the display is unsupported."
-                : "No further registered check can answer this question. Review candidates in Protocol workbench or export a report; this does not mean the display is unsupported.",
+            access
+              ? "access"
+              : review
+                ? "review"
+                : candidates.size > 1 && this.state.attempts.length > 0
+                  ? "multiple"
+                  : "no-check",
+            access?.kind === "characteristic-read"
+              ? access.accessReason!
+              : review
+                ? "Experimental review needed. Setup does not grant or restore experimental permission."
+                : candidates.size > 1 && this.state.attempts.length > 0
+                  ? "Multiple candidates remain. No further registered check can answer this question. Review candidates in Protocol workbench or export a report; this does not mean the display is unsupported."
+                  : "No further registered check can answer this question. Review candidates in Protocol workbench or export a report; this does not mean the display is unsupported.",
           );
           break;
         }
         const remaining = this.state.remaining;
         if (
           remaining.attempts < 1 ||
+          (step.kind === "characteristic-read" &&
+            remaining.reads < step.read.cost.reads) ||
           remaining.packets < step.metadata.cost.packets ||
           remaining.bytes < step.metadata.cost.bytes ||
           remaining.elapsedMs < step.metadata.cost.elapsedMs ||
@@ -255,6 +292,19 @@ export class DiscoveryService {
           question: step.metadata.question,
           remaining: { ...remaining, attempts: remaining.attempts - 1 },
         });
+        if (step.kind === "characteristic-read") {
+          await this.runRead(
+            step,
+            registry,
+            () => !this.stopped && current(),
+            remaining,
+            connectionId,
+            connectionGeneration,
+            fingerprintKey,
+          );
+          if (runGeneration !== this.runGeneration) return;
+          break;
+        }
         let outcome: MachineOutcomeKind;
         let summary: string;
         let transactionId: string | null = null;
@@ -480,9 +530,191 @@ export class DiscoveryService {
         );
     } finally {
       clearTimeout(deadline);
-      this.owned = false;
-      this.publish({ question: null });
+      if (runGeneration === this.runGeneration) {
+        this.owned = this.pendingRead !== null;
+        this.publish({ question: null });
+      }
     }
+  }
+  private async runRead(
+    step: ReadDiscoveryStep,
+    registry: ReturnType<
+      Ports["identification"]
+    >["getRegistry"] extends () => infer R
+      ? R
+      : never,
+    current: () => boolean,
+    remaining: DiscoveryState["remaining"],
+    connectionId: string,
+    connectionGeneration: number,
+    fingerprintKey: string,
+  ): Promise<void> {
+    const runGeneration = this.runGeneration;
+    const transactionId = newTransactionId("read");
+    const token = {};
+    let dispatched = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let outcome: MachineOutcomeKind;
+    let summary: string;
+    let failureStage: DiscoveryAttempt["failureStage"];
+    let readValue: DiscoveryAttempt["readValue"];
+    let terminalFindings: readonly string[] | null = null;
+    const annotate = () => {
+      if (!terminalFindings) return;
+      this.ports.evidence().editTransactions((transactions) => {
+        const index = transactions.findIndex((t) => t.id === transactionId);
+        if (index >= 0)
+          transactions[index] = {
+            ...transactions[index]!,
+            findings: [...transactions[index]!.findings, ...terminalFindings!],
+          };
+      });
+    };
+    try {
+      const work = executeReviewedRead(
+        this.ports.connection(),
+        registry,
+        step.read,
+        step.definitionIdentity,
+        {
+          current,
+          reserve: () => {
+            if (
+              this.state!.remaining.reads < step.read.cost.reads ||
+              this.state!.remaining.bytes < step.read.cost.bytes ||
+              this.state!.remaining.elapsedMs < step.read.cost.elapsedMs
+            )
+              throw new ProbeStageError(
+                "blocked",
+                "Reviewed read budget exhausted.",
+              );
+            this.publish({
+              remaining: {
+                ...this.state!.remaining,
+                reads: remaining.reads - step.read.cost.reads,
+                bytes: remaining.bytes - step.read.cost.bytes,
+                elapsedMs: remaining.elapsedMs - step.read.cost.elapsedMs,
+              },
+            });
+            dispatched = true;
+            this.pendingRead = token;
+          },
+        },
+        transactionId,
+      );
+      const supervised = work
+        .then(
+          (bytes) => ({ bytes }),
+          (error) => ({ error }),
+        )
+        .finally(() => {
+          annotate();
+          if (this.pendingRead === token) {
+            this.pendingRead = null;
+            if (
+              this.state?.status !== "running" &&
+              this.state?.status !== "stopping"
+            )
+              this.owned = false;
+          }
+        });
+      const result = await Promise.race([
+        supervised,
+        new Promise<{ timeout: true }>((resolve) => {
+          timer = setTimeout(
+            () => resolve({ timeout: true }),
+            step.read.timeoutMs,
+          );
+        }),
+      ]);
+      if ("timeout" in result) {
+        outcome = "timeout";
+        failureStage = "deadline";
+        summary =
+          "Read deadline reached. The browser operation may still be pending; its cancellation is unconfirmed. Disconnect to retire this connection before reconnecting. No automatic retry; protocol support remains unknown.";
+      } else if (
+        !current() ||
+        `${step.read.definitionIdentity}/${registry.definitionIdentity(step.driverId, null)}` !==
+          step.definitionIdentity
+      ) {
+        outcome = "retired";
+        failureStage = "ownership";
+        summary =
+          "Read evidence belongs to a stopped or replaced context. No current value was adopted.";
+      } else if ("error" in result) {
+        outcome = "transport";
+        failureStage = "read";
+        summary =
+          "Characteristic read failed. Browser access, firmware security and connection causes remain ambiguous. Disconnect and review access before retrying explicitly.";
+      } else {
+        // Reject bounds before decoder or preview allocation. Raw bounded evidence is already recorded.
+        const decoded =
+          result.bytes.length === step.read.valueBytes
+            ? step.read.decode(result.bytes)
+            : {
+                conforming: false,
+                pixels: [],
+                summary:
+                  "Malformed LED Matrix State length; expected exactly five bytes. Raw evidence retained. Review firmware applicability before retrying.",
+              };
+        summary = decoded.summary;
+        outcome = decoded.conforming ? "service-observed" : "inconclusive";
+        if (decoded.conforming) {
+          const transaction = this.ports
+            .evidence()
+            .getTransactions()
+            .find((t) => t.id === transactionId)!;
+          readValue = {
+            timestamp: transaction.completedAt,
+            source: "live",
+            pixels: decoded.pixels,
+            hex: transaction.packets[0]!.hex,
+            interpretation: step.read.interpretation,
+          };
+        } else failureStage = "value";
+      }
+    } catch (error) {
+      outcome = error instanceof ProbeStageError ? error.kind : "inconclusive";
+      failureStage = "authorization";
+      summary = error instanceof Error ? error.message : String(error);
+    } finally {
+      clearTimeout(timer);
+    }
+    terminalFindings = [
+      `Reviewed read outcome: ${outcome}. Failure stage: ${failureStage ?? "none"}.`,
+      summary,
+    ];
+    annotate();
+    if (runGeneration !== this.runGeneration) return;
+    if (!current() && this.state!.status !== "retired") this.retire();
+    this.publish({
+      attempts: [
+        ...this.state!.attempts,
+        {
+          stepId: step.id,
+          definitionIdentity: step.definitionIdentity,
+          connectionId,
+          connectionGeneration,
+          fingerprintKey,
+          transactionId: dispatched ? transactionId : null,
+          responseSequence: null,
+          sources: step.read.sources,
+          outcome,
+          summary,
+          failureStage,
+          readValue,
+        },
+      ],
+    });
+    if (this.state!.status !== "retired")
+      this.finish(
+        outcome === "service-observed"
+          ? "service-observed"
+          : outcome === "access"
+            ? "access"
+            : "interrupted",
+        summary,
+      );
   }
   private finish(terminal: DiscoveryState["terminal"], summary: string): void {
     this.publish({ status: "complete", terminal, question: null, summary });

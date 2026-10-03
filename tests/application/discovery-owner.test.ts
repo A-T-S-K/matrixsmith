@@ -305,6 +305,7 @@ describe("bounded machine discovery owner (software fixtures only)", () => {
     expect(runtime.discovery?.remaining).toEqual({
       attempts: 0,
       packets: 4,
+      reads: 4,
       bytes: 2032,
       elapsedMs: 29480,
     });

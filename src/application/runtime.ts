@@ -122,13 +122,19 @@ export class ApplicationRuntime {
     });
     this.transmission.initialize();
     this.connection.initialize();
-    this.connect = this.connection.connect.bind(this.connection);
-    this.reconnectAuthorized = this.connection.reconnectAuthorized.bind(
-      this.connection,
-    );
+    this.connect = (...args) => {
+      this.guardDiscovery();
+      return this.connection.connect(...args);
+    };
+    this.reconnectAuthorized = (...args) => {
+      this.guardDiscovery();
+      return this.connection.reconnectAuthorized(...args);
+    };
     this.disconnect = () => {
       this.discoveryService.retire();
-      return this.connection.disconnect();
+      return this.connection
+        .disconnect()
+        .then(() => this.discoveryService.connectionRetired());
     };
     this.read = (...args) => {
       this.guardDiscovery();

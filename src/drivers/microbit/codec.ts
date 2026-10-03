@@ -17,3 +17,34 @@ export function encodeMatrixState(input: {
       if (input.pixels[y * 5 + x]) bytes[y]! |= 1 << (4 - x);
   return bytes;
 }
+
+/** Supplied-state interpretation of the pinned onDataRead callback, not a physical observation. */
+export function decodeMatrixState(bytes: Uint8Array): {
+  readonly conforming: boolean;
+  readonly pixels: readonly number[];
+  readonly summary: string;
+} {
+  if (bytes.length !== 5)
+    return {
+      conforming: false,
+      pixels: [],
+      summary:
+        "Malformed LED Matrix State length; expected exactly five bytes. Raw value retained; firmware applicability remains unknown.",
+    };
+  if (bytes.some((byte) => (byte & 0xe0) !== 0))
+    return {
+      conforming: false,
+      pixels: [],
+      summary:
+        "Unexpected reserved bits in LED Matrix State. Raw value retained without normalization; the inspected read contract does not conform.",
+    };
+  return {
+    conforming: true,
+    pixels: Array.from(
+      { length: 25 },
+      (_, i) => (bytes[Math.floor(i / 5)]! >> (4 - (i % 5))) & 1,
+    ),
+    summary:
+      "LED matrix service value received and decoded under the inspected reference.",
+  };
+}

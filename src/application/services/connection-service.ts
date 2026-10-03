@@ -4,7 +4,7 @@ import type { DeviceFingerprint } from "../../core/device";
 import type { GattEndpoint } from "../../core/device";
 import type { TargetBinding } from "../../core/transmission";
 import type { MatrixDriver } from "../../drivers/types";
-import { packetHex } from "../../core/transmission";
+import { definitionDigest, packetHex } from "../../core/transmission";
 import { transactionId } from "../../diagnostics/transactions";
 import { fingerprintIdentityKey } from "../../investigation/device-identity";
 import {
@@ -304,22 +304,41 @@ export class ConnectionService {
       this._explicitDisconnect = false;
     }
   }
-  async read(endpoint: GattEndpoint): Promise<Uint8Array> {
+  async read(
+    endpoint: GattEndpoint,
+    reviewed?: {
+      readonly transactionId: string;
+      readonly driverId: string;
+      readonly findings: readonly string[];
+    },
+  ): Promise<Uint8Array> {
     if (this.disposed) throw new Error("This workspace has been disposed.");
+    // Capture before browser work: a late result belongs to the original session.
+    endpoint = { ...endpoint };
+    const sessionSource = this.session.source;
+    const driverId =
+      reviewed?.driverId ?? this.session.selection?.selected?.id ?? null;
+    const profileId = this.session.profile?.id ?? null;
+    const id = reviewed?.transactionId ?? transactionId("read");
+    const context = [
+      `Original connection: ${this.transport.connectionId}; generation: ${this._lifetimeGeneration}.`,
+      `Original target: ${this.session.fingerprint ? definitionDigest({ connection: this.transport.connectionId, fingerprint: fingerprintIdentityKey(this.session.fingerprint) }) : "none"}.`,
+      ...(reviewed?.findings ?? []),
+    ];
     const startedAt = new Date().toISOString();
     try {
       const bytes = await this.transport.read(endpoint);
       const completedAt = new Date().toISOString();
       this.ports.protocolEvidence().editTransactions((value) =>
         value.push({
-          id: transactionId("read"),
+          id,
           startedAt,
           completedAt,
           durationMs: duration(startedAt, completedAt),
-          sessionSource: this.session.source,
+          sessionSource,
           source: "gatt-read",
-          driverId: this.session.selection?.selected?.id ?? null,
-          profileId: this.session.profile?.id ?? null,
+          driverId,
+          profileId,
           operation: "GATT Read",
           safety: {
             risk: "read-only",
@@ -331,7 +350,7 @@ export class ConnectionService {
             {
               timestamp: completedAt,
               direction: "RX",
-              hex: packetHex(bytes),
+              hex: packetHex(bytes.subarray(0, 512)),
               endpoint,
             },
           ],
@@ -341,7 +360,11 @@ export class ConnectionService {
           deviceStateVerified: false,
           responseTimedOut: false,
           error: null,
-          findings: ["Characteristic read completed; raw bytes preserved."],
+          findings: [
+            ...context,
+            `Characteristic read completed; received ${bytes.length} bytes. Evidence capped at 512 bytes.`,
+            "Read value received; physical appearance unconfirmed.",
+          ],
           observationIds: [],
           diagnosticRunId: null,
         }),
@@ -352,14 +375,14 @@ export class ConnectionService {
       const completedAt = new Date().toISOString();
       this.ports.protocolEvidence().editTransactions((value) =>
         value.push({
-          id: transactionId("read"),
+          id,
           startedAt,
           completedAt,
           durationMs: duration(startedAt, completedAt),
-          sessionSource: this.session.source,
+          sessionSource,
           source: "gatt-read",
-          driverId: this.session.selection?.selected?.id ?? null,
-          profileId: this.session.profile?.id ?? null,
+          driverId,
+          profileId,
           operation: "GATT Read",
           safety: {
             risk: "read-only",
@@ -374,7 +397,10 @@ export class ConnectionService {
           deviceStateVerified: false,
           responseTimedOut: false,
           error: errorMessage(error),
-          findings: [],
+          findings: [
+            ...context,
+            "Failure stage: GATT read. Browser error does not identify pairing/security cause or protocol support.",
+          ],
           observationIds: [],
           diagnosticRunId: null,
         }),

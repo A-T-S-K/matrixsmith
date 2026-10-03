@@ -1,7 +1,14 @@
+import {
+  REGISTERED_READS,
+  readAccess,
+  relevantRead,
+  type ReviewedRead,
+} from "../reviewed-reads";
 import type { CandidateContext, DiscoveryMetadata } from "../../drivers/types";
 import type { DriverRegistry } from "../../drivers/registry";
 
-export interface DiscoveryStep {
+export interface WriteDiscoveryStep {
+  readonly kind: "write-probe";
   readonly id: string;
   readonly driverId: string;
   readonly probeId: string;
@@ -11,12 +18,25 @@ export interface DiscoveryStep {
   readonly blocked: "review" | "permission" | null;
 }
 
+export interface ReadDiscoveryStep {
+  readonly kind: "characteristic-read";
+  readonly id: string;
+  readonly driverId: string;
+  readonly definitionIdentity: string;
+  readonly read: ReviewedRead;
+  readonly metadata: DiscoveryMetadata;
+  readonly relevance: number;
+  readonly blocked: "permission" | null;
+  readonly accessReason: string | null;
+}
+export type DiscoveryStep = WriteDiscoveryStep | ReadDiscoveryStep;
+
 /** Knowledge, imports and caller supplied recipes never enter this catalog. */
 export function discoveryCatalog(
   registry: DriverRegistry,
   context: CandidateContext,
 ): readonly DiscoveryStep[] {
-  return registry.drivers
+  const writes: WriteDiscoveryStep[] = registry.drivers
     .flatMap((driver) => {
       const match = driver.match(context.fingerprint);
       if (match.score <= 0) return [];
@@ -41,6 +61,7 @@ export function discoveryCatalog(
             ) ?? [];
         return [
           {
+            kind: "write-probe" as const,
             id: `${driver.id}/${probe.id}`,
             driverId: driver.id,
             probeId: probe.id,
@@ -63,6 +84,33 @@ export function discoveryCatalog(
       });
     })
     .sort((a, b) => a.id.localeCompare(b.id));
+  const reads: ReadDiscoveryStep[] = REGISTERED_READS.filter((read) =>
+    relevantRead(read, context.fingerprint),
+  ).map((read) => ({
+    kind: "characteristic-read",
+    id: read.id,
+    driverId: read.driverId,
+    read,
+    definitionIdentity: `${read.definitionIdentity}/${registry.definitionIdentity(read.driverId, null)}`,
+    relevance: 50,
+    blocked: readAccess(read, context.fingerprint) ? "permission" : null,
+    accessReason: readAccess(read, context.fingerprint),
+    metadata: {
+      available: true,
+      parameters: "fixed",
+      question: read.question,
+      distinguishes: [],
+      prerequisites: [],
+      consequence: read.consequence,
+      cost: {
+        packets: 0,
+        bytes: read.cost.bytes,
+        elapsedMs: read.cost.elapsedMs,
+      },
+      stopping: "continue",
+    },
+  }));
+  return [...writes, ...reads].sort((a, b) => a.id.localeCompare(b.id));
 }
 
 /** Ordinal utility, never a probability. Ties use stable registered identities. */
@@ -77,7 +125,8 @@ export function nextDiscoveryStep(
       !step.blocked &&
       !exhausted.has(step.id) &&
       step.metadata.prerequisites.every((id) => completed.has(id)) &&
-      step.metadata.distinguishes.some((id) => candidates.has(id)),
+      (step.kind === "characteristic-read" ||
+        step.metadata.distinguishes.some((id) => candidates.has(id))),
   );
   const discrimination = (step: DiscoveryStep) =>
     step.metadata.distinguishes.filter((id) => candidates.has(id)).length;

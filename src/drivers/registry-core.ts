@@ -1,3 +1,4 @@
+import { LED_MATRIX_ENDPOINT } from "../application/reviewed-reads";
 import type { DeviceFingerprint } from "../core/device";
 import type { DiscoveryHints } from "../application/ports/transport";
 import type { DriverMatch, MatrixDriver } from "./types";
@@ -75,11 +76,12 @@ export class DriverRegistry {
       (driver) => driver.discoveryHints().filters,
     );
     const optionalServices = [
-      ...new Set(
-        this.#drivers
+      ...new Set([
+        LED_MATRIX_ENDPOINT.serviceUuid,
+        ...this.#drivers
           .flatMap((driver) => driver.discoveryHints().optionalServices)
           .map(String),
-      ),
+      ]),
     ];
     const optionalManufacturerData = [
       ...new Set(
