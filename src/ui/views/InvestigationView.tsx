@@ -1,3 +1,7 @@
+import {
+  DiscoveryInterview,
+  showDiscovery,
+} from "../features/investigation/DiscoveryInterview";
 import type { JSX } from "preact";
 import type { AppSnapshot, PresentationStore } from "../../presentation/store";
 import {
@@ -65,6 +69,9 @@ export function InvestigationView({
             MatrixSmith detected a recommendation loop and stopped advancing
             automatically. {snapshot.cycleWarning}
           </p>
+        )}
+        {showDiscovery(snapshot) && (
+          <DiscoveryInterview snapshot={snapshot} store={store} />
         )}
         {snapshot.assessment.readiness === "needs-geometry" ? (
           <GeometrySetup store={store} snapshot={snapshot} />

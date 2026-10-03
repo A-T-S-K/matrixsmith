@@ -46,17 +46,26 @@ for (const width of [320, 390, 1280]) {
       .getByRole("button", { name: "Connect a display", exact: true })
       .click();
     await expect(
-      page.getByRole("button", { name: "Identify display", exact: true }),
+      page.getByRole("button", { name: "Set up this display", exact: true }),
     ).toHaveCount(1);
     // Simulator setup grants the same explicit session permission used by application tests.
     // It is never evidence of real hardware support or a UI permission shortcut.
     await liveStore(page, "unlock");
     const identify = page.getByRole("button", {
-      name: "Identify display",
+      name: "Set up this display",
       exact: true,
     });
     await identify.focus();
     await page.keyboard.press("Enter");
+    // Experimental legacy fixtures still require a manual power-user diagnostic.
+    await page.evaluate(async () => {
+      const store = (
+        globalThis as unknown as {
+          matrixsmithStore: import("../../src/presentation/store").PresentationStore;
+        }
+      ).matrixsmithStore;
+      await store.runDiagnostic("lumen-identify");
+    });
     await expect(
       page.getByRole("heading", { name: "Establish the display size" }),
     ).toBeVisible();

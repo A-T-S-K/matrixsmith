@@ -35,7 +35,7 @@ export function CandidateSection({
             <p>{candidate.summary}</p>
             {candidate.canIdentify ? (
               <button class="primary" onClick={() => store.setView("diagnose")}>
-                Identify display
+                Open display setup
               </button>
             ) : candidate.evidence.basis === "candidate" ? (
               <p class="notice">
@@ -93,7 +93,7 @@ export function ToolSection({
                   : void store.runDiagnostic(tool.id)
               }
             >
-              {tool.kind === "identify" ? "Identify display" : "Run"}
+              {tool.kind === "identify" ? "Open display setup" : "Run"}
             </UnavailableAction>
           </article>
         ))}

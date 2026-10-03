@@ -158,7 +158,7 @@ export function recommendedFromAssessment(
       };
     case "needs-identification":
       return {
-        title: "Identify display",
+        title: "Set up this display",
         description: assessment.summary,
         action: "identify",
       };

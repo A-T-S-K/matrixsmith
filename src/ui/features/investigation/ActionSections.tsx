@@ -1,3 +1,4 @@
+import { DiscoveryInterview, showDiscovery } from "./DiscoveryInterview";
 import type { JSX } from "preact";
 import type {
   AppSnapshot,
@@ -12,6 +13,9 @@ export function NextAction({
   snapshot: AppSnapshot;
   store: PresentationStore;
 }): JSX.Element {
+  if (showDiscovery(snapshot)) return <></>;
+  if (snapshot.recommended.action === "identify" && snapshot.liveConnected)
+    return <DiscoveryInterview snapshot={snapshot} store={store} />;
   const next = snapshot.nextTest;
   const identify = snapshot.diagnosticTools.find(
     (tool) => tool.kind === "identify",
@@ -72,7 +76,7 @@ export function NextAction({
               "No bounded identification probe is contributed for this display. Use Protocol workbench to inspect the evidence."
             }
           >
-            Identify display
+            Set up this display
           </UnavailableAction>
         )}
         {snapshot.recommended.action === "checks" &&

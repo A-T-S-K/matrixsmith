@@ -148,7 +148,7 @@ function protocolProblem(
       ...(snapshot.connection === "connected" && snapshot.view !== "diagnose"
         ? {
             action: {
-              label: "Identify display",
+              label: "Open display setup",
               run: () => store.setView("diagnose"),
             },
           }

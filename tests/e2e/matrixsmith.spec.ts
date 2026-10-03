@@ -45,7 +45,7 @@ test("unknown display can identify its family and become provisional", async ({
     page.getByRole("heading", { name: "Investigate" }),
   ).toBeVisible();
   await page
-    .getByRole("button", { name: "Identify display", exact: true })
+    .getByRole("button", { name: "Set up this display", exact: true })
     .first()
     .click();
   await expect(

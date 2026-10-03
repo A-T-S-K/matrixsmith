@@ -207,6 +207,9 @@ export class PresentationStore {
     this.disconnect = this.connectionStore.disconnect.bind(
       this.connectionStore,
     );
+    this.stopDiscovery = this.connectionStore.stopDiscovery.bind(
+      this.connectionStore,
+    );
     this.identify = this.connectionStore.identify.bind(this.connectionStore);
     this.runDiagnostic = this.connectionStore.runDiagnostic.bind(
       this.connectionStore,
@@ -409,6 +412,7 @@ export class PresentationStore {
   readonly connect: ConnectionStore["connect"];
   readonly reconnectAndReviewDraft: ContentSendStore["reconnectAndReviewDraft"];
   readonly disconnect: ConnectionStore["disconnect"];
+  readonly stopDiscovery: ConnectionStore["stopDiscovery"];
   readonly identify: ConnectionStore["identify"];
   readonly runDiagnostic: ConnectionStore["runDiagnostic"];
   readonly refreshInfo: ConnectionStore["refreshInfo"];

@@ -281,6 +281,7 @@ export class SnapshotStore {
       },
       capabilities,
       geometryDraft: this.ports.connectionStore().getGeometryDraft(),
+      discovery: this.ports.workspaceStore().getController().discovery,
       geometryProposal: this.ports
         .workspaceStore()
         .getController()

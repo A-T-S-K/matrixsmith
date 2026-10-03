@@ -152,3 +152,50 @@ investigation, including detached history, and cannot announce current-context
 success, change replacement panel belief or consume replacement authority.
 Bundle V3 and evidence entries retain their existing structures and IDs; reports
 identify query execution from linked transaction risk/persistence evidence.
+
+## Bounded machine discovery
+
+DiscoveryService owns one in-memory interview per runtime. It coordinates the
+existing connection, transmission, identification and protocol evidence owners
+through narrow ports. It retains only a bounded step catalog, hypothesis ledger,
+attempt summaries and transaction/response references, never packet copies or
+human observations. The connected unfamiliar-display setup reads and identifies;
+it does not characterize content or grant readiness for everyday use.
+
+Application-authored family probes may contribute reviewed discovery metadata:
+availability, fixed parameter domain, question, distinguishable families,
+prerequisites, consequence, packet/byte/time bounds and stopping behavior.
+Knowledge, uploaded profiles, imports and history cannot register executable
+steps or grant authority. This first slice automatically runs only routine,
+verified, read-only GetDeviceInfo probes. Experimental contributions end at a
+review boundary even when a broad session unlock exists. Authored availability,
+compiled plan eligibility and central policy all apply.
+
+The deterministic planner ranks useful discrimination, fingerprint relevance,
+prerequisite value and cost, then stable registered IDs. It uses no statistical
+probabilities or registry insertion order. A legacy unmatched result, timeout,
+malformed response or missing access never rejects another family. Only a
+reviewed explicit negative meaning can contradict its declared family or
+configuration scope. Conflicting reviewed family decoder interpretations remain
+ambiguous; generic unmapped envelopes cannot displace structured identity.
+
+An interview pins the runtime registry, connection generation, physical target,
+profile/configuration, named steps and fixed domains. It permits at most four
+attempts, eight packets, 2 KiB of query bytes and 30 seconds of reserved execution.
+These limits comfortably cover the existing one-packet query and small distinct
+checks while preventing an open-ended search. Reviewed bounds are checked before
+plan construction; actual compiled bounds are reserved before dispatch. Replanning
+cannot refill them or repeat an exhausted combination. A wall-clock deadline
+stops subsequent scheduling; an unresolved browser operation retains ownership
+until it settles. There is no retry, automatic reconnect or persistent resend.
+
+Stop suppresses adoption and later scheduling immediately, while the existing
+executor supervises the dispatched operation and retains its transaction. An
+indeterminate write preserves quarantine recovery. Disconnect, replacement,
+geometry/profile change or disposal retires the interview. Late results cannot
+adopt replacement identity, geometry or notices. Conflicting runtime operations
+and presentation workspace/profile transitions are blocked during ownership.
+Geometry remains an explicitly adopted sourced proposal and never edits a manual
+draft. Known iLedHat owners retain their existing normal-use path; connection
+alone does not transmit. Development-only reviewed software fixtures prove a
+multi-check sequence and are excluded from production builds and physical claims.

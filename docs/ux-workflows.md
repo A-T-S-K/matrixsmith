@@ -121,3 +121,23 @@ available contexts and sections; Back first closes an open modal. Forward never
 restores send confirmation. Reload/direct links to missing report data ask for
 the JSON to be reopened; missing live data asks for explicit connection. No
 complete report or decoded media is automatically persisted.
+
+## Unfamiliar-display machine setup
+
+A connected display that needs identification offers one primary **Set up this
+display** action. It reviews accessible evidence and runs eligible application
+checks with that explicit intent. The current question, completed checks,
+uncertainty and meaningful findings appear without a fabricated total. Stop keeps
+the pending browser operation owned until settlement. Exact transaction IDs,
+response sequences, original connection and pinned definition identities are
+available in an optional technical disclosure; Protocol workbench and reports
+remain accessible after completion.
+
+Results distinguish sourced dimensions for review, identified family needing
+manual dimensions, configuration described with capabilities unverified,
+competing candidates, missing access/setup, experimental review, interruption,
+budget exhaustion and no further registered check. No-check completion does not
+mean unsupported. The geometry proposal uses the existing explicit adoption
+controls and preserves manual drafts. Manual diagnostics remain available when
+idle. Setup does not toggle experimental permission, send content, establish
+physical rendering or replace the known iLedHat workflow.

@@ -304,31 +304,22 @@ export class ConnectionStore {
       this.ports.navigationStore().getRouter()?.navigate("home");
     });
   }
+  stopDiscovery(): void {
+    this.ports.workspaceStore().getController().stopDiscovery();
+    this.ports.snapshotStore()._emit();
+  }
   async identify(): Promise<void> {
+    const reason = this.ports.workspaceStore().transitionReason();
+    if (reason) {
+      this.ports.noticeStore().setError(reason);
+      this.ports.snapshotStore()._emit();
+      return;
+    }
+    const workspace = this.ports.workspaceStore().getController();
     await this.ports
       .noticeStore()
-      ._run("Running safe identification…", async () => {
-        const tool = this.ports
-          .workspaceStore()
-          .getController()
-          .diagnosticTools()
-          .find(({ kind }) => kind === "identify");
-        if (!tool)
-          throw new Error(
-            "No bounded family-identification probe is available.",
-          );
-        const run = await this.ports
-          .workspaceStore()
-          .getController()
-          .runDiagnostic(tool.id);
-        this.ports
-          .noticeStore()
-          .setInfo(
-            run.status === "passed"
-              ? (run.findings[0] ??
-                  "The current probe identified the display family.")
-              : run.error,
-          );
+      ._run("Setting up this display…", async () => {
+        await workspace.startDiscovery();
       });
   }
   async runDiagnostic(id: string): Promise<void> {

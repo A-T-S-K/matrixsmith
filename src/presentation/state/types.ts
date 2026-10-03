@@ -127,6 +127,9 @@ export interface AppSnapshot {
     readonly height: string;
     readonly errors: import("../../domain/device/geometry").GeometryErrors;
   };
+  readonly discovery:
+    | import("../../application/services/discovery-service").DiscoveryState
+    | null;
   readonly geometryProposal:
     | import("../../application/services/identification-service").GeometryProposal
     | null;

@@ -32,7 +32,11 @@ export async function startApplication(
   const synthetic =
     import.meta.env.DEV && simulation === "lumen"
       ? await import("./dev/synthetic-workspace")
-      : null;
+      : import.meta.env.DEV && simulation?.startsWith("discovery")
+        ? (await import("./dev/discovery-workspace")).discoveryWorkspace(
+            simulation,
+          )
+        : null;
   const registry =
     synthetic?.registry ??
     (import.meta.env.DEV && simulation === "experimental"

@@ -158,7 +158,10 @@ export class WorkspaceStore {
   }
   transitionReason(includeFiles = true): string | null {
     if (this.disposed) return "This application has been closed.";
-    if (this.ports.noticeStore().getBusy())
+    if (
+      this.active.controller.discoveryBusy ||
+      this.ports.noticeStore().getBusy()
+    )
       return "Finish the current operation before changing workspace. Use disconnect recovery if the transfer outcome is unknown.";
     if (includeFiles && this.environment.fileActivity?.active)
       return "Finish importing the file before changing workspace.";
