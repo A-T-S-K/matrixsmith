@@ -17,6 +17,19 @@ describe("application-owned offline catalog", () => {
     const entry = await loadOfflineEntry("lsled");
     expect(Object.isFrozen(entry)).toBe(true);
     expect(entry.reference).toBe(offlineReference);
+    for (const descriptor of offlineCatalog) {
+      const loaded = await loadOfflineEntry(descriptor.id);
+      expect(loaded.id).toBe(descriptor.id);
+      expect(loaded.label).toBe(descriptor.label);
+      expect(loaded.geometry).toEqual({
+        width: loaded.reference.profile.width,
+        height: loaded.reference.profile.height,
+      });
+      expect(findOfflineEntry(descriptor.label)).toBeUndefined();
+      await expect(loadOfflineEntry(descriptor.label)).rejects.toThrow(
+        /Unknown offline reference/,
+      );
+    }
     for (const id of [
       "../drivers/coolled",
       "LSLED legacy 44×11",

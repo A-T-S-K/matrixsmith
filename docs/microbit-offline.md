@@ -9,10 +9,11 @@ It is absent from built-in live discovery and has no probes or notifications.
 
 Pinned Lancaster University `microbit-dal` revision:
 `318c6abbb3d952d3f49a595a726486230e82fb5b` (resolved before source inspection).
-Inspected files:
+Its pinned `module.json` declares runtime version **2.1.1**. Inspected files:
 
 - [MicroBitLEDService.cpp](https://github.com/lancaster-university/microbit-dal/blob/318c6abbb3d952d3f49a595a726486230e82fb5b/source/bluetooth/MicroBitLEDService.cpp)
 - [MicroBitLEDService.h](https://github.com/lancaster-university/microbit-dal/blob/318c6abbb3d952d3f49a595a726486230e82fb5b/inc/bluetooth/MicroBitLEDService.h)
+- [module.json](https://github.com/lancaster-university/microbit-dal/blob/318c6abbb3d952d3f49a595a726486230e82fb5b/module.json), runtime version and license
 - [DAL LED service documentation](https://lancaster-university.github.io/microbit-docs/ble/led-service/), page identifies DAL v2.1.1
 - [MakeCode startLEDService](https://makecode.microbit.org/reference/bluetooth/start-led-service), inspected 2026-10-03 for enablement/security context only
 

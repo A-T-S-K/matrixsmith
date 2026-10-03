@@ -69,11 +69,11 @@ Bundle V3 and existing live contribution registrations remain unchanged.
 
 ## Using the inspection surface
 
-From Home select **Open offline LSLED preview**, or use `?offline=lsled`. This
+From Home select **Open offline protocol explorer**, or use `?offline=lsled`. This
 standalone lazy entry constructs no application runtime or hardware adapter.
 Choose Blank, Asymmetric markers or Checkerboard. The logical preview and
 single-packet inspector show planned bytes; packet indexes are zero-based, with
-byte offsets and exact service/characteristic endpoints. Explicit copy actions
+packet sizes and exact service/characteristic endpoints. Explicit copy actions
 use the existing browser file adapter; all-packet copy emits one exact hex line
 per packet in order. Changing example or packet clears copy status and suppresses
 late completion; leaving the page discards its state. Copy and source-detail
@@ -82,3 +82,7 @@ The lazy page entry also presents an accessible loading/failure state; retry
 reloads the page to recover from a failed module fetch without cached rejection.
 No Send or Connect action is present. Source detail is separated from the main
 preview to keep the small workflow useful on phone and desktop.
+
+The shared selector also offers the source-scoped micro:bit reference. Catalog
+identity, compilation contracts and lifecycle behavior are documented in
+[offline-catalog.md](offline-catalog.md).

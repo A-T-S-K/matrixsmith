@@ -1,6 +1,8 @@
 - main:
     - text: MS MatrixSmith
     - paragraph: BLUETOOTH MATRIX WORKBENCH
+    - link "Open offline protocol explorer":
+        - /url: /?offline=1
     - heading "Make the display explain itself." [level=1]:
         - text: ""
         - emphasis: explain itself.
@@ -20,6 +22,12 @@
             - /placeholder: FFF0, A950, …
         - paragraph: These UUIDs tell the browser which services MatrixSmith may inspect after you select the device. Services not requested here can stay hidden.
         - button "Choose device →"
+    - article:
+        - text: ▤
+        - heading "Local support profile" [level=2]
+        - paragraph: Review a JSON definition for an installed protocol implementation before connecting.
+        - button "Choose local profile →"
+        - paragraph: Loading is local to this browser session. It establishes no physical support or send permission.
     - article:
         - text: ⇧
         - heading "Open diagnostic report" [level=2]

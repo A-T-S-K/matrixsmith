@@ -146,3 +146,10 @@ uses `source: "offline"` with a null fingerprint, and requires driver-authored
 dry-run-only intent. Its small result is independent of Bundle V3 and
 ContentCompilationRecord. A reference cannot resolve a physical profile, and
 software layout tests do not replace deliberate hardware acceptance.
+
+The [reusable offline catalog](offline-catalog.md) registers both LSLED and the
+[pinned micro:bit LED service](microbit-offline.md). Add a literal lazy loader
+and immutable entry with a registered reference, authored examples, pixel
+policy, delivery/limitations and validated source IDs. Builders and descriptions
+stay in the entry; the shared inspector and bootstrap need no family branch.
+Keep reference drivers out of the default live composition.

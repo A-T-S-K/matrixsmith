@@ -12,21 +12,27 @@ const appRoot = root;
 
 // Presentation mode uses the real framebuffer preview without constructing a
 // transport, loading a workspace, or consulting persisted device state.
-if (new URLSearchParams(location.search).get("offline") === "lsled") {
+const query = new URLSearchParams(location.search);
+if (query.has("offline")) {
+  const initialReference =
+    query.get("reference") ??
+    (query.get("offline") === "1" ? "lsled" : query.get("offline") || "lsled");
   render(
     <main class="offline-legacy">
-      <p role="status">Loading offline LSLED preview…</p>
+      <p role="status">Loading offline protocol explorer…</p>
     </main>,
     appRoot,
   );
   void import("./ui/pages/OfflineLegacy")
-    .then(({ OfflineLegacy }) => render(<OfflineLegacy />, appRoot))
+    .then(({ OfflineLegacy }) =>
+      render(<OfflineLegacy initialReference={initialReference} />, appRoot),
+    )
     .catch(() =>
       render(
         <main class="offline-legacy">
           <a href={import.meta.env.BASE_URL}>← MatrixSmith home</a>
           <h1>Offline preview unavailable</h1>
-          <p role="alert">Could not load the offline LSLED preview.</p>
+          <p role="alert">Could not load the offline protocol explorer.</p>
           <button onClick={() => window.location.reload()}>
             Retry offline preview
           </button>

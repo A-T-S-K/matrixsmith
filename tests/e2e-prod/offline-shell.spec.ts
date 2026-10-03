@@ -135,3 +135,62 @@ test("built production shell navigates and reloads offline", async ({
   await page.goto("/#/device/investigate", { waitUntil: "domcontentloaded" });
   await expect(page.locator("#app")).not.toBeEmpty();
 });
+
+test("normal installation precaches both offline references before either is opened", async ({
+  page,
+  context,
+}) => {
+  const failures: string[] = [];
+  page.on("requestfailed", (r) => failures.push(r.url()));
+  page.on("pageerror", (e) => failures.push(e.message));
+  await page.goto("/");
+  await page.evaluate(async () => {
+    await navigator.serviceWorker.ready;
+  });
+  await page.waitForFunction(() => navigator.serviceWorker.controller !== null);
+  const assetCount = await page.evaluate(async () => {
+    const manifest = (await (await fetch("asset-manifest.json")).json()) as {
+      assets: string[];
+    };
+    for (const asset of manifest.assets)
+      if (!(await caches.match(new URL(asset, location.href))))
+        throw new Error(`Uncached ${asset}`);
+    return manifest.assets.length;
+  });
+  expect(assetCount).toBeGreaterThan(2);
+  await context.setOffline(true);
+  await page.goto("/?offline=1");
+  await expect(page.getByLabel("Exact planned packet 0")).toContainText(
+    "77 61 6E 67",
+  );
+  await page
+    .getByRole("combobox", { name: "Example", exact: true })
+    .selectOption("asymmetric");
+  await expect(
+    page.getByRole("img", { name: /44 columns and 11 rows/ }),
+  ).toBeVisible();
+  await page
+    .getByRole("combobox", { name: "Implementation" })
+    .selectOption("microbit");
+  await page
+    .getByRole("combobox", { name: "Example", exact: true })
+    .selectOption("asymmetric");
+  await expect(page.getByLabel("Exact planned packet 0")).toHaveText(
+    "10 01 08 04 12",
+  );
+  await page
+    .getByText("Reference, sources and firmware limitations", { exact: true })
+    .click();
+  await expect(
+    page.getByRole("link", { name: "microbit-dal-led-cpp", exact: true }),
+  ).toBeVisible();
+  await page.reload();
+  await expect(
+    page.getByRole("img", { name: /5 columns and 5 rows/ }),
+  ).toBeVisible();
+  await page.goto("/?offline=lsled");
+  await expect(page.getByLabel("Exact planned packet 0")).toContainText(
+    "77 61 6E 67",
+  );
+  expect(failures).toEqual([]);
+});

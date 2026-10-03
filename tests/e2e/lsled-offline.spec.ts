@@ -12,14 +12,14 @@ test("offline lazy entry recovers from a module load failure", async ({
   });
   await page.goto("/?offline=lsled");
   await expect(page.getByRole("alert")).toHaveText(
-    "Could not load the offline LSLED preview.",
+    "Could not load the offline protocol explorer.",
   );
   const retry = page.getByRole("button", { name: "Retry offline preview" });
   await retry.focus();
   await expect(retry).toBeFocused();
   await page.keyboard.press("Enter");
   await expect(
-    page.getByRole("heading", { name: "LSLED legacy preview" }),
+    page.getByRole("heading", { name: "Offline protocol explorer" }),
   ).toBeVisible();
   expect(attempts).toBe(2);
 });
@@ -34,10 +34,10 @@ for (const width of [1280, 390]) {
     page.on("request", (request) => requested.push(request.url()));
     await page.goto("/");
     await page
-      .getByRole("link", { name: "Open offline LSLED preview" })
+      .getByRole("link", { name: "Open offline protocol explorer" })
       .click();
     await expect(
-      page.getByRole("heading", { name: "LSLED legacy preview" }),
+      page.getByRole("heading", { name: "Offline protocol explorer" }),
     ).toBeVisible();
     expect(requested.some((url) => url.includes("application-bootstrap"))).toBe(
       false,
@@ -183,7 +183,7 @@ for (const width of [1280, 390]) {
     });
     await page.getByRole("link", { name: "MatrixSmith home" }).click();
     await page
-      .getByRole("link", { name: "Open offline LSLED preview" })
+      .getByRole("link", { name: "Open offline protocol explorer" })
       .click();
     await expect(
       page.getByRole("combobox", { name: "Example", exact: true }),

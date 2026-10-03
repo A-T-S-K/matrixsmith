@@ -78,8 +78,8 @@ export function Home({
           <span>MatrixSmith</span>
         </div>
         <p class="eyebrow">BLUETOOTH MATRIX WORKBENCH</p>
-        <a href={`${import.meta.env.BASE_URL}?offline=lsled`}>
-          Open offline LSLED preview
+        <a href={`${import.meta.env.BASE_URL}?offline=1`}>
+          Open offline protocol explorer
         </a>
         <h1>
           Make the display

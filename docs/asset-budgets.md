@@ -51,3 +51,36 @@ knowledge JSON (194,051 raw / 30,487 gzip bytes, unchanged) and lazy resolver
 chunk (about 7.2 KiB gzip). Initial 90 KiB, knowledge 256 KiB, CSP, static and
 origin checks remain enforced. This is an asset allowance, with no Android
 performance claim.
+
+The reusable catalog/micro:bit slice keeps the existing 230 KiB total allowance.
+Using installed Node 24.21.0/npm 11.19.0 (not the unavailable Node 24.20.0 pin), an
+isolated Vite build of starting commit `8fca303` measured 228,765 bytes gzip total
+JavaScript and 13,640 bytes initial JavaScript. The catalog build measures
+233,867 bytes total and 13,718 bytes initial: growth of 5,102 and 78 bytes.
+Static verification includes the service worker in total JavaScript; the
+application asset chunks alone are 231,138 bytes gzip. Both builds pass the
+unchanged total/initial, CSP and origin gates. These are desktop asset
+measurements, not Android performance measurements.
+
+The shared inspector chunk is 2,622 bytes gzip. LSLED's entry chunk is 3,322 and
+micro:bit's is 3,019. Including static dependencies and the shared inspector,
+the LSLED explorer graph is 24,504 bytes gzip (10,786 beyond the initial graph);
+micro:bit is 24,201 (10,483 beyond initial). These graph totals share dependencies
+and must not be added together. Neither graph includes the live application
+bootstrap/CoolLED graph or knowledge validators. The entry increment after the
+inspector loads is 7,256 bytes for LSLED or 6,953 for micro:bit.
+
+Optional source details add 9,826 bytes gzip of lazy JavaScript to either explorer
+(the resolver/validator chunk itself is 7,178), plus knowledge JSON at 195,970 raw /
+30,946 gzip bytes. The broad research corpus remains intact with three new source
+records; only the source retrieval-date schema gains the additional inspected
+date. No runtime executable origin or dependency is added. Citation failure is
+independent of compilation.
+
+The offline manifest grows from 24 to 29 assets (931,774 raw / 240,320 gzip
+bytes across JavaScript and CSS), deliberately including both literal entry
+chunks, compiler, registry and preview dependencies. All lazy
+assets plus the existing shell, icons and validated reference/schema JSON are
+cached by the normal Home installation. Build identity hashes maintained source,
+public assets and notices. Production tests verify every manifest asset is cached
+before offline navigation to either reference, including source detail and reload.

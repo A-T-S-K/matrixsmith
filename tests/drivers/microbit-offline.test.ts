@@ -71,6 +71,14 @@ describe("pinned DAL LED Matrix State offline reference", () => {
       pixels[position] = 1;
       const encoded = encodeMatrixState({ width: 5, height: 5, pixels });
       expect([...encoded]).toEqual(expected);
+      const frame = new Framebuffer(5, 5);
+      frame.setPixel(position % 5, Math.floor(position / 5), 255, 255, 255);
+      expect([
+        ...compileOfflineFrame(microbitRegistry, microbitReference, {
+          type: "ShowFrame",
+          frame,
+        }).plan.packets[0]!.bytes,
+      ]).toEqual(expected);
       expect(encoded.every((byte) => (byte & 0xe0) === 0)).toBe(true);
     });
   });
