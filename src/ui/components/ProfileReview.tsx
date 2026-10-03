@@ -1,21 +1,8 @@
+import { FileButton } from "./FileButton";
+import { readBoundedText } from "../../application/file-input";
 import type { JSX } from "preact";
 import { useEffect, useRef } from "preact/hooks";
 import type { HomeSnapshot, HomeStore } from "../pages/Home";
-
-function exportDocument(
-  document: NonNullable<HomeSnapshot["loadedProfiles"]>[number],
-): void {
-  const url = URL.createObjectURL(
-    new Blob([JSON.stringify(document, null, 2) + "\n"], {
-      type: "application/json",
-    }),
-  );
-  const link = window.document.createElement("a");
-  link.href = url;
-  link.download = `${document.id}.profile.json`;
-  link.click();
-  setTimeout(() => URL.revokeObjectURL(url), 0);
-}
 
 export function ProfileReview({
   snapshot,
@@ -58,17 +45,55 @@ export function ProfileReview({
               </p>
               <p>
                 Dimensions: {document.dimensions.width}×
-                {document.dimensions.height}. A present company field
-                conflicting with 0x
-                {document.contradictions.companyId.toString(16).toUpperCase()},
-                geometry mismatch or property mismatch withdraws the exact
-                match. Missing information remains unknown.
+                {document.dimensions.height}.{" "}
+                {document.contradictions.companyId === null
+                  ? "Company information is unknown; no company condition applies."
+                  : `A present company field conflicting with 0x${document.contradictions.companyId.toString(16).toUpperCase()} withdraws matching.`}{" "}
+                Conflicting geometry or required properties withdraw matching.
+                Missing information remains unknown.
               </p>
               <p>
                 Brightness parameters: {document.parameters.brightness.min}–
                 {document.parameters.brightness.max}. Template:{" "}
                 {document.templates.join(", ")}.
               </p>
+              {document.documentVersion === 2 && (
+                <>
+                  <p>
+                    Candidate only · {document.candidate.history.status}.
+                    Recommended route:{" "}
+                    {document.candidate.recommendation ?? "unestablished"}.
+                    Fixed RGB444 / 16-row / eight-column codec assumptions.
+                  </p>
+                  <p>
+                    Name and shared GATT describe matching conditions; they
+                    establish neither family identity nor physical-unit
+                    equivalence. Manufacturer, firmware, model and chip remain
+                    unknown.
+                  </p>
+                  <p>
+                    Reload requires live family identification and all three
+                    still checks: bootstrap, raw channels, then encoder.
+                    Historical observations and route preference grant no
+                    content permission. Loading lasts for this browser session.
+                  </p>
+                  <p role="status">
+                    {snapshot.profileEvidenceStatus ??
+                      "Evidence attachment is missing. The candidate remains inspectable; no historical evidence has been adopted."}
+                  </p>
+                  <FileButton
+                    accept=".json,application/json"
+                    disabled={false}
+                    onFile={async (file) =>
+                      store.inspectProfileEvidence?.(
+                        await readBoundedText(file, "bundle"),
+                      )
+                    }
+                  >
+                    Inspect candidate evidence attachment
+                  </FileButton>
+                </>
+              )}
               <details>
                 <summary>Provenance and limitations</summary>
                 <ul>
@@ -92,7 +117,7 @@ export function ProfileReview({
               ) : (
                 <p>
                   Compatible with the installed implementation. Loading adds
-                  this source-only definition and creates a fresh disconnected
+                  this local definition and creates a fresh disconnected
                   workspace. Drafts are preserved; prepared work, current
                   evidence and confirmations do not carry over.
                 </p>
@@ -120,13 +145,13 @@ export function ProfileReview({
             Available until this browser session ends. Export and choose the
             file again in a fresh session to reload.
           </p>
-          {snapshot.loadedProfiles!.map((profile) => (
+          {snapshot.loadedProfiles!.map((profile, index) => (
             <div key={`${profile.namespace}:${profile.id}`}>
               <p>
                 {profile.label} · {profile.namespace}:{profile.id} ·{" "}
                 {profile.implementation}
               </p>
-              <button onClick={() => exportDocument(profile)}>
+              <button onClick={() => store.exportLoadedProfile?.(index)}>
                 Export {profile.label}
               </button>
             </div>

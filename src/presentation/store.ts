@@ -36,6 +36,7 @@ export class PresentationStore {
   ) {
     this.connectionStore = new ConnectionStore(
       {
+        reportStore: () => this.reportStore,
         snapshotStore: () => this.snapshotStore,
         noticeStore: () => this.noticeStore,
         investigationStore: () => this.investigationStore,
@@ -407,6 +408,21 @@ export class PresentationStore {
   readonly setReportOptions: ReportStore["setReportOptions"];
   readonly setTransactionFilter: ReportStore["setTransactionFilter"];
   readonly setTransactionSearch: ReportStore["setTransactionSearch"];
+  createCandidateProfile = (
+    ...args: Parameters<ConnectionStore["createCandidateProfile"]>
+  ) => this.connectionStore.createCandidateProfile(...args);
+  reviseCandidateProfile = (
+    ...args: Parameters<ConnectionStore["reviseCandidateProfile"]>
+  ) => this.connectionStore.reviseCandidateProfile(...args);
+  exportCandidateProfile = (
+    ...args: Parameters<ConnectionStore["exportCandidateProfile"]>
+  ) => this.connectionStore.exportCandidateProfile(...args);
+  exportLoadedProfile = (
+    ...args: Parameters<ConnectionStore["exportLoadedProfile"]>
+  ) => this.connectionStore.exportLoadedProfile(...args);
+  inspectProfileEvidence = (
+    ...args: Parameters<ConnectionStore["inspectProfileEvidence"]>
+  ) => this.connectionStore.inspectProfileEvidence(...args);
   readonly reviewLocalProfile: ConnectionStore["reviewLocalProfile"];
   readonly loadLocalProfile: ConnectionStore["loadLocalProfile"];
   readonly connect: ConnectionStore["connect"];

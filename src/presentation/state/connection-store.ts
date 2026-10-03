@@ -15,6 +15,7 @@ import type { ContentEditorStore } from "./content-editor-store";
 import type { PresentationEnvironment } from "../environment";
 
 interface Ports {
+  reportStore(): Pick<import("./report-store").ReportStore, "exportProfile">;
   snapshotStore(): Pick<SnapshotStore, "_emit">;
   noticeStore(): Pick<NoticeStore, "_run" | "setInfo" | "setError" | "getBusy">;
   investigationStore(): Pick<
@@ -48,6 +49,191 @@ export class ConnectionStore {
       "authorizedDevices"
     >,
   ) {}
+  private candidate:
+    import("../../application/candidate-profile").CandidateArtifact | null =
+    null;
+  private candidateOwner: ReturnType<WorkspaceStore["getController"]> | null =
+    null;
+  private candidateGeneration = 0;
+  private candidateError: string | null = null;
+  getCandidateReview() {
+    const owner = this.ports.workspaceStore().getController();
+    return this.candidate
+      ? {
+          document: this.candidate.document,
+          observedMatchingName: this.candidate.observedMatchingName,
+          stale:
+            owner !== this.candidateOwner ||
+            this.candidate.context !== this.currentCandidateContext(),
+          error: this.candidateError,
+        }
+      : null;
+  }
+  private contextReader:
+    | typeof import("../../application/candidate-profile").candidateContext
+    | null = null;
+  private currentCandidateContext() {
+    return this.contextReader?.(this.ports.workspaceStore().getController());
+  }
+  async createCandidateProfile(): Promise<void> {
+    const owner = this.ports.workspaceStore().getController();
+    const generation = ++this.candidateGeneration;
+    const profile = owner.session.profile;
+    const fingerprint = owner.session.fingerprint;
+    const connectionId = owner.transport.connectionId;
+    const geometryRevision = owner.session.geometryRevision;
+    try {
+      const { buildCandidateProfile, candidateContext } =
+        await import("../../application/candidate-profile");
+      if (
+        owner.session.profile !== profile ||
+        owner.session.fingerprint !== fingerprint ||
+        owner.transport.connectionId !== connectionId ||
+        owner.session.geometryRevision !== geometryRevision
+      )
+        throw new Error(
+          "Display context changed during generation. Create the candidate again.",
+        );
+      this.contextReader = candidateContext;
+      const context = candidateContext(owner);
+      const candidate = buildCandidateProfile(owner);
+      if (
+        generation !== this.candidateGeneration ||
+        owner !== this.ports.workspaceStore().getController() ||
+        context !== candidateContext(owner)
+      )
+        return;
+      this.candidate = candidate;
+      this.candidateOwner = owner;
+      this.candidateError = null;
+      this.ports.noticeStore().setError(null, "candidate");
+    } catch (error) {
+      if (
+        generation !== this.candidateGeneration ||
+        owner !== this.ports.workspaceStore().getController()
+      )
+        return;
+      this.candidateError =
+        error instanceof Error ? error.message : String(error);
+      this.ports.noticeStore().setError(this.candidateError, "candidate");
+    }
+    this.ports.snapshotStore()._emit();
+  }
+  async reviseCandidateProfile(
+    label: string,
+    name: string,
+    id: string,
+  ): Promise<void> {
+    const candidate = this.candidate;
+    const generation = ++this.candidateGeneration;
+    try {
+      const { parseProfileDocument } = await import("../../profiles/document");
+      if (
+        generation !== this.candidateGeneration ||
+        candidate !== this.candidate
+      )
+        return;
+      if (!candidate || this.getCandidateReview()?.stale)
+        throw new Error(
+          "Display context changed. Create and review the candidate again.",
+        );
+      const document = parseProfileDocument(
+        JSON.stringify({
+          ...candidate.document,
+          label,
+          id,
+          matching: {
+            ...candidate.document.matching,
+            name: name.trim().toLowerCase(),
+          },
+        }),
+      );
+      this.candidate = {
+        ...candidate,
+        document:
+          document as import("../../profiles/document").ProfileDocumentV2,
+      };
+      this.candidateError = null;
+      this.ports.noticeStore().setError(null, "candidate");
+    } catch (error) {
+      if (
+        generation !== this.candidateGeneration ||
+        candidate !== this.candidate
+      )
+        return;
+      this.candidateError =
+        error instanceof Error ? error.message : String(error);
+    }
+    this.ports.snapshotStore()._emit();
+  }
+  async exportCandidateProfile(copy = false, evidence = false): Promise<void> {
+    const candidate = this.candidate;
+    if (!candidate || this.getCandidateReview()?.stale) {
+      this.candidateError =
+        "Display context changed. Create and review the candidate again.";
+      this.ports.snapshotStore()._emit();
+      return;
+    }
+    const generation = this.candidateGeneration;
+    await this.ports.reportStore().exportProfile(
+      () => ({
+        filename: evidence
+          ? `${candidate.document.id}.evidence.json`
+          : `${candidate.document.id}.profile.json`,
+        text: evidence
+          ? candidate.evidence
+          : JSON.stringify(candidate.document, null, 2) + "\n",
+      }),
+      copy,
+      () =>
+        candidate === this.candidate &&
+        generation === this.candidateGeneration &&
+        !this.getCandidateReview()?.stale,
+    );
+  }
+  async exportLoadedProfile(index: number): Promise<void> {
+    const document = this.getLoadedProfiles()[index];
+    if (!document) return;
+    const registry = this.ports.workspaceStore().profileRegistry();
+    const owner = this.ports.workspaceStore().getController();
+    const profile = owner.session.profile;
+    const fingerprint = owner.session.fingerprint;
+    const connectionId = owner.transport.connectionId;
+    const geometryRevision = owner.session.geometryRevision;
+    await this.ports.reportStore().exportProfile(
+      () => ({
+        filename: `${document.id}.profile.json`,
+        text: JSON.stringify(document, null, 2) + "\n",
+      }),
+      false,
+      () =>
+        registry === this.ports.workspaceStore().profileRegistry() &&
+        owner.session.profile === profile &&
+        owner.session.fingerprint === fingerprint &&
+        owner.transport.connectionId === connectionId &&
+        owner.session.geometryRevision === geometryRevision,
+    );
+  }
+  private attachmentStatus: string | null = null;
+  getProfileEvidenceStatus() {
+    return this.attachmentStatus;
+  }
+  async inspectProfileEvidence(text: string): Promise<void> {
+    const document = this.profileReview?.document;
+    try {
+      if (document?.documentVersion !== 2)
+        throw new Error("Review a V2 candidate before attaching evidence.");
+      const { inspectCandidateEvidence } =
+        await import("../../application/candidate-profile");
+      if (document !== this.profileReview?.document) return;
+      this.attachmentStatus = inspectCandidateEvidence(document, text);
+    } catch (error) {
+      if (document !== this.profileReview?.document) return;
+      this.attachmentStatus =
+        error instanceof Error ? error.message : String(error);
+    }
+    this.ports.snapshotStore()._emit();
+  }
   private profileReview: import("./types").LocalProfileReview | null = null;
   private preparedProfiles: {
     registry: import("../../drivers/registry").DriverRegistry;
@@ -94,6 +280,7 @@ export class ConnectionStore {
       }
       this.preparedProfiles = registry ? { registry, previous } : null;
       this.profileReview = { document, problems, error: null };
+      this.attachmentStatus = null;
     } catch (error) {
       if (this.preparedProfiles) {
         this.ports

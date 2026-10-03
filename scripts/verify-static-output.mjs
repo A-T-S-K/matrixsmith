@@ -18,13 +18,14 @@ const required = [
   "icon-maskable-512.png",
   "bundle-v3.schema.json",
   "profile-v1.schema.json",
+  "profile-v2.schema.json",
   "knowledge-v1.schema.json",
   "knowledge-v1.json",
 ];
 const failures = [];
 const INITIAL_ROUTE_JS_GZIP_LIMIT = 90 * 1024;
 // Provisional bounded profiles/advisory slice allowance; see docs/asset-budgets.md.
-const TOTAL_JS_GZIP_LIMIT = 210 * 1024;
+const TOTAL_JS_GZIP_LIMIT = 220 * 1024;
 for (const file of required)
   if (!existsSync(join(root, file)))
     failures.push(`Missing required static file: ${file}`);

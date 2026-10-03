@@ -56,6 +56,8 @@ interface Ports {
     ConnectionStore,
     | "getPreviouslyAuthorized"
     | "getProfileReview"
+    | "getCandidateReview"
+    | "getProfileEvidenceStatus"
     | "getLoadedProfiles"
     | "getProfileLoadReason"
     | "getLastImport"
@@ -189,6 +191,10 @@ export class SnapshotStore {
       .getController()
       .assessment(liveConnected);
     this._snapshot = Object.freeze({
+      candidateReview: this.ports.connectionStore().getCandidateReview(),
+      profileEvidenceStatus: this.ports
+        .connectionStore()
+        .getProfileEvidenceStatus(),
       profileReview: this.ports.connectionStore().getProfileReview(),
       loadedProfiles: this.ports.connectionStore().getLoadedProfiles(),
       profileLoadReason: this.ports.connectionStore().getProfileLoadReason(),

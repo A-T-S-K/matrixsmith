@@ -1,7 +1,7 @@
 # Provisional static asset budgets
 
-The total JavaScript gzip ceiling is provisionally 210 KiB for the bounded
-local-profile and advisory-knowledge slice, replacing the historical 180 KiB
+The total JavaScript gzip ceiling is provisionally 220 KiB for the bounded
+local-profile, advisory-knowledge and bounded candidate slice, replacing the earlier 210 KiB
 ceiling. Initial JavaScript remains capped at 90 KiB. Static verification stays
 mandatory. This revision allows the measured standalone validators, trust
 registration, review UI and lazy advisory resolver without spending the slice on
@@ -22,3 +22,14 @@ strings and every script, HTML and stylesheet. Citation links do not fetch
 executable dependencies. Runtime same-origin fetching and CSP are unchanged.
 
 Full mobile performance work and permanent threshold calibration remain deferred.
+
+The candidate revision adds a strict V2 profile schema/standalone validator,
+a lazily imported application builder and evidence-reference inspector, and
+supervised review/export controls. The baseline at commit `7f86ba8` measured
+212,611 bytes gzip of total JavaScript; the first candidate build measured
+220,983 bytes (8,372 bytes growth), exceeding the previous 215,040-byte ceiling.
+The 225,280-byte ceiling covers this measured addition. Initial Home remains
+lazy (13,346 bytes gzip in that candidate build), below its unchanged 90 KiB
+ceiling. Profile schemas are separate JSON assets included in offline caching;
+V3 schema, static/CSP/origin scanning and knowledge budget remain unchanged.
+Final exact costs are reported in chat; no Android performance inference is made.

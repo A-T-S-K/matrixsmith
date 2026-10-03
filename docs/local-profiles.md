@@ -59,3 +59,67 @@ Accepted definition identity includes the document and resolved profile/template
 snapshot. Application preparation writes it into digest-covered provenance;
 a definition mismatch rejects stale prepared work. This identifies accepted
 software definitions, not newly established hardware support.
+
+## Reusable still candidates (Profile Document V2)
+
+V1 remains source-only and unchanged. V2 is a separate strict published contract
+(`public/profile-v2.schema.json`); older V1 readers reject its document version and
+candidate fields. Both versions use the same 16 KiB bounded parsing and generated
+standalone validation. Unknown versions and executable/authority fields fail
+closed. Diagnostic Bundle V3 is unchanged.
+
+After current live CoolLEDUX identification and explicit geometry, **Create
+candidate profile** captures an inspectable proposal. The only configuration is
+the registered `coolledux-reviewed-v1` implementation, RGB444, 16-row stride,
+eight-column tiles, and width 16–64 divisible by eight. Raw-channel observations
+are separate from actual encoder verification; unsupported permutations cannot
+be imported as executable parameters. A completed candidate recommends
+`animation-single-frame`; an incomplete candidate omits that recommendation.
+The application builder requires valid target/definition-bound attempts and the
+existing static viability evaluator, rather than transfer acceptance, completed
+labels or saved summaries. Generation/export installs nothing and changes no
+claims, strategy, drafts or confirmation.
+
+`candidate.history` is historical provenance, never approval. Its definition
+identity records the software definition used for those observations. Reloaded
+configuration receives a new accepted definition digest covering the candidate;
+these identities need not coincide. `evidenceDigest` refers to a separate existing
+privacy-projected V3 attachment using a canonical content digest. This digest is
+an integrity/reference check, not a signature or authenticity claim. An absent
+attachment leaves the profile inspectable. Inspection rejects conflicting content,
+geometry or definition references and installs no historical claims.
+
+Company ID may be null; a company field is included only when actually accessible
+and is a contradiction condition, never an inferred manufacturer. Manufacturer,
+firmware, model and chip identity remain unknown. Name and shared GATT describe
+candidate matching conditions and do not establish family or physical-unit
+identity. Public labels, local ID and the observed Bluetooth matching name are
+editable before export. The matching name may be personal or identifying: this
+profile is not universally identifier-free. The separate shareable evidence
+projection removes specimen/session identifiers, including legacy `details.target`
+and current `physicalDeviceKey`, while preserving existing test, attempt,
+transaction, definition and timing relationships. Full local archives remain a
+separate explicit report option with original provenance.
+
+Copy/download use owner-supervised file ports. Invalid edits and export failures
+preserve the prior valid candidate and allow retry. A changed target, connection,
+geometry, definition, evidence or replacement review disables stale export and
+suppresses late success. Loaded-profile export uses the same supervised action.
+
+Reload uses the existing atomic local installation path, creates a disconnected
+runtime and never connects or sends automatically. Identity/matching collisions
+remain errors; use a fresh browser session to replace a loaded definition. Local
+namespaces cannot take built-in or runtime identities. Matching alone cannot
+identify a V2 candidate's family. Eligible live family identification must happen
+again; an accessible contradictory reported size withdraws candidate matching.
+Repeat the existing three steps: still bootstrap with measured 15-second hold,
+raw channels/black, then encoder. Historical/imported/reconnected observations
+cannot satisfy current authority. Only fresh successful verification enables
+experimental text/images. Experimental permission, static viability and exact
+persistent-send consequence confirmation remain in force. Other content and
+routine support are not added.
+
+The durable installation is the exported file. Loading is browser-session-only;
+there is no persistent catalog, ZIP package, signing, submission or promotion to
+accepted shipping support. Simulator/browser tests prove software behavior, not
+physical hardware acceptance.

@@ -70,6 +70,13 @@ export interface LocalProfileReview {
 }
 
 export interface AppSnapshot {
+  readonly candidateReview: {
+    readonly document: import("../../profiles/document").ProfileDocumentV2;
+    readonly observedMatchingName: string;
+    readonly stale: boolean;
+    readonly error: string | null;
+  } | null;
+  readonly profileEvidenceStatus: string | null;
   readonly profileReview: LocalProfileReview | null;
   readonly loadedProfiles: readonly import("../../profiles/document").ProfileDocument[];
   readonly profileLoadReason: string | null;

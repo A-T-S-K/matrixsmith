@@ -13,6 +13,7 @@ import type {
 
 /** The intentionally small contract used by both the cold Home shell and the full store. */
 export interface HomeSnapshot {
+  readonly profileEvidenceStatus?: string | null;
   readonly profileReview?: AppSnapshot["profileReview"];
   readonly loadedProfiles?: AppSnapshot["loadedProfiles"];
   readonly profileLoadReason?: string | null;
@@ -40,6 +41,8 @@ export interface HomeStore {
   disconnect(): void | Promise<void>;
   reviewLocalProfile?(text: string): void | Promise<void>;
   loadLocalProfile?(): void;
+  exportLoadedProfile?(index: number): void | Promise<void>;
+  inspectProfileEvidence?(text: string): void | Promise<void>;
   importBundle(json: string): void | Promise<void>;
   importExternalCapture(content: string): void | Promise<void>;
   returnToLiveWorkspace(): void;

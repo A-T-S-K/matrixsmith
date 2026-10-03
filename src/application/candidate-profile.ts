@@ -35,6 +35,8 @@ export interface CandidateArtifact {
   readonly document: ProfileDocumentV2;
   readonly evidence: string;
   readonly context: string;
+  /** Private review text; never serialized with the reusable document. */
+  readonly observedMatchingName: string;
 }
 
 /** Application-owned configuration proposal; no claims or permission are installed. */
@@ -163,7 +165,7 @@ export function buildCandidateProfile(
     throw new Error(
       "Display context changed during candidate generation. Create it again.",
     );
-  return { document, evidence, context };
+  return { document, evidence, context, observedMatchingName: name };
 }
 
 /** Inspect an optional attachment without installing its historical claims. */

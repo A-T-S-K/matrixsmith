@@ -90,27 +90,63 @@ export class ReportStore {
   private async action(
     work: () => void | Promise<void>,
     success?: string,
+    current: () => boolean = () => true,
+    errorOwner = "report",
   ): Promise<void> {
     this.syncWorkspace();
     const owner = this._previewOwner;
     const generation = ++this._actionGeneration;
     this.ports.noticeStore().setInfo(null);
     try {
+      if (!current())
+        throw new Error(
+          "Display context changed. Create and review the candidate again.",
+        );
       await work();
       this.syncWorkspace();
-      if (owner !== this._previewOwner || generation !== this._actionGeneration)
+      if (
+        owner !== this._previewOwner ||
+        generation !== this._actionGeneration ||
+        !current()
+      )
         return;
       this._actionError = null;
+      this.ports.noticeStore().setError(null, errorOwner);
       if (success) this.ports.noticeStore().setInfo(success);
     } catch (error) {
       this.syncWorkspace();
-      if (owner !== this._previewOwner || generation !== this._actionGeneration)
+      if (
+        owner !== this._previewOwner ||
+        generation !== this._actionGeneration ||
+        !current()
+      )
         return;
       this._actionError =
         error instanceof Error ? error.message : String(error);
-      this.ports.noticeStore().setError(this._actionError);
+      this.ports.noticeStore().setError(this._actionError, errorOwner);
     }
     this.ports.snapshotStore()._emit();
+  }
+  async exportProfile(
+    content: () => { filename: string; text: string },
+    copy: boolean,
+    current: () => boolean,
+  ): Promise<void> {
+    await this.action(
+      () => {
+        const value = content();
+        return copy
+          ? this.copyContent(value.text)
+          : this._files.download(
+              value.filename,
+              value.text,
+              "application/json",
+            );
+      },
+      copy ? "Profile copied to clipboard." : "Profile downloaded.",
+      current,
+      "profile-export",
+    );
   }
   private async copyContent(text: string): Promise<void> {
     if (!(await this._files.copyText(text)))

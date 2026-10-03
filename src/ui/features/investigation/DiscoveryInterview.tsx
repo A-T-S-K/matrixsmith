@@ -11,7 +11,9 @@ export function showDiscovery(snapshot: AppSnapshot): boolean {
       !(
         snapshot.geometryProfile?.driverId === "coolledux" &&
         (snapshot.discovery.terminal === "geometry" ||
-          snapshot.discovery.terminal === "dimensions")
+          snapshot.discovery.terminal === "dimensions" ||
+          (snapshot.discovery.terminal === "configuration" &&
+            snapshot.geometryProfile.metadata.candidateProfile === true))
       )) ||
       snapshot.assessment.readiness === "needs-identification" ||
       !snapshot.liveConnected)
