@@ -33,7 +33,10 @@ export class WebBluetoothTransport implements MatrixTransport {
   readonly #queueReleases = new Set<() => void>();
   #writeQueue: Promise<void> = Promise.resolve();
 
-  constructor(private readonly trace: TraceRecorder) {}
+  constructor(
+    private readonly trace: TraceRecorder,
+    private initialSelection?: Promise<BluetoothDevice>,
+  ) {}
 
   get state(): ConnectionState {
     return this.#state;
@@ -80,7 +83,10 @@ export class WebBluetoothTransport implements MatrixTransport {
       // it never narrows the chooser and older browsers simply ignore it.
       if (manufacturerData && manufacturerData.length > 0)
         requestOptions.optionalManufacturerData = [...manufacturerData];
-      const device = await navigator.bluetooth.requestDevice(requestOptions);
+      const selected = this.initialSelection;
+      this.initialSelection = undefined;
+      const device = await (selected ??
+        navigator.bluetooth.requestDevice(requestOptions));
       this.#assertGeneration(generation);
       return await this.#connectDevice(
         device,
@@ -302,12 +308,15 @@ export class WebBluetoothTransport implements MatrixTransport {
 
   async read(endpoint: GattEndpoint): Promise<Uint8Array> {
     const generation = this.#generation;
+    const connectionId = this.#connectionId;
+    endpoint = { ...endpoint };
     const characteristic = await this.#resolve(endpoint, generation);
     this.#assertGeneration(generation);
     if (!characteristic.properties.read)
       throw new Error("Characteristic does not support reads.");
     const value = await characteristic.readValue();
-    this.#assertGeneration(generation);
+    // A dispatched read's returned value remains evidence of the original
+    // connection. The application owner decides adoption, even after retirement.
     const bytes = new Uint8Array(
       value.buffer,
       value.byteOffset,
@@ -319,6 +328,9 @@ export class WebBluetoothTransport implements MatrixTransport {
         serviceUuid: endpoint.serviceUuid,
         characteristicUuid: endpoint.characteristicUuid,
         byteLength: bytes.length,
+        connectionId,
+        generation,
+        retired: generation !== this.#generation,
       },
       bytes,
     );

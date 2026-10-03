@@ -54,6 +54,7 @@ export interface DiscoveryHypothesis {
   readonly unanswered: readonly string[];
 }
 export interface DiscoveryState {
+  readonly pendingRead: boolean;
   readonly status: "running" | "stopping" | "complete" | "retired";
   readonly question: string | null;
   readonly summary: string;
@@ -83,13 +84,17 @@ export interface DiscoveryState {
 interface Ports {
   connection(): Pick<
     ConnectionService,
-    "getSession" | "getTransport" | "getConnectionGeneration" | "read"
+    | "getSession"
+    | "getTransport"
+    | "getConnectionGeneration"
+    | "read"
+    | "pendingGattOperation"
   >;
   identification(): Pick<
     IdentificationService,
     "getRegistry" | "geometryProposal" | "_resolveProtocol" | "_proposeGeometry"
   >;
-  transmission(): Pick<TransmissionService, "probe">;
+  transmission(): Pick<TransmissionService, "probe" | "executionBusy">;
   evidence(): Pick<
     ProtocolEvidenceService,
     "getTrace" | "getTransactions" | "editTransactions"
@@ -105,6 +110,7 @@ export class DiscoveryService {
     if (!this.pendingRead) return;
     this.pendingRead = null;
     this.owned = false;
+    this.publish({ pendingRead: false });
   }
   private stopped = false;
   private disposed = false;
@@ -161,6 +167,13 @@ export class DiscoveryService {
       throw new Error(
         "Display setup owns the current execution. Wait for it to settle.",
       );
+    if (
+      this.ports.connection().pendingGattOperation ||
+      this.ports.transmission().executionBusy
+    )
+      throw new Error(
+        "Another GATT operation owns execution. Wait for it to settle before setup.",
+      );
     const session = this.ports.connection().getSession();
     const transport = this.ports.connection().getTransport();
     const fingerprint = session.fingerprint;
@@ -214,6 +227,7 @@ export class DiscoveryService {
         .map((driver) => driver.id),
     );
     this.state = {
+      pendingRead: false,
       status: "running",
       question: null,
       terminal: null,
@@ -598,6 +612,7 @@ export class DiscoveryService {
             });
             dispatched = true;
             this.pendingRead = token;
+            this.publish({ pendingRead: true });
           },
         },
         transactionId,
@@ -611,6 +626,7 @@ export class DiscoveryService {
           annotate();
           if (this.pendingRead === token) {
             this.pendingRead = null;
+            this.publish({ pendingRead: false });
             if (
               this.state?.status !== "running" &&
               this.state?.status !== "stopping"

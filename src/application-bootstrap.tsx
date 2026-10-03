@@ -19,6 +19,7 @@ export async function startApplication(
   root: HTMLElement,
   action?: ApplicationCommand,
   updates?: UpdateManager,
+  initialSelection?: Promise<BluetoothDevice>,
 ): Promise<void> {
   const simulation = import.meta.env.DEV
     ? new URLSearchParams(location.search).get("sim")
@@ -32,11 +33,13 @@ export async function startApplication(
   const synthetic =
     import.meta.env.DEV && simulation === "lumen"
       ? await import("./dev/synthetic-workspace")
-      : import.meta.env.DEV && simulation?.startsWith("discovery")
-        ? (await import("./dev/discovery-workspace")).discoveryWorkspace(
-            simulation,
-          )
-        : null;
+      : import.meta.env.DEV && simulation?.startsWith("read-")
+        ? (await import("./dev/read-workspace")).readWorkspace(simulation)
+        : import.meta.env.DEV && simulation?.startsWith("discovery")
+          ? (await import("./dev/discovery-workspace")).discoveryWorkspace(
+              simulation,
+            )
+          : null;
   const registry =
     synthetic?.registry ??
     (import.meta.env.DEV && simulation === "experimental"
@@ -53,7 +56,8 @@ export async function startApplication(
               : "simulated-iledhat",
             simulation === "unknown",
           )
-        : new WebBluetoothTransport(trace);
+        : new WebBluetoothTransport(trace, initialSelection);
+    initialSelection = undefined;
     const controller = new ApplicationRuntime(
       transport,
       trace,

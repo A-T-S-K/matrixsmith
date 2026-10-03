@@ -307,7 +307,11 @@ it("blocks transfers, decode and guided observation but keeps explicit close/rec
     writeMode: "without-response",
     byteLength: 1,
   });
-  await vi.waitFor(() => expect(s.store.getSnapshot().busy).toBeNull());
+  // Wait for the full paced upload, not only the first deferred packet.
+  // Full-suite scheduling can exceed waitFor's one-second default.
+  await vi.waitFor(() => expect(s.store.getSnapshot().busy).toBeNull(), {
+    timeout: 5000,
+  });
   const file = deferred<void>();
   const importing = fileActivity.run(() => file.promise);
   s.store.returnToOfflineWorkspace();
@@ -537,3 +541,25 @@ it("retains a disconnected live workspace when a report opens", async () => {
   expect(s.store.getSnapshot().missingContext).toBeNull();
   expect(s.createLiveWorkspace).not.toHaveBeenCalled();
 });
+it.each(["success", "failure"])(
+  "late manual read %s cannot update replacement notices",
+  async (outcome) => {
+    const s = await setup();
+    const response = deferred<Uint8Array>();
+    vi.spyOn(s.transport, "read").mockReturnValueOnce(response.promise);
+    const pending = s.store.readCharacteristic({
+      serviceUuid: "0000fff0-0000-1000-8000-00805f9b34fb",
+      characteristicUuid: "0000fff1-0000-1000-8000-00805f9b34fb",
+    });
+    s.runtime.session.fingerprint = {
+      ...s.runtime.session.fingerprint!,
+      name: "replacement",
+    };
+    if (outcome === "success") response.resolve(new Uint8Array([1, 2, 3]));
+    else response.reject(new Error("Old read failure"));
+    await pending;
+    expect(s.store.getSnapshot().info).toBeNull();
+    expect(s.store.getSnapshot().error).toBeNull();
+    expect(s.runtime.transactions.at(-1)?.source).toBe("gatt-read");
+  },
+);

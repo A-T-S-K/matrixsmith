@@ -1,3 +1,7 @@
+import {
+  REGISTERED_READS,
+  relevantRead,
+} from "../../application/reviewed-reads";
 import { geometryErrors, fingerprintIdentityKey } from "./dependencies";
 import { INPUT_LIMITS } from "./dependencies";
 import type { GattEndpoint } from "./dependencies";
@@ -461,7 +465,12 @@ export class ConnectionStore {
       this.ports
         .navigationStore()
         .setViewState(
-          mode === "inspection"
+          mode === "inspection" &&
+            !REGISTERED_READS.some(
+              (read) =>
+                workspace.session.fingerprint &&
+                relevantRead(read, workspace.session.fingerprint),
+            )
             ? "develop"
             : workspace.session.selection?.selected
               ? "control"
@@ -595,16 +604,29 @@ export class ConnectionStore {
     });
   }
   async readCharacteristic(endpoint: GattEndpoint): Promise<void> {
+    const workspace = this.ports.workspaceStore().getController();
+    const connectionId = workspace.transport.connectionId;
+    const source = workspace.session.source;
+    const selection = workspace.session.selection;
+    const fingerprint = workspace.session.fingerprint;
+    const current = () =>
+      workspace === this.ports.workspaceStore().getController() &&
+      workspace.transport.connectionId === connectionId &&
+      workspace.session.source === source &&
+      workspace.session.selection === selection &&
+      workspace.session.fingerprint === fingerprint;
     await this.ports.noticeStore()._run("Reading characteristic…", async () => {
-      const value = await this.ports
-        .workspaceStore()
-        .getController()
-        .read(endpoint);
-      this.ports
-        .noticeStore()
-        .setInfo(
-          `Read ${value.length} byte(s). The transaction retains exact bytes.`,
-        );
+      try {
+        const value = await workspace.read(endpoint);
+        if (!current()) return;
+        this.ports
+          .noticeStore()
+          .setInfo(
+            `Read ${value.length} byte(s). The transaction retains exact bytes.`,
+          );
+      } catch (error) {
+        if (current()) throw error;
+      }
     });
   }
   async subscribeNotifications(endpoint: GattEndpoint): Promise<void> {

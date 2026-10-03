@@ -302,3 +302,66 @@ it("a retired unresolved interview cannot overwrite a new interview on replaceme
   expect(runtime.discovery).toEqual(replacement);
   expect(runtime.transactions).toHaveLength(2);
 });
+it("read V3 evidence round-trips offline without live eligibility or leaked target text", async () => {
+  const { runtime } = await setup();
+  const original = runtime.session.fingerprint!;
+  runtime.session.fingerprint = {
+    ...original,
+    name: "private-target-938",
+    browserDeviceId: "private-browser-id-938",
+  };
+  await runtime.startDiscovery();
+  const bundle = runtime.exportBundle();
+  const imported = new ApplicationRuntime(
+    new FakeTransport(),
+    undefined,
+    new DriverRegistry([]),
+  );
+  runtimes.push(imported);
+  imported.importBundle(bundle);
+  expect(imported.transactions[0]).toEqual(runtime.transactions[0]);
+  expect(imported.transactions[0]?.findings.join(" ")).toContain(
+    "Reviewed read outcome: service-observed",
+  );
+  await expect(imported.startDiscovery()).rejects.toThrow(/live display/);
+  const shared = runtime.exportBundle("shareable");
+  expect(shared).not.toContain("private-target-938");
+  expect(shared).not.toContain("private-browser-id-938");
+});
+it("oversized supplied values allocate no preview and preserve length plus bounded raw prefix", async () => {
+  const { runtime } = await setup(new Uint8Array(4096).fill(255));
+  await runtime.startDiscovery();
+  expect(runtime.discovery?.attempts[0]?.readValue).toBeUndefined();
+  expect(runtime.transactions[0]?.packets[0]?.hex.split(" ")).toHaveLength(512);
+  expect(runtime.transactions[0]?.findings.join(" ")).toContain(
+    "received 4096 bytes",
+  );
+  expect(runtime.discovery?.remaining.bytes).toBe(2043);
+});
+it("setup cannot race an already dispatched manual GATT read", async () => {
+  const { runtime, readCall } = await setup();
+  let settle!: (bytes: Uint8Array) => void;
+  readCall.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        settle = resolve;
+      }),
+  );
+  const pending = runtime.read(LED_MATRIX_ENDPOINT);
+  await expect(runtime.startDiscovery()).rejects.toThrow(
+    /Another GATT operation owns/,
+  );
+  expect(readCall).toHaveBeenCalledTimes(1);
+  expect(runtime.discovery).toBeNull();
+  settle(new Uint8Array(5));
+  await pending;
+  await runtime.startDiscovery();
+  expect(runtime.discovery?.terminal).toBe("service-observed");
+});
+it("copied accessible identifiers in session data cannot manufacture transport access", async () => {
+  const { runtime, readCall } = await setup(undefined, true, false);
+  runtime.session.fingerprint = readFingerprint();
+  await runtime.startDiscovery();
+  expect(readCall).not.toHaveBeenCalled();
+  expect(runtime.discovery?.attempts[0]?.outcome).toBe("access");
+});

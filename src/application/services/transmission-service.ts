@@ -95,6 +95,9 @@ export class TransmissionService {
       () => this.ports.connection()._currentTargetBinding(),
     );
   }
+  get executionBusy(): boolean {
+    return this._executor.busy;
+  }
   getPolicy() {
     return this.policy;
   }

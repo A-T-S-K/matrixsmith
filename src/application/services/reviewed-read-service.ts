@@ -40,7 +40,16 @@ export function executeReviewedRead(
       "retired",
       "The pinned reviewed read definition changed.",
     );
-  const access = readAccess(read, session.fingerprint);
+  const transportFingerprint = connection.getTransport().fingerprint;
+  if (!transportFingerprint || connection.getTransport().kind === "replay")
+    throw new ProbeStageError(
+      "blocked",
+      "A current live transport fingerprint is required for reviewed reads.",
+    );
+  // Session/profile copies cannot manufacture accessible browser endpoint properties.
+  const access =
+    readAccess(read, transportFingerprint) ??
+    readAccess(read, session.fingerprint);
   if (access) throw new ProbeStageError("access", access);
   intent.reserve();
   return connection.read(read.endpoint, {

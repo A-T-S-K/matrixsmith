@@ -7,10 +7,8 @@ import {
   microbitLedReference,
 } from "../../profiles/microbit-led-reference";
 import { encodeMatrixState } from "./codec";
-export const MICROBIT_LED_ENDPOINT = Object.freeze({
-  serviceUuid: "e95dd91d-251d-470a-a062-fa1922dfa9a8",
-  characteristicUuid: "e95d7b77-251d-470a-a062-fa1922dfa9a8",
-});
+export { LED_MATRIX_ENDPOINT as MICROBIT_LED_ENDPOINT } from "./gatt";
+import { LED_MATRIX_ENDPOINT as MICROBIT_LED_ENDPOINT } from "./gatt";
 export const microbitLedDriver: MatrixDriver = Object.freeze<MatrixDriver>({
   id: "microbit-led-reference",
   family: "micro:bit DAL LED service reference",

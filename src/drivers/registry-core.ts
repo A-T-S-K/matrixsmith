@@ -1,4 +1,4 @@
-import { LED_MATRIX_ENDPOINT } from "../application/reviewed-reads";
+import { LED_MATRIX_ENDPOINT } from "./microbit/gatt";
 import type { DeviceFingerprint } from "../core/device";
 import type { DiscoveryHints } from "../application/ports/transport";
 import type { DriverMatch, MatrixDriver } from "./types";

@@ -1,3 +1,4 @@
+import { selectFromHome } from "./adapters/home-selection";
 import { createHomeCapabilities } from "./adapters/browser-home";
 import { fileActivity } from "./application/file-input";
 import { createBrowserUpdates } from "./adapters/updates/browser-updates";
@@ -57,8 +58,12 @@ if (query.has("offline")) {
   let applicationPromise: Promise<void> | null = null;
   function startApplication(action?: ApplicationCommand): Promise<void> {
     if (applicationPromise) return applicationPromise;
+    // Invoke the chooser before loading the application, while the gesture is active.
+    const selection =
+      action?.kind === "connect" ? selectFromHome(action) : undefined;
+    void selection?.catch(() => undefined);
     const attempt = import("./application-bootstrap").then((module) =>
-      module.startApplication(appRoot, action, updates),
+      module.startApplication(appRoot, action, updates, selection),
     );
     applicationPromise = attempt;
     void attempt.catch(() => {

@@ -75,6 +75,9 @@ export interface ExecutionProgress {
 
 export class TransmissionExecutor {
   #running = false;
+  get busy(): boolean {
+    return this.#running;
+  }
   constructor(
     private readonly transport: MatrixTransport,
     private readonly trace: TraceRecorder,

@@ -1,3 +1,5 @@
+import { LED_MATRIX_ENDPOINT } from "../drivers/microbit/gatt";
+export { LED_MATRIX_ENDPOINT } from "../drivers/microbit/gatt";
 import {
   normalizeUuid,
   type DeviceFingerprint,
@@ -10,10 +12,6 @@ import {
 } from "../profiles/microbit-led-reference";
 import { freezeDefinition } from "../profiles/freeze";
 
-export const LED_MATRIX_ENDPOINT = freezeDefinition({
-  serviceUuid: "e95dd91d-251d-470a-a062-fa1922dfa9a8",
-  characteristicUuid: "e95d7b77-251d-470a-a062-fa1922dfa9a8",
-});
 export interface ReviewedRead {
   readonly id: string;
   readonly driverId: string;

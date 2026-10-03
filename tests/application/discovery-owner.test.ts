@@ -534,3 +534,20 @@ describe("bounded machine discovery owner (software fixtures only)", () => {
     expect(runtime.session.experimentalTxEnabled).toBe(false);
   });
 });
+it("setup cannot race an already executing write probe", async () => {
+  vi.useFakeTimers();
+  const { runtime, transport } = await setup(
+    [discoveryDriver("a", 0x91)],
+    0x91,
+  );
+  transport.writeDelayMs = 20;
+  const pending = runtime.probe("a", "info");
+  await vi.advanceTimersByTimeAsync(0);
+  expect(transport.writeAttempts).toHaveLength(1);
+  await expect(runtime.startDiscovery()).rejects.toThrow(
+    /Another GATT operation owns/,
+  );
+  expect(runtime.discovery).toBeNull();
+  await vi.advanceTimersByTimeAsync(20);
+  await pending;
+});

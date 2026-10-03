@@ -65,6 +65,15 @@ export class ConnectionService {
   private _connectionEpoch = 0;
   private _lifetimeGeneration = 0;
   private readonly transport: MatrixTransport;
+  private readonly pendingReads = new Map<object, number>();
+  get pendingGattOperation(): boolean {
+    return (
+      this._notificationStarts.size > 0 ||
+      [...this.pendingReads.values()].some(
+        (generation) => generation === this._lifetimeGeneration,
+      )
+    );
+  }
   private disposed = false;
   private disposal: Promise<void> | null = null;
   private unsubscribeTransport: (() => void) | undefined;
@@ -175,6 +184,11 @@ export class ConnectionService {
     else router.reset();
     this.patchSession({ source });
     this.ports.identification().applyFingerprint(fingerprint, source);
+    // Profile-free connections still establish a routable live workspace.
+    this.ports
+      .protocolEvidence()
+      .getTrace()
+      .record("gatt.connected", { generation: epoch, source });
     const target = this.ports.identification().deviceTarget();
     if (target)
       this._connectionState = transitionConnection(this._connectionState, {
@@ -234,6 +248,11 @@ export class ConnectionService {
     else router.reset();
     this.patchSession({ source });
     this.ports.identification().applyFingerprint(fingerprint, source);
+    // Profile-free connections still establish a routable live workspace.
+    this.ports
+      .protocolEvidence()
+      .getTrace()
+      .record("gatt.connected", { generation: epoch, source });
     const target = this.ports.identification().deviceTarget();
     if (target)
       this._connectionState = transitionConnection(this._connectionState, {
@@ -326,6 +345,8 @@ export class ConnectionService {
       ...(reviewed?.findings ?? []),
     ];
     const startedAt = new Date().toISOString();
+    const readOwner = {};
+    this.pendingReads.set(readOwner, this._lifetimeGeneration);
     try {
       const bytes = await this.transport.read(endpoint);
       const completedAt = new Date().toISOString();
@@ -407,6 +428,8 @@ export class ConnectionService {
       );
       this.ports.protocolEvidence()._trimTransactions();
       throw error;
+    } finally {
+      this.pendingReads.delete(readOwner);
     }
   }
   isNotificationActive(endpoint: GattEndpoint): boolean {
