@@ -44,6 +44,12 @@ export function compileOfflineFrame(
     throw new Error(
       "Offline compilation requires independent dry-run-only driver intent.",
     );
+  if (
+    JSON.stringify(plan.evidenceRefs) !== JSON.stringify(reference.sourceBasis)
+  )
+    throw new Error(
+      "Offline source basis must match the registered implementation.",
+    );
   const preview = new Framebuffer(
     operation.frame.width,
     operation.frame.height,
@@ -57,6 +63,13 @@ export function compileOfflineFrame(
     preview,
     plan: {
       ...plan,
+      packets: plan.packets.map((packet) => ({
+        ...packet,
+        endpoint: { ...packet.endpoint },
+        bytes: packet.bytes.slice(),
+      })),
+      evidenceRefs: [...plan.evidenceRefs],
+      recoveryNotes: [...plan.recoveryNotes],
       operation: { type: "ShowFrame", frame: preview },
       metadata: { ...plan.metadata, definitionIdentity },
     },

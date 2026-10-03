@@ -9,7 +9,7 @@ import {
   offlineReference,
   offlineRegistry,
   compileOfflineExample,
-} from "../../src/app/offline-catalog";
+} from "../../src/app/offline-entries/lsled";
 import { compileOfflineFrame } from "../../src/application/offline-compilation";
 import { SafetyPolicy } from "../../src/app/safety";
 import { prepareTransmission } from "../../src/core/transmission";

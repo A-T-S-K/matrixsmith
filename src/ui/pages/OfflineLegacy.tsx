@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "preact/hooks";
 import {
   compileOfflineExample,
   type OfflineExample,
-} from "../../app/offline-catalog";
+} from "../../app/offline-entries/lsled";
 import type { OfflineCompilation } from "../../application/offline-compilation";
 import { BrowserFilesAdapter } from "../../adapters/files/browser-files";
 import { FramePreview } from "../components/FramePreview";

@@ -1,43 +1,41 @@
-import { DriverRegistry } from "../drivers/registry-core";
-import { lsledLegacyDriver } from "../drivers/lsled";
-import {
-  LSLED_CODEC_ID,
-  LSLED_SOURCE_BASIS,
-  lsledLegacyReference,
-} from "../profiles/lsled-legacy-reference";
-import { compileOfflineFrame } from "../application/offline-compilation";
-import { Framebuffer } from "../render/framebuffer";
+import type {
+  OfflineCompilation,
+  OfflineReferenceDefinition,
+} from "../application/offline-compilation";
 import { freezeDefinition } from "../profiles/freeze";
-export const offlineReference = freezeDefinition({
-  implementation: LSLED_CODEC_ID,
-  profile: lsledLegacyReference,
-  sourceBasis: LSLED_SOURCE_BASIS,
-});
-export const offlineRegistry = new DriverRegistry([lsledLegacyDriver]);
-export type OfflineExample = "blank" | "asymmetric" | "checkerboard";
-export function compileOfflineExample(example: OfflineExample) {
-  if (!["blank", "asymmetric", "checkerboard"].includes(example))
-    throw new Error("Unknown authored example.");
-  const frame = new Framebuffer(44, 11);
-  if (example === "asymmetric")
-    for (const [x, y] of [
-      [0, 0],
-      [7, 1],
-      [8, 2],
-      [16, 3],
-      [24, 4],
-      [32, 5],
-      [40, 6],
-      [43, 10],
-      [0, 10],
-    ])
-      frame.setPixel(x!, y!, 255, 255, 255);
-  if (example === "checkerboard")
-    for (let y = 0; y < 11; y++)
-      for (let x = 0; x < 44; x++)
-        if ((x + y) % 2 === 0) frame.setPixel(x, y, 255, 255, 255);
-  return compileOfflineFrame(offlineRegistry, offlineReference, {
-    type: "ShowFrame",
-    frame,
-  });
+
+/** Application-owned descriptors. Labels never select or authenticate a driver. */
+export interface OfflineEntry {
+  readonly id: string;
+  readonly label: string;
+  readonly geometry: { readonly width: number; readonly height: number };
+  readonly reference: OfflineReferenceDefinition;
+  readonly examples: readonly { readonly id: string; readonly label: string }[];
+  readonly pixelPolicy: string;
+  readonly previewDescription: string;
+  readonly deliveryDescription: string;
+  readonly limitations: readonly string[];
+  readonly sourceIds: readonly string[];
+  compile(example: string): OfflineCompilation;
+}
+export const offlineCatalog = freezeDefinition([
+  {
+    id: "lsled",
+    label: "LSLED legacy 44×11",
+    load: async (): Promise<OfflineEntry> =>
+      (await import("./offline-entries/lsled")).lsledEntry,
+  },
+]);
+export function findOfflineEntry(id: string) {
+  if (!/^[a-z][a-z0-9-]{0,31}$/.test(id)) return undefined;
+  return offlineCatalog.find((entry) => entry.id === id);
+}
+/** Literal catalog loaders only: user input never becomes an import path. */
+export async function loadOfflineEntry(id: string): Promise<OfflineEntry> {
+  const descriptor = findOfflineEntry(id);
+  if (!descriptor)
+    throw new Error(
+      "Unknown offline reference. Select an implementation from the catalog.",
+    );
+  return descriptor.load();
 }
