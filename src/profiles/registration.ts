@@ -38,8 +38,16 @@ export function acceptLocalProfile(input: ProfileDocument): AcceptedProfile {
       confidence: "inferred" as const,
       source,
     })),
-    metadata: { localProfile: true },
-    quirks: structuredClone(COOLLEDUX_DEFAULT_QUIRKS),
+    metadata: {
+      localProfile: true,
+      ...(document.documentVersion === 2 ? { candidateProfile: true } : {}),
+    },
+    quirks: {
+      ...structuredClone(COOLLEDUX_DEFAULT_QUIRKS),
+      ...(document.documentVersion === 2 && document.candidate.recommendation
+        ? { preferredRasterStrategy: document.candidate.recommendation }
+        : {}),
+    },
   });
   return freezeDefinition({
     document,
@@ -78,7 +86,11 @@ export function withLocalProfiles(
         optionalManufacturerData: [
           ...new Set([
             ...(hints.optionalManufacturerData ?? []),
-            ...entries.map((entry) => entry.signature.companyId),
+            ...entries.flatMap((entry) =>
+              entry.signature.companyId === null
+                ? []
+                : [entry.signature.companyId],
+            ),
           ]),
         ],
       };
@@ -99,7 +111,10 @@ export function withLocalProfiles(
         return {
           driverId: driver.id,
           score: 100,
-          confidence: "exact" as const,
+          confidence:
+            matches[0]!.document.documentVersion === 2
+              ? ("candidate" as const)
+              : ("exact" as const),
           reasons: evaluateKnownProfile(matches[0]!.signature, fingerprint)
             .reasons,
           contradictions,

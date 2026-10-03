@@ -71,137 +71,394 @@ var require_validator_input = __commonJSMin((exports, module) => {
   module.exports = validate52;
   module.exports.default = validate52;
   const schema19 = {
-    $schema: "https://json-schema.org/draft/2020-12/schema",
-    type: "object",
-    additionalProperties: false,
-    required: [
-      "documentVersion",
-      "namespace",
-      "id",
-      "revision",
-      "implementation",
-      "label",
-      "matching",
-      "contradictions",
-      "dimensions",
-      "parameters",
-      "templates",
-      "limitations",
-      "sources",
-    ],
-    properties: {
-      documentVersion: { const: 1 },
-      namespace: {
-        type: "string",
-        pattern: "^[a-z0-9][a-z0-9-]{0,63}$",
-      },
-      id: {
-        type: "string",
-        pattern: "^[a-z0-9][a-z0-9-]{0,63}$",
-      },
-      revision: {
-        type: "string",
-        pattern: "^[a-z0-9][a-z0-9-]{0,63}$",
-      },
-      implementation: {
-        type: "string",
-        pattern: "^[a-z0-9][a-z0-9-]{0,63}$",
-      },
-      label: {
-        type: "string",
-        minLength: 1,
-        maxLength: 512,
-      },
-      matching: {
+    anyOf: [
+      {
+        $schema: "https://json-schema.org/draft/2020-12/schema",
         type: "object",
         additionalProperties: false,
         required: [
-          "name",
-          "serviceUuid",
-          "characteristicUuid",
-          "requiredProperties",
+          "documentVersion",
+          "namespace",
+          "id",
+          "revision",
+          "implementation",
+          "label",
+          "matching",
+          "contradictions",
+          "dimensions",
+          "parameters",
+          "templates",
+          "limitations",
+          "sources",
         ],
         properties: {
-          name: {
+          documentVersion: { const: 1 },
+          namespace: {
+            type: "string",
+            pattern: "^[a-z0-9][a-z0-9-]{0,63}$",
+          },
+          id: {
+            type: "string",
+            pattern: "^[a-z0-9][a-z0-9-]{0,63}$",
+          },
+          revision: {
+            type: "string",
+            pattern: "^[a-z0-9][a-z0-9-]{0,63}$",
+          },
+          implementation: {
+            type: "string",
+            pattern: "^[a-z0-9][a-z0-9-]{0,63}$",
+          },
+          label: {
             type: "string",
             minLength: 1,
             maxLength: 512,
           },
-          serviceUuid: {
-            type: "string",
-            pattern:
-              "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+          matching: {
+            type: "object",
+            additionalProperties: false,
+            required: [
+              "name",
+              "serviceUuid",
+              "characteristicUuid",
+              "requiredProperties",
+            ],
+            properties: {
+              name: {
+                type: "string",
+                minLength: 1,
+                maxLength: 512,
+              },
+              serviceUuid: {
+                type: "string",
+                pattern:
+                  "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+              },
+              characteristicUuid: {
+                type: "string",
+                pattern:
+                  "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+              },
+              requiredProperties: {
+                const: ["read", "notify", "writeWithoutResponse"],
+              },
+            },
           },
-          characteristicUuid: {
-            type: "string",
-            pattern:
-              "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+          contradictions: {
+            type: "object",
+            additionalProperties: false,
+            required: ["companyId", "geometry"],
+            properties: {
+              companyId: {
+                type: "integer",
+                minimum: 0,
+                maximum: 65535,
+              },
+              geometry: { const: true },
+            },
           },
-          requiredProperties: {
-            const: ["read", "notify", "writeWithoutResponse"],
+          dimensions: {
+            type: "object",
+            additionalProperties: false,
+            required: ["width", "height"],
+            properties: {
+              width: {
+                type: "integer",
+                minimum: 1,
+                maximum: 128,
+              },
+              height: {
+                type: "integer",
+                minimum: 1,
+                maximum: 128,
+              },
+            },
+          },
+          parameters: {
+            const: {
+              brightness: {
+                min: 0,
+                max: 255,
+              },
+            },
+          },
+          templates: { const: ["coolledux-source-v1"] },
+          limitations: {
+            type: "array",
+            minItems: 1,
+            maxItems: 16,
+            items: {
+              type: "string",
+              minLength: 1,
+              maxLength: 512,
+            },
+          },
+          sources: {
+            type: "array",
+            minItems: 1,
+            maxItems: 16,
+            items: {
+              type: "string",
+              minLength: 1,
+              maxLength: 512,
+            },
           },
         },
       },
-      contradictions: {
+      {
+        $schema: "https://json-schema.org/draft/2020-12/schema",
         type: "object",
         additionalProperties: false,
-        required: ["companyId", "geometry"],
+        required: [
+          "documentVersion",
+          "namespace",
+          "id",
+          "revision",
+          "implementation",
+          "label",
+          "matching",
+          "contradictions",
+          "dimensions",
+          "parameters",
+          "templates",
+          "limitations",
+          "sources",
+          "candidate",
+        ],
         properties: {
-          companyId: {
-            type: "integer",
-            minimum: 0,
-            maximum: 65535,
+          documentVersion: { const: 2 },
+          namespace: {
+            type: "string",
+            pattern: "^[a-z0-9][a-z0-9-]{0,63}$",
           },
-          geometry: { const: true },
-        },
-      },
-      dimensions: {
-        type: "object",
-        additionalProperties: false,
-        required: ["width", "height"],
-        properties: {
-          width: {
-            type: "integer",
-            minimum: 1,
-            maximum: 128,
+          id: {
+            type: "string",
+            pattern: "^[a-z0-9][a-z0-9-]{0,63}$",
           },
-          height: {
-            type: "integer",
-            minimum: 1,
-            maximum: 128,
+          revision: {
+            type: "string",
+            pattern: "^[a-z0-9][a-z0-9-]{0,63}$",
+          },
+          implementation: {
+            type: "string",
+            pattern: "^[a-z0-9][a-z0-9-]{0,63}$",
+          },
+          label: {
+            type: "string",
+            minLength: 1,
+            maxLength: 512,
+          },
+          matching: {
+            type: "object",
+            additionalProperties: false,
+            required: [
+              "name",
+              "serviceUuid",
+              "characteristicUuid",
+              "requiredProperties",
+            ],
+            properties: {
+              name: {
+                type: "string",
+                minLength: 1,
+                maxLength: 512,
+              },
+              serviceUuid: {
+                type: "string",
+                pattern:
+                  "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+              },
+              characteristicUuid: {
+                type: "string",
+                pattern:
+                  "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+              },
+              requiredProperties: {
+                const: ["read", "notify", "writeWithoutResponse"],
+              },
+            },
+          },
+          contradictions: {
+            type: "object",
+            additionalProperties: false,
+            required: ["companyId", "geometry"],
+            properties: {
+              companyId: {
+                type: ["integer", "null"],
+                minimum: 0,
+                maximum: 65535,
+              },
+              geometry: { const: true },
+            },
+          },
+          dimensions: {
+            type: "object",
+            additionalProperties: false,
+            required: ["width", "height"],
+            properties: {
+              width: {
+                type: "integer",
+                minimum: 16,
+                maximum: 64,
+                multipleOf: 8,
+              },
+              height: { const: 16 },
+            },
+          },
+          parameters: {
+            const: {
+              brightness: {
+                min: 0,
+                max: 255,
+              },
+            },
+          },
+          templates: { const: ["coolledux-source-v1"] },
+          limitations: {
+            type: "array",
+            minItems: 1,
+            maxItems: 16,
+            items: {
+              type: "string",
+              minLength: 1,
+              maxLength: 512,
+            },
+          },
+          sources: {
+            type: "array",
+            minItems: 1,
+            maxItems: 16,
+            items: {
+              type: "string",
+              minLength: 1,
+              maxLength: 512,
+            },
+          },
+          candidate: {
+            type: "object",
+            additionalProperties: false,
+            required: ["kind", "assumptions", "identity", "history"],
+            properties: {
+              kind: { const: "revalidation-required" },
+              assumptions: {
+                const: {
+                  pixelFormat: "RGB444",
+                  rowStride: 16,
+                  tileWidth: 8,
+                  channelMap: ["r", "g", "b"],
+                },
+              },
+              identity: {
+                const: {
+                  manufacturer: null,
+                  firmware: null,
+                  model: null,
+                  chip: null,
+                },
+              },
+              recommendation: { const: "animation-single-frame" },
+              history: {
+                type: "object",
+                additionalProperties: false,
+                required: [
+                  "status",
+                  "createdAt",
+                  "definitionIdentity",
+                  "evidenceDigest",
+                  "testIds",
+                ],
+                properties: {
+                  status: { enum: ["incomplete", "locally-verified"] },
+                  createdAt: {
+                    type: "string",
+                    maxLength: 64,
+                    minLength: 1,
+                    pattern:
+                      "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$",
+                  },
+                  definitionIdentity: {
+                    type: "string",
+                    maxLength: 128,
+                    minLength: 1,
+                  },
+                  evidenceDigest: {
+                    type: "string",
+                    maxLength: 128,
+                    minLength: 1,
+                    pattern: "^sha256:[0-9a-f]{64}$",
+                  },
+                  testIds: {
+                    type: "array",
+                    maxItems: 3,
+                    uniqueItems: true,
+                    items: {
+                      enum: [
+                        "coolledux-still-bootstrap",
+                        "coolledux-still-channels",
+                        "coolledux-still-encoder",
+                      ],
+                    },
+                  },
+                },
+              },
+            },
           },
         },
-      },
-      parameters: {
-        const: {
-          brightness: {
-            min: 0,
-            max: 255,
+        allOf: [
+          {
+            if: {
+              properties: {
+                candidate: {
+                  properties: {
+                    history: {
+                      properties: { status: { const: "incomplete" } },
+                      type: "object",
+                    },
+                  },
+                  type: "object",
+                },
+              },
+              type: "object",
+            },
+            then: {
+              properties: {
+                candidate: {
+                  not: {
+                    required: ["recommendation"],
+                    type: "object",
+                  },
+                  type: "object",
+                },
+              },
+              type: "object",
+            },
+            else: {
+              type: "object",
+              properties: {
+                candidate: {
+                  type: "object",
+                  required: ["recommendation"],
+                  properties: {
+                    history: {
+                      type: "object",
+                      properties: {
+                        testIds: {
+                          const: [
+                            "coolledux-still-bootstrap",
+                            "coolledux-still-channels",
+                            "coolledux-still-encoder",
+                          ],
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
           },
-        },
+        ],
       },
-      templates: { const: ["coolledux-source-v1"] },
-      limitations: {
-        type: "array",
-        minItems: 1,
-        maxItems: 16,
-        items: {
-          type: "string",
-          minLength: 1,
-          maxLength: 512,
-        },
-      },
-      sources: {
-        type: "array",
-        minItems: 1,
-        maxItems: 16,
-        items: {
-          type: "string",
-          minLength: 1,
-          maxLength: 512,
-        },
-      },
-    },
+    ],
   };
   const func1 = Object.prototype.hasOwnProperty;
   const func2 = require_ucs2length().default;
@@ -211,6 +468,11 @@ var require_validator_input = __commonJSMin((exports, module) => {
     "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
     "u",
   );
+  const pattern15 = new RegExp(
+    "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$",
+    "u",
+  );
+  const pattern16 = new RegExp("^sha256:[0-9a-f]{64}$", "u");
   function validate52(
     data,
     {
@@ -222,1028 +484,1198 @@ var require_validator_input = __commonJSMin((exports, module) => {
     } = {},
   ) {
     let vErrors = null;
+    let errors = 0;
     const evaluated0 = validate52.evaluated;
     if (evaluated0.dynamicProps) evaluated0.props = void 0;
     if (evaluated0.dynamicItems) evaluated0.items = void 0;
-    if (data && typeof data == "object" && !Array.isArray(data)) {
-      let missing0;
-      let valid0 = true;
-      for (missing0 of schema19.required) {
-        valid0 = data[missing0] !== void 0;
-        if (!valid0) {
-          validate52.errors = [
-            {
+    const _errs0 = errors;
+    let valid0 = false;
+    const _errs1 = errors;
+    if (errors === _errs1) {
+      if (data && typeof data == "object" && !Array.isArray(data)) {
+        let missing0;
+        let valid1 = true;
+        for (missing0 of schema19.anyOf[0].required) {
+          valid1 = data[missing0] !== void 0;
+          if (!valid1) {
+            const err0 = {
               instancePath,
-              schemaPath: "#/required",
+              schemaPath: "#/anyOf/0/required",
               keyword: "required",
               params: { missingProperty: missing0 },
               message: "must have required property '" + missing0 + "'",
-            },
-          ];
-          return false;
+            };
+            if (vErrors === null) vErrors = [err0];
+            else vErrors.push(err0);
+            errors++;
+            break;
+          }
         }
-      }
-      if (valid0) {
-        for (const key0 in data)
-          if (!func1.call(schema19.properties, key0)) {
-            validate52.errors = [
-              {
+        if (valid1) {
+          const _errs3 = errors;
+          for (const key0 in data)
+            if (!func1.call(schema19.anyOf[0].properties, key0)) {
+              const err1 = {
                 instancePath,
-                schemaPath: "#/additionalProperties",
+                schemaPath: "#/anyOf/0/additionalProperties",
                 keyword: "additionalProperties",
                 params: { additionalProperty: key0 },
                 message: "must NOT have additional properties",
-              },
-            ];
-            return false;
-          }
-        if (data.documentVersion !== void 0) {
-          if (1 !== data.documentVersion) {
-            validate52.errors = [
-              {
-                instancePath: instancePath + "/documentVersion",
-                schemaPath: "#/properties/documentVersion/const",
-                keyword: "const",
-                params: { allowedValue: 1 },
-                message: "must be equal to constant",
-              },
-            ];
-            return false;
-          }
-          var valid1 = true;
-        } else var valid1 = true;
-        if (valid1) {
-          if (data.namespace !== void 0) {
-            let data1 = data.namespace;
-            if (typeof data1 === "string") {
-              if (!pattern3.test(data1)) {
-                validate52.errors = [
-                  {
-                    instancePath: instancePath + "/namespace",
-                    schemaPath: "#/properties/namespace/pattern",
-                    keyword: "pattern",
-                    params: { pattern: "^[a-z0-9][a-z0-9-]{0,63}$" },
-                    message: 'must match pattern "^[a-z0-9][a-z0-9-]{0,63}$"',
-                  },
-                ];
-                return false;
-              }
-            } else {
-              validate52.errors = [
-                {
-                  instancePath: instancePath + "/namespace",
-                  schemaPath: "#/properties/namespace/type",
-                  keyword: "type",
-                  params: { type: "string" },
-                  message: "must be string",
-                },
-              ];
-              return false;
+              };
+              if (vErrors === null) vErrors = [err1];
+              else vErrors.push(err1);
+              errors++;
+              break;
             }
-            var valid1 = true;
-          } else var valid1 = true;
-          if (valid1) {
-            if (data.id !== void 0) {
-              let data2 = data.id;
-              if (typeof data2 === "string") {
-                if (!pattern3.test(data2)) {
-                  validate52.errors = [
-                    {
-                      instancePath: instancePath + "/id",
-                      schemaPath: "#/properties/id/pattern",
-                      keyword: "pattern",
-                      params: { pattern: "^[a-z0-9][a-z0-9-]{0,63}$" },
-                      message: 'must match pattern "^[a-z0-9][a-z0-9-]{0,63}$"',
-                    },
-                  ];
-                  return false;
-                }
-              } else {
-                validate52.errors = [
-                  {
-                    instancePath: instancePath + "/id",
-                    schemaPath: "#/properties/id/type",
-                    keyword: "type",
-                    params: { type: "string" },
-                    message: "must be string",
-                  },
-                ];
-                return false;
+          if (_errs3 === errors) {
+            if (data.documentVersion !== void 0) {
+              const _errs4 = errors;
+              if (1 !== data.documentVersion) {
+                const err2 = {
+                  instancePath: instancePath + "/documentVersion",
+                  schemaPath: "#/anyOf/0/properties/documentVersion/const",
+                  keyword: "const",
+                  params: { allowedValue: 1 },
+                  message: "must be equal to constant",
+                };
+                if (vErrors === null) vErrors = [err2];
+                else vErrors.push(err2);
+                errors++;
               }
-              var valid1 = true;
-            } else var valid1 = true;
-            if (valid1) {
-              if (data.revision !== void 0) {
-                let data3 = data.revision;
-                if (typeof data3 === "string") {
-                  if (!pattern3.test(data3)) {
-                    validate52.errors = [
-                      {
-                        instancePath: instancePath + "/revision",
-                        schemaPath: "#/properties/revision/pattern",
+              var valid2 = _errs4 === errors;
+            } else var valid2 = true;
+            if (valid2) {
+              if (data.namespace !== void 0) {
+                let data1 = data.namespace;
+                const _errs5 = errors;
+                if (errors === _errs5) {
+                  if (typeof data1 === "string") {
+                    if (!pattern3.test(data1)) {
+                      const err3 = {
+                        instancePath: instancePath + "/namespace",
+                        schemaPath: "#/anyOf/0/properties/namespace/pattern",
                         keyword: "pattern",
                         params: { pattern: "^[a-z0-9][a-z0-9-]{0,63}$" },
                         message:
                           'must match pattern "^[a-z0-9][a-z0-9-]{0,63}$"',
-                      },
-                    ];
-                    return false;
-                  }
-                } else {
-                  validate52.errors = [
-                    {
-                      instancePath: instancePath + "/revision",
-                      schemaPath: "#/properties/revision/type",
+                      };
+                      if (vErrors === null) vErrors = [err3];
+                      else vErrors.push(err3);
+                      errors++;
+                    }
+                  } else {
+                    const err4 = {
+                      instancePath: instancePath + "/namespace",
+                      schemaPath: "#/anyOf/0/properties/namespace/type",
                       keyword: "type",
                       params: { type: "string" },
                       message: "must be string",
-                    },
-                  ];
-                  return false;
+                    };
+                    if (vErrors === null) vErrors = [err4];
+                    else vErrors.push(err4);
+                    errors++;
+                  }
                 }
-                var valid1 = true;
-              } else var valid1 = true;
-              if (valid1) {
-                if (data.implementation !== void 0) {
-                  let data4 = data.implementation;
-                  if (typeof data4 === "string") {
-                    if (!pattern3.test(data4)) {
-                      validate52.errors = [
-                        {
-                          instancePath: instancePath + "/implementation",
-                          schemaPath: "#/properties/implementation/pattern",
+                var valid2 = _errs5 === errors;
+              } else var valid2 = true;
+              if (valid2) {
+                if (data.id !== void 0) {
+                  let data2 = data.id;
+                  const _errs7 = errors;
+                  if (errors === _errs7) {
+                    if (typeof data2 === "string") {
+                      if (!pattern3.test(data2)) {
+                        const err5 = {
+                          instancePath: instancePath + "/id",
+                          schemaPath: "#/anyOf/0/properties/id/pattern",
                           keyword: "pattern",
                           params: { pattern: "^[a-z0-9][a-z0-9-]{0,63}$" },
                           message:
                             'must match pattern "^[a-z0-9][a-z0-9-]{0,63}$"',
-                        },
-                      ];
-                      return false;
-                    }
-                  } else {
-                    validate52.errors = [
-                      {
-                        instancePath: instancePath + "/implementation",
-                        schemaPath: "#/properties/implementation/type",
+                        };
+                        if (vErrors === null) vErrors = [err5];
+                        else vErrors.push(err5);
+                        errors++;
+                      }
+                    } else {
+                      const err6 = {
+                        instancePath: instancePath + "/id",
+                        schemaPath: "#/anyOf/0/properties/id/type",
                         keyword: "type",
                         params: { type: "string" },
                         message: "must be string",
-                      },
-                    ];
-                    return false;
+                      };
+                      if (vErrors === null) vErrors = [err6];
+                      else vErrors.push(err6);
+                      errors++;
+                    }
                   }
-                  var valid1 = true;
-                } else var valid1 = true;
-                if (valid1) {
-                  if (data.label !== void 0) {
-                    let data5 = data.label;
-                    if (typeof data5 === "string") {
-                      if (func2(data5) > 512) {
-                        validate52.errors = [
-                          {
-                            instancePath: instancePath + "/label",
-                            schemaPath: "#/properties/label/maxLength",
-                            keyword: "maxLength",
-                            params: { limit: 512 },
-                            message: "must NOT have more than 512 characters",
-                          },
-                        ];
-                        return false;
-                      } else if (func2(data5) < 1) {
-                        validate52.errors = [
-                          {
-                            instancePath: instancePath + "/label",
-                            schemaPath: "#/properties/label/minLength",
-                            keyword: "minLength",
-                            params: { limit: 1 },
-                            message: "must NOT have fewer than 1 characters",
-                          },
-                        ];
-                        return false;
-                      }
-                    } else {
-                      validate52.errors = [
-                        {
-                          instancePath: instancePath + "/label",
-                          schemaPath: "#/properties/label/type",
+                  var valid2 = _errs7 === errors;
+                } else var valid2 = true;
+                if (valid2) {
+                  if (data.revision !== void 0) {
+                    let data3 = data.revision;
+                    const _errs9 = errors;
+                    if (errors === _errs9) {
+                      if (typeof data3 === "string") {
+                        if (!pattern3.test(data3)) {
+                          const err7 = {
+                            instancePath: instancePath + "/revision",
+                            schemaPath: "#/anyOf/0/properties/revision/pattern",
+                            keyword: "pattern",
+                            params: { pattern: "^[a-z0-9][a-z0-9-]{0,63}$" },
+                            message:
+                              'must match pattern "^[a-z0-9][a-z0-9-]{0,63}$"',
+                          };
+                          if (vErrors === null) vErrors = [err7];
+                          else vErrors.push(err7);
+                          errors++;
+                        }
+                      } else {
+                        const err8 = {
+                          instancePath: instancePath + "/revision",
+                          schemaPath: "#/anyOf/0/properties/revision/type",
                           keyword: "type",
                           params: { type: "string" },
                           message: "must be string",
-                        },
-                      ];
-                      return false;
+                        };
+                        if (vErrors === null) vErrors = [err8];
+                        else vErrors.push(err8);
+                        errors++;
+                      }
                     }
-                    var valid1 = true;
-                  } else var valid1 = true;
-                  if (valid1) {
-                    if (data.matching !== void 0) {
-                      let data6 = data.matching;
-                      if (
-                        data6 &&
-                        typeof data6 == "object" &&
-                        !Array.isArray(data6)
-                      ) {
-                        let missing1;
-                        if (
-                          (data6.name === void 0 && (missing1 = "name")) ||
-                          (data6.serviceUuid === void 0 &&
-                            (missing1 = "serviceUuid")) ||
-                          (data6.characteristicUuid === void 0 &&
-                            (missing1 = "characteristicUuid")) ||
-                          (data6.requiredProperties === void 0 &&
-                            (missing1 = "requiredProperties"))
-                        ) {
-                          validate52.errors = [
-                            {
-                              instancePath: instancePath + "/matching",
-                              schemaPath: "#/properties/matching/required",
-                              keyword: "required",
-                              params: { missingProperty: missing1 },
+                    var valid2 = _errs9 === errors;
+                  } else var valid2 = true;
+                  if (valid2) {
+                    if (data.implementation !== void 0) {
+                      let data4 = data.implementation;
+                      const _errs11 = errors;
+                      if (errors === _errs11) {
+                        if (typeof data4 === "string") {
+                          if (!pattern3.test(data4)) {
+                            const err9 = {
+                              instancePath: instancePath + "/implementation",
+                              schemaPath:
+                                "#/anyOf/0/properties/implementation/pattern",
+                              keyword: "pattern",
+                              params: { pattern: "^[a-z0-9][a-z0-9-]{0,63}$" },
                               message:
-                                "must have required property '" +
-                                missing1 +
-                                "'",
-                            },
-                          ];
-                          return false;
+                                'must match pattern "^[a-z0-9][a-z0-9-]{0,63}$"',
+                            };
+                            if (vErrors === null) vErrors = [err9];
+                            else vErrors.push(err9);
+                            errors++;
+                          }
                         } else {
-                          for (const key1 in data6)
-                            if (!(
-                              key1 === "name" ||
-                              key1 === "serviceUuid" ||
-                              key1 === "characteristicUuid" ||
-                              key1 === "requiredProperties"
-                            )) {
-                              validate52.errors = [
-                                {
+                          const err10 = {
+                            instancePath: instancePath + "/implementation",
+                            schemaPath:
+                              "#/anyOf/0/properties/implementation/type",
+                            keyword: "type",
+                            params: { type: "string" },
+                            message: "must be string",
+                          };
+                          if (vErrors === null) vErrors = [err10];
+                          else vErrors.push(err10);
+                          errors++;
+                        }
+                      }
+                      var valid2 = _errs11 === errors;
+                    } else var valid2 = true;
+                    if (valid2) {
+                      if (data.label !== void 0) {
+                        let data5 = data.label;
+                        const _errs13 = errors;
+                        if (errors === _errs13) {
+                          if (typeof data5 === "string") {
+                            if (func2(data5) > 512) {
+                              const err11 = {
+                                instancePath: instancePath + "/label",
+                                schemaPath:
+                                  "#/anyOf/0/properties/label/maxLength",
+                                keyword: "maxLength",
+                                params: { limit: 512 },
+                                message:
+                                  "must NOT have more than 512 characters",
+                              };
+                              if (vErrors === null) vErrors = [err11];
+                              else vErrors.push(err11);
+                              errors++;
+                            } else if (func2(data5) < 1) {
+                              const err12 = {
+                                instancePath: instancePath + "/label",
+                                schemaPath:
+                                  "#/anyOf/0/properties/label/minLength",
+                                keyword: "minLength",
+                                params: { limit: 1 },
+                                message:
+                                  "must NOT have fewer than 1 characters",
+                              };
+                              if (vErrors === null) vErrors = [err12];
+                              else vErrors.push(err12);
+                              errors++;
+                            }
+                          } else {
+                            const err13 = {
+                              instancePath: instancePath + "/label",
+                              schemaPath: "#/anyOf/0/properties/label/type",
+                              keyword: "type",
+                              params: { type: "string" },
+                              message: "must be string",
+                            };
+                            if (vErrors === null) vErrors = [err13];
+                            else vErrors.push(err13);
+                            errors++;
+                          }
+                        }
+                        var valid2 = _errs13 === errors;
+                      } else var valid2 = true;
+                      if (valid2) {
+                        if (data.matching !== void 0) {
+                          let data6 = data.matching;
+                          const _errs15 = errors;
+                          if (errors === _errs15) {
+                            if (
+                              data6 &&
+                              typeof data6 == "object" &&
+                              !Array.isArray(data6)
+                            ) {
+                              let missing1;
+                              if (
+                                (data6.name === void 0 &&
+                                  (missing1 = "name")) ||
+                                (data6.serviceUuid === void 0 &&
+                                  (missing1 = "serviceUuid")) ||
+                                (data6.characteristicUuid === void 0 &&
+                                  (missing1 = "characteristicUuid")) ||
+                                (data6.requiredProperties === void 0 &&
+                                  (missing1 = "requiredProperties"))
+                              ) {
+                                const err14 = {
                                   instancePath: instancePath + "/matching",
                                   schemaPath:
-                                    "#/properties/matching/additionalProperties",
-                                  keyword: "additionalProperties",
-                                  params: { additionalProperty: key1 },
-                                  message:
-                                    "must NOT have additional properties",
-                                },
-                              ];
-                              return false;
-                            }
-                          if (data6.name !== void 0) {
-                            let data7 = data6.name;
-                            if (typeof data7 === "string") {
-                              if (func2(data7) > 512) {
-                                validate52.errors = [
-                                  {
-                                    instancePath:
-                                      instancePath + "/matching/name",
-                                    schemaPath:
-                                      "#/properties/matching/properties/name/maxLength",
-                                    keyword: "maxLength",
-                                    params: { limit: 512 },
-                                    message:
-                                      "must NOT have more than 512 characters",
-                                  },
-                                ];
-                                return false;
-                              } else if (func2(data7) < 1) {
-                                validate52.errors = [
-                                  {
-                                    instancePath:
-                                      instancePath + "/matching/name",
-                                    schemaPath:
-                                      "#/properties/matching/properties/name/minLength",
-                                    keyword: "minLength",
-                                    params: { limit: 1 },
-                                    message:
-                                      "must NOT have fewer than 1 characters",
-                                  },
-                                ];
-                                return false;
-                              }
-                            } else {
-                              validate52.errors = [
-                                {
-                                  instancePath: instancePath + "/matching/name",
-                                  schemaPath:
-                                    "#/properties/matching/properties/name/type",
-                                  keyword: "type",
-                                  params: { type: "string" },
-                                  message: "must be string",
-                                },
-                              ];
-                              return false;
-                            }
-                            var valid2 = true;
-                          } else var valid2 = true;
-                          if (valid2) {
-                            if (data6.serviceUuid !== void 0) {
-                              let data8 = data6.serviceUuid;
-                              if (typeof data8 === "string") {
-                                if (!pattern7.test(data8)) {
-                                  validate52.errors = [
-                                    {
-                                      instancePath:
-                                        instancePath + "/matching/serviceUuid",
-                                      schemaPath:
-                                        "#/properties/matching/properties/serviceUuid/pattern",
-                                      keyword: "pattern",
-                                      params: {
-                                        pattern:
-                                          "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
-                                      },
-                                      message:
-                                        'must match pattern "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"',
-                                    },
-                                  ];
-                                  return false;
-                                }
-                              } else {
-                                validate52.errors = [
-                                  {
-                                    instancePath:
-                                      instancePath + "/matching/serviceUuid",
-                                    schemaPath:
-                                      "#/properties/matching/properties/serviceUuid/type",
-                                    keyword: "type",
-                                    params: { type: "string" },
-                                    message: "must be string",
-                                  },
-                                ];
-                                return false;
-                              }
-                              var valid2 = true;
-                            } else var valid2 = true;
-                            if (valid2) {
-                              if (data6.characteristicUuid !== void 0) {
-                                let data9 = data6.characteristicUuid;
-                                if (typeof data9 === "string") {
-                                  if (!pattern7.test(data9)) {
-                                    validate52.errors = [
-                                      {
-                                        instancePath:
-                                          instancePath +
-                                          "/matching/characteristicUuid",
-                                        schemaPath:
-                                          "#/properties/matching/properties/characteristicUuid/pattern",
-                                        keyword: "pattern",
-                                        params: {
-                                          pattern:
-                                            "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
-                                        },
-                                        message:
-                                          'must match pattern "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"',
-                                      },
-                                    ];
-                                    return false;
-                                  }
-                                } else {
-                                  validate52.errors = [
-                                    {
-                                      instancePath:
-                                        instancePath +
-                                        "/matching/characteristicUuid",
-                                      schemaPath:
-                                        "#/properties/matching/properties/characteristicUuid/type",
-                                      keyword: "type",
-                                      params: { type: "string" },
-                                      message: "must be string",
-                                    },
-                                  ];
-                                  return false;
-                                }
-                                var valid2 = true;
-                              } else var valid2 = true;
-                              if (valid2) {
-                                if (data6.requiredProperties !== void 0) {
-                                  if (
-                                    !func0(
-                                      data6.requiredProperties,
-                                      schema19.properties.matching.properties
-                                        .requiredProperties.const,
-                                    )
-                                  ) {
-                                    validate52.errors = [
-                                      {
-                                        instancePath:
-                                          instancePath +
-                                          "/matching/requiredProperties",
-                                        schemaPath:
-                                          "#/properties/matching/properties/requiredProperties/const",
-                                        keyword: "const",
-                                        params: {
-                                          allowedValue:
-                                            schema19.properties.matching
-                                              .properties.requiredProperties
-                                              .const,
-                                        },
-                                        message: "must be equal to constant",
-                                      },
-                                    ];
-                                    return false;
-                                  }
-                                  var valid2 = true;
-                                } else var valid2 = true;
-                              }
-                            }
-                          }
-                        }
-                      } else {
-                        validate52.errors = [
-                          {
-                            instancePath: instancePath + "/matching",
-                            schemaPath: "#/properties/matching/type",
-                            keyword: "type",
-                            params: { type: "object" },
-                            message: "must be object",
-                          },
-                        ];
-                        return false;
-                      }
-                      var valid1 = true;
-                    } else var valid1 = true;
-                    if (valid1) {
-                      if (data.contradictions !== void 0) {
-                        let data11 = data.contradictions;
-                        if (
-                          data11 &&
-                          typeof data11 == "object" &&
-                          !Array.isArray(data11)
-                        ) {
-                          let missing2;
-                          if (
-                            (data11.companyId === void 0 &&
-                              (missing2 = "companyId")) ||
-                            (data11.geometry === void 0 &&
-                              (missing2 = "geometry"))
-                          ) {
-                            validate52.errors = [
-                              {
-                                instancePath: instancePath + "/contradictions",
-                                schemaPath:
-                                  "#/properties/contradictions/required",
-                                keyword: "required",
-                                params: { missingProperty: missing2 },
-                                message:
-                                  "must have required property '" +
-                                  missing2 +
-                                  "'",
-                              },
-                            ];
-                            return false;
-                          } else {
-                            for (const key2 in data11)
-                              if (!(
-                                key2 === "companyId" || key2 === "geometry"
-                              )) {
-                                validate52.errors = [
-                                  {
-                                    instancePath:
-                                      instancePath + "/contradictions",
-                                    schemaPath:
-                                      "#/properties/contradictions/additionalProperties",
-                                    keyword: "additionalProperties",
-                                    params: { additionalProperty: key2 },
-                                    message:
-                                      "must NOT have additional properties",
-                                  },
-                                ];
-                                return false;
-                              }
-                            if (data11.companyId !== void 0) {
-                              let data12 = data11.companyId;
-                              if (!(
-                                typeof data12 == "number" &&
-                                !(data12 % 1) &&
-                                !isNaN(data12) &&
-                                isFinite(data12)
-                              )) {
-                                validate52.errors = [
-                                  {
-                                    instancePath:
-                                      instancePath +
-                                      "/contradictions/companyId",
-                                    schemaPath:
-                                      "#/properties/contradictions/properties/companyId/type",
-                                    keyword: "type",
-                                    params: { type: "integer" },
-                                    message: "must be integer",
-                                  },
-                                ];
-                                return false;
-                              }
-                              if (
-                                typeof data12 == "number" &&
-                                isFinite(data12)
-                              ) {
-                                if (data12 > 65535 || isNaN(data12)) {
-                                  validate52.errors = [
-                                    {
-                                      instancePath:
-                                        instancePath +
-                                        "/contradictions/companyId",
-                                      schemaPath:
-                                        "#/properties/contradictions/properties/companyId/maximum",
-                                      keyword: "maximum",
-                                      params: {
-                                        comparison: "<=",
-                                        limit: 65535,
-                                      },
-                                      message: "must be <= 65535",
-                                    },
-                                  ];
-                                  return false;
-                                } else if (data12 < 0 || isNaN(data12)) {
-                                  validate52.errors = [
-                                    {
-                                      instancePath:
-                                        instancePath +
-                                        "/contradictions/companyId",
-                                      schemaPath:
-                                        "#/properties/contradictions/properties/companyId/minimum",
-                                      keyword: "minimum",
-                                      params: {
-                                        comparison: ">=",
-                                        limit: 0,
-                                      },
-                                      message: "must be >= 0",
-                                    },
-                                  ];
-                                  return false;
-                                }
-                              }
-                              var valid3 = true;
-                            } else var valid3 = true;
-                            if (valid3) {
-                              if (data11.geometry !== void 0) {
-                                if (true !== data11.geometry) {
-                                  validate52.errors = [
-                                    {
-                                      instancePath:
-                                        instancePath +
-                                        "/contradictions/geometry",
-                                      schemaPath:
-                                        "#/properties/contradictions/properties/geometry/const",
-                                      keyword: "const",
-                                      params: { allowedValue: true },
-                                      message: "must be equal to constant",
-                                    },
-                                  ];
-                                  return false;
-                                }
-                                var valid3 = true;
-                              } else var valid3 = true;
-                            }
-                          }
-                        } else {
-                          validate52.errors = [
-                            {
-                              instancePath: instancePath + "/contradictions",
-                              schemaPath: "#/properties/contradictions/type",
-                              keyword: "type",
-                              params: { type: "object" },
-                              message: "must be object",
-                            },
-                          ];
-                          return false;
-                        }
-                        var valid1 = true;
-                      } else var valid1 = true;
-                      if (valid1) {
-                        if (data.dimensions !== void 0) {
-                          let data14 = data.dimensions;
-                          if (
-                            data14 &&
-                            typeof data14 == "object" &&
-                            !Array.isArray(data14)
-                          ) {
-                            let missing3;
-                            if (
-                              (data14.width === void 0 &&
-                                (missing3 = "width")) ||
-                              (data14.height === void 0 &&
-                                (missing3 = "height"))
-                            ) {
-                              validate52.errors = [
-                                {
-                                  instancePath: instancePath + "/dimensions",
-                                  schemaPath:
-                                    "#/properties/dimensions/required",
+                                    "#/anyOf/0/properties/matching/required",
                                   keyword: "required",
-                                  params: { missingProperty: missing3 },
+                                  params: { missingProperty: missing1 },
                                   message:
                                     "must have required property '" +
-                                    missing3 +
+                                    missing1 +
                                     "'",
-                                },
-                              ];
-                              return false;
-                            } else {
-                              for (const key3 in data14)
-                                if (!(key3 === "width" || key3 === "height")) {
-                                  validate52.errors = [
-                                    {
-                                      instancePath:
-                                        instancePath + "/dimensions",
+                                };
+                                if (vErrors === null) vErrors = [err14];
+                                else vErrors.push(err14);
+                                errors++;
+                              } else {
+                                const _errs17 = errors;
+                                for (const key1 in data6)
+                                  if (!(
+                                    key1 === "name" ||
+                                    key1 === "serviceUuid" ||
+                                    key1 === "characteristicUuid" ||
+                                    key1 === "requiredProperties"
+                                  )) {
+                                    const err15 = {
+                                      instancePath: instancePath + "/matching",
                                       schemaPath:
-                                        "#/properties/dimensions/additionalProperties",
+                                        "#/anyOf/0/properties/matching/additionalProperties",
                                       keyword: "additionalProperties",
-                                      params: { additionalProperty: key3 },
+                                      params: { additionalProperty: key1 },
                                       message:
                                         "must NOT have additional properties",
-                                    },
-                                  ];
-                                  return false;
-                                }
-                              if (data14.width !== void 0) {
-                                let data15 = data14.width;
-                                if (!(
-                                  typeof data15 == "number" &&
-                                  !(data15 % 1) &&
-                                  !isNaN(data15) &&
-                                  isFinite(data15)
-                                )) {
-                                  validate52.errors = [
-                                    {
-                                      instancePath:
-                                        instancePath + "/dimensions/width",
-                                      schemaPath:
-                                        "#/properties/dimensions/properties/width/type",
-                                      keyword: "type",
-                                      params: { type: "integer" },
-                                      message: "must be integer",
-                                    },
-                                  ];
-                                  return false;
-                                }
-                                if (
-                                  typeof data15 == "number" &&
-                                  isFinite(data15)
-                                ) {
-                                  if (data15 > 128 || isNaN(data15)) {
-                                    validate52.errors = [
-                                      {
-                                        instancePath:
-                                          instancePath + "/dimensions/width",
-                                        schemaPath:
-                                          "#/properties/dimensions/properties/width/maximum",
-                                        keyword: "maximum",
-                                        params: {
-                                          comparison: "<=",
-                                          limit: 128,
-                                        },
-                                        message: "must be <= 128",
-                                      },
-                                    ];
-                                    return false;
-                                  } else if (data15 < 1 || isNaN(data15)) {
-                                    validate52.errors = [
-                                      {
-                                        instancePath:
-                                          instancePath + "/dimensions/width",
-                                        schemaPath:
-                                          "#/properties/dimensions/properties/width/minimum",
-                                        keyword: "minimum",
-                                        params: {
-                                          comparison: ">=",
-                                          limit: 1,
-                                        },
-                                        message: "must be >= 1",
-                                      },
-                                    ];
-                                    return false;
+                                    };
+                                    if (vErrors === null) vErrors = [err15];
+                                    else vErrors.push(err15);
+                                    errors++;
+                                    break;
                                   }
-                                }
-                                var valid4 = true;
-                              } else var valid4 = true;
-                              if (valid4) {
-                                if (data14.height !== void 0) {
-                                  let data16 = data14.height;
-                                  if (!(
-                                    typeof data16 == "number" &&
-                                    !(data16 % 1) &&
-                                    !isNaN(data16) &&
-                                    isFinite(data16)
-                                  )) {
-                                    validate52.errors = [
-                                      {
-                                        instancePath:
-                                          instancePath + "/dimensions/height",
-                                        schemaPath:
-                                          "#/properties/dimensions/properties/height/type",
-                                        keyword: "type",
-                                        params: { type: "integer" },
-                                        message: "must be integer",
-                                      },
-                                    ];
-                                    return false;
-                                  }
-                                  if (
-                                    typeof data16 == "number" &&
-                                    isFinite(data16)
-                                  ) {
-                                    if (data16 > 128 || isNaN(data16)) {
-                                      validate52.errors = [
-                                        {
-                                          instancePath:
-                                            instancePath + "/dimensions/height",
-                                          schemaPath:
-                                            "#/properties/dimensions/properties/height/maximum",
-                                          keyword: "maximum",
-                                          params: {
-                                            comparison: "<=",
-                                            limit: 128,
-                                          },
-                                          message: "must be <= 128",
-                                        },
-                                      ];
-                                      return false;
-                                    } else if (data16 < 1 || isNaN(data16)) {
-                                      validate52.errors = [
-                                        {
-                                          instancePath:
-                                            instancePath + "/dimensions/height",
-                                          schemaPath:
-                                            "#/properties/dimensions/properties/height/minimum",
-                                          keyword: "minimum",
-                                          params: {
-                                            comparison: ">=",
-                                            limit: 1,
-                                          },
-                                          message: "must be >= 1",
-                                        },
-                                      ];
-                                      return false;
-                                    }
-                                  }
-                                  var valid4 = true;
-                                } else var valid4 = true;
-                              }
-                            }
-                          } else {
-                            validate52.errors = [
-                              {
-                                instancePath: instancePath + "/dimensions",
-                                schemaPath: "#/properties/dimensions/type",
-                                keyword: "type",
-                                params: { type: "object" },
-                                message: "must be object",
-                              },
-                            ];
-                            return false;
-                          }
-                          var valid1 = true;
-                        } else var valid1 = true;
-                        if (valid1) {
-                          if (data.parameters !== void 0) {
-                            if (
-                              !func0(
-                                data.parameters,
-                                schema19.properties.parameters.const,
-                              )
-                            ) {
-                              validate52.errors = [
-                                {
-                                  instancePath: instancePath + "/parameters",
-                                  schemaPath: "#/properties/parameters/const",
-                                  keyword: "const",
-                                  params: {
-                                    allowedValue:
-                                      schema19.properties.parameters.const,
-                                  },
-                                  message: "must be equal to constant",
-                                },
-                              ];
-                              return false;
-                            }
-                            var valid1 = true;
-                          } else var valid1 = true;
-                          if (valid1) {
-                            if (data.templates !== void 0) {
-                              if (
-                                !func0(
-                                  data.templates,
-                                  schema19.properties.templates.const,
-                                )
-                              ) {
-                                validate52.errors = [
-                                  {
-                                    instancePath: instancePath + "/templates",
-                                    schemaPath: "#/properties/templates/const",
-                                    keyword: "const",
-                                    params: {
-                                      allowedValue:
-                                        schema19.properties.templates.const,
-                                    },
-                                    message: "must be equal to constant",
-                                  },
-                                ];
-                                return false;
-                              }
-                              var valid1 = true;
-                            } else var valid1 = true;
-                            if (valid1) {
-                              if (data.limitations !== void 0) {
-                                let data19 = data.limitations;
-                                if (Array.isArray(data19)) {
-                                  if (data19.length > 16) {
-                                    validate52.errors = [
-                                      {
-                                        instancePath:
-                                          instancePath + "/limitations",
-                                        schemaPath:
-                                          "#/properties/limitations/maxItems",
-                                        keyword: "maxItems",
-                                        params: { limit: 16 },
-                                        message:
-                                          "must NOT have more than 16 items",
-                                      },
-                                    ];
-                                    return false;
-                                  } else if (data19.length < 1) {
-                                    validate52.errors = [
-                                      {
-                                        instancePath:
-                                          instancePath + "/limitations",
-                                        schemaPath:
-                                          "#/properties/limitations/minItems",
-                                        keyword: "minItems",
-                                        params: { limit: 1 },
-                                        message:
-                                          "must NOT have fewer than 1 items",
-                                      },
-                                    ];
-                                    return false;
-                                  } else {
-                                    const len0 = data19.length;
-                                    for (let i0 = 0; i0 < len0; i0++) {
-                                      let data20 = data19[i0];
-                                      if (typeof data20 === "string") {
-                                        if (func2(data20) > 512) {
-                                          validate52.errors = [
-                                            {
-                                              instancePath:
-                                                instancePath +
-                                                "/limitations/" +
-                                                i0,
-                                              schemaPath:
-                                                "#/properties/limitations/items/maxLength",
-                                              keyword: "maxLength",
-                                              params: { limit: 512 },
-                                              message:
-                                                "must NOT have more than 512 characters",
-                                            },
-                                          ];
-                                          return false;
-                                        } else if (func2(data20) < 1) {
-                                          validate52.errors = [
-                                            {
-                                              instancePath:
-                                                instancePath +
-                                                "/limitations/" +
-                                                i0,
-                                              schemaPath:
-                                                "#/properties/limitations/items/minLength",
-                                              keyword: "minLength",
-                                              params: { limit: 1 },
-                                              message:
-                                                "must NOT have fewer than 1 characters",
-                                            },
-                                          ];
-                                          return false;
+                                if (_errs17 === errors) {
+                                  if (data6.name !== void 0) {
+                                    let data7 = data6.name;
+                                    const _errs18 = errors;
+                                    if (errors === _errs18) {
+                                      if (typeof data7 === "string") {
+                                        if (func2(data7) > 512) {
+                                          const err16 = {
+                                            instancePath:
+                                              instancePath + "/matching/name",
+                                            schemaPath:
+                                              "#/anyOf/0/properties/matching/properties/name/maxLength",
+                                            keyword: "maxLength",
+                                            params: { limit: 512 },
+                                            message:
+                                              "must NOT have more than 512 characters",
+                                          };
+                                          if (vErrors === null)
+                                            vErrors = [err16];
+                                          else vErrors.push(err16);
+                                          errors++;
+                                        } else if (func2(data7) < 1) {
+                                          const err17 = {
+                                            instancePath:
+                                              instancePath + "/matching/name",
+                                            schemaPath:
+                                              "#/anyOf/0/properties/matching/properties/name/minLength",
+                                            keyword: "minLength",
+                                            params: { limit: 1 },
+                                            message:
+                                              "must NOT have fewer than 1 characters",
+                                          };
+                                          if (vErrors === null)
+                                            vErrors = [err17];
+                                          else vErrors.push(err17);
+                                          errors++;
                                         }
                                       } else {
-                                        validate52.errors = [
-                                          {
+                                        const err18 = {
+                                          instancePath:
+                                            instancePath + "/matching/name",
+                                          schemaPath:
+                                            "#/anyOf/0/properties/matching/properties/name/type",
+                                          keyword: "type",
+                                          params: { type: "string" },
+                                          message: "must be string",
+                                        };
+                                        if (vErrors === null) vErrors = [err18];
+                                        else vErrors.push(err18);
+                                        errors++;
+                                      }
+                                    }
+                                    var valid3 = _errs18 === errors;
+                                  } else var valid3 = true;
+                                  if (valid3) {
+                                    if (data6.serviceUuid !== void 0) {
+                                      let data8 = data6.serviceUuid;
+                                      const _errs20 = errors;
+                                      if (errors === _errs20) {
+                                        if (typeof data8 === "string") {
+                                          if (!pattern7.test(data8)) {
+                                            const err19 = {
+                                              instancePath:
+                                                instancePath +
+                                                "/matching/serviceUuid",
+                                              schemaPath:
+                                                "#/anyOf/0/properties/matching/properties/serviceUuid/pattern",
+                                              keyword: "pattern",
+                                              params: {
+                                                pattern:
+                                                  "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+                                              },
+                                              message:
+                                                'must match pattern "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"',
+                                            };
+                                            if (vErrors === null)
+                                              vErrors = [err19];
+                                            else vErrors.push(err19);
+                                            errors++;
+                                          }
+                                        } else {
+                                          const err20 = {
                                             instancePath:
                                               instancePath +
-                                              "/limitations/" +
-                                              i0,
+                                              "/matching/serviceUuid",
                                             schemaPath:
-                                              "#/properties/limitations/items/type",
+                                              "#/anyOf/0/properties/matching/properties/serviceUuid/type",
                                             keyword: "type",
                                             params: { type: "string" },
                                             message: "must be string",
-                                          },
-                                        ];
-                                        return false;
+                                          };
+                                          if (vErrors === null)
+                                            vErrors = [err20];
+                                          else vErrors.push(err20);
+                                          errors++;
+                                        }
+                                      }
+                                      var valid3 = _errs20 === errors;
+                                    } else var valid3 = true;
+                                    if (valid3) {
+                                      if (data6.characteristicUuid !== void 0) {
+                                        let data9 = data6.characteristicUuid;
+                                        const _errs22 = errors;
+                                        if (errors === _errs22) {
+                                          if (typeof data9 === "string") {
+                                            if (!pattern7.test(data9)) {
+                                              const err21 = {
+                                                instancePath:
+                                                  instancePath +
+                                                  "/matching/characteristicUuid",
+                                                schemaPath:
+                                                  "#/anyOf/0/properties/matching/properties/characteristicUuid/pattern",
+                                                keyword: "pattern",
+                                                params: {
+                                                  pattern:
+                                                    "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+                                                },
+                                                message:
+                                                  'must match pattern "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"',
+                                              };
+                                              if (vErrors === null)
+                                                vErrors = [err21];
+                                              else vErrors.push(err21);
+                                              errors++;
+                                            }
+                                          } else {
+                                            const err22 = {
+                                              instancePath:
+                                                instancePath +
+                                                "/matching/characteristicUuid",
+                                              schemaPath:
+                                                "#/anyOf/0/properties/matching/properties/characteristicUuid/type",
+                                              keyword: "type",
+                                              params: { type: "string" },
+                                              message: "must be string",
+                                            };
+                                            if (vErrors === null)
+                                              vErrors = [err22];
+                                            else vErrors.push(err22);
+                                            errors++;
+                                          }
+                                        }
+                                        var valid3 = _errs22 === errors;
+                                      } else var valid3 = true;
+                                      if (valid3) {
+                                        if (
+                                          data6.requiredProperties !== void 0
+                                        ) {
+                                          const _errs24 = errors;
+                                          if (
+                                            !func0(
+                                              data6.requiredProperties,
+                                              schema19.anyOf[0].properties
+                                                .matching.properties
+                                                .requiredProperties.const,
+                                            )
+                                          ) {
+                                            const err23 = {
+                                              instancePath:
+                                                instancePath +
+                                                "/matching/requiredProperties",
+                                              schemaPath:
+                                                "#/anyOf/0/properties/matching/properties/requiredProperties/const",
+                                              keyword: "const",
+                                              params: {
+                                                allowedValue:
+                                                  schema19.anyOf[0].properties
+                                                    .matching.properties
+                                                    .requiredProperties.const,
+                                              },
+                                              message:
+                                                "must be equal to constant",
+                                            };
+                                            if (vErrors === null)
+                                              vErrors = [err23];
+                                            else vErrors.push(err23);
+                                            errors++;
+                                          }
+                                          var valid3 = _errs24 === errors;
+                                        } else var valid3 = true;
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            } else {
+                              const err24 = {
+                                instancePath: instancePath + "/matching",
+                                schemaPath:
+                                  "#/anyOf/0/properties/matching/type",
+                                keyword: "type",
+                                params: { type: "object" },
+                                message: "must be object",
+                              };
+                              if (vErrors === null) vErrors = [err24];
+                              else vErrors.push(err24);
+                              errors++;
+                            }
+                          }
+                          var valid2 = _errs15 === errors;
+                        } else var valid2 = true;
+                        if (valid2) {
+                          if (data.contradictions !== void 0) {
+                            let data11 = data.contradictions;
+                            const _errs25 = errors;
+                            if (errors === _errs25) {
+                              if (
+                                data11 &&
+                                typeof data11 == "object" &&
+                                !Array.isArray(data11)
+                              ) {
+                                let missing2;
+                                if (
+                                  (data11.companyId === void 0 &&
+                                    (missing2 = "companyId")) ||
+                                  (data11.geometry === void 0 &&
+                                    (missing2 = "geometry"))
+                                ) {
+                                  const err25 = {
+                                    instancePath:
+                                      instancePath + "/contradictions",
+                                    schemaPath:
+                                      "#/anyOf/0/properties/contradictions/required",
+                                    keyword: "required",
+                                    params: { missingProperty: missing2 },
+                                    message:
+                                      "must have required property '" +
+                                      missing2 +
+                                      "'",
+                                  };
+                                  if (vErrors === null) vErrors = [err25];
+                                  else vErrors.push(err25);
+                                  errors++;
+                                } else {
+                                  const _errs27 = errors;
+                                  for (const key2 in data11)
+                                    if (!(
+                                      key2 === "companyId" ||
+                                      key2 === "geometry"
+                                    )) {
+                                      const err26 = {
+                                        instancePath:
+                                          instancePath + "/contradictions",
+                                        schemaPath:
+                                          "#/anyOf/0/properties/contradictions/additionalProperties",
+                                        keyword: "additionalProperties",
+                                        params: { additionalProperty: key2 },
+                                        message:
+                                          "must NOT have additional properties",
+                                      };
+                                      if (vErrors === null) vErrors = [err26];
+                                      else vErrors.push(err26);
+                                      errors++;
+                                      break;
+                                    }
+                                  if (_errs27 === errors) {
+                                    if (data11.companyId !== void 0) {
+                                      let data12 = data11.companyId;
+                                      const _errs28 = errors;
+                                      if (!(
+                                        typeof data12 == "number" &&
+                                        !(data12 % 1) &&
+                                        !isNaN(data12) &&
+                                        isFinite(data12)
+                                      )) {
+                                        const err27 = {
+                                          instancePath:
+                                            instancePath +
+                                            "/contradictions/companyId",
+                                          schemaPath:
+                                            "#/anyOf/0/properties/contradictions/properties/companyId/type",
+                                          keyword: "type",
+                                          params: { type: "integer" },
+                                          message: "must be integer",
+                                        };
+                                        if (vErrors === null) vErrors = [err27];
+                                        else vErrors.push(err27);
+                                        errors++;
+                                      }
+                                      if (errors === _errs28) {
+                                        if (
+                                          typeof data12 == "number" &&
+                                          isFinite(data12)
+                                        ) {
+                                          if (data12 > 65535 || isNaN(data12)) {
+                                            const err28 = {
+                                              instancePath:
+                                                instancePath +
+                                                "/contradictions/companyId",
+                                              schemaPath:
+                                                "#/anyOf/0/properties/contradictions/properties/companyId/maximum",
+                                              keyword: "maximum",
+                                              params: {
+                                                comparison: "<=",
+                                                limit: 65535,
+                                              },
+                                              message: "must be <= 65535",
+                                            };
+                                            if (vErrors === null)
+                                              vErrors = [err28];
+                                            else vErrors.push(err28);
+                                            errors++;
+                                          } else if (
+                                            data12 < 0 ||
+                                            isNaN(data12)
+                                          ) {
+                                            const err29 = {
+                                              instancePath:
+                                                instancePath +
+                                                "/contradictions/companyId",
+                                              schemaPath:
+                                                "#/anyOf/0/properties/contradictions/properties/companyId/minimum",
+                                              keyword: "minimum",
+                                              params: {
+                                                comparison: ">=",
+                                                limit: 0,
+                                              },
+                                              message: "must be >= 0",
+                                            };
+                                            if (vErrors === null)
+                                              vErrors = [err29];
+                                            else vErrors.push(err29);
+                                            errors++;
+                                          }
+                                        }
+                                      }
+                                      var valid4 = _errs28 === errors;
+                                    } else var valid4 = true;
+                                    if (valid4) {
+                                      if (data11.geometry !== void 0) {
+                                        const _errs30 = errors;
+                                        if (true !== data11.geometry) {
+                                          const err30 = {
+                                            instancePath:
+                                              instancePath +
+                                              "/contradictions/geometry",
+                                            schemaPath:
+                                              "#/anyOf/0/properties/contradictions/properties/geometry/const",
+                                            keyword: "const",
+                                            params: { allowedValue: true },
+                                            message:
+                                              "must be equal to constant",
+                                          };
+                                          if (vErrors === null)
+                                            vErrors = [err30];
+                                          else vErrors.push(err30);
+                                          errors++;
+                                        }
+                                        var valid4 = _errs30 === errors;
+                                      } else var valid4 = true;
+                                    }
+                                  }
+                                }
+                              } else {
+                                const err31 = {
+                                  instancePath:
+                                    instancePath + "/contradictions",
+                                  schemaPath:
+                                    "#/anyOf/0/properties/contradictions/type",
+                                  keyword: "type",
+                                  params: { type: "object" },
+                                  message: "must be object",
+                                };
+                                if (vErrors === null) vErrors = [err31];
+                                else vErrors.push(err31);
+                                errors++;
+                              }
+                            }
+                            var valid2 = _errs25 === errors;
+                          } else var valid2 = true;
+                          if (valid2) {
+                            if (data.dimensions !== void 0) {
+                              let data14 = data.dimensions;
+                              const _errs31 = errors;
+                              if (errors === _errs31) {
+                                if (
+                                  data14 &&
+                                  typeof data14 == "object" &&
+                                  !Array.isArray(data14)
+                                ) {
+                                  let missing3;
+                                  if (
+                                    (data14.width === void 0 &&
+                                      (missing3 = "width")) ||
+                                    (data14.height === void 0 &&
+                                      (missing3 = "height"))
+                                  ) {
+                                    const err32 = {
+                                      instancePath:
+                                        instancePath + "/dimensions",
+                                      schemaPath:
+                                        "#/anyOf/0/properties/dimensions/required",
+                                      keyword: "required",
+                                      params: { missingProperty: missing3 },
+                                      message:
+                                        "must have required property '" +
+                                        missing3 +
+                                        "'",
+                                    };
+                                    if (vErrors === null) vErrors = [err32];
+                                    else vErrors.push(err32);
+                                    errors++;
+                                  } else {
+                                    const _errs33 = errors;
+                                    for (const key3 in data14)
+                                      if (!(
+                                        key3 === "width" || key3 === "height"
+                                      )) {
+                                        const err33 = {
+                                          instancePath:
+                                            instancePath + "/dimensions",
+                                          schemaPath:
+                                            "#/anyOf/0/properties/dimensions/additionalProperties",
+                                          keyword: "additionalProperties",
+                                          params: { additionalProperty: key3 },
+                                          message:
+                                            "must NOT have additional properties",
+                                        };
+                                        if (vErrors === null) vErrors = [err33];
+                                        else vErrors.push(err33);
+                                        errors++;
+                                        break;
+                                      }
+                                    if (_errs33 === errors) {
+                                      if (data14.width !== void 0) {
+                                        let data15 = data14.width;
+                                        const _errs34 = errors;
+                                        if (!(
+                                          typeof data15 == "number" &&
+                                          !(data15 % 1) &&
+                                          !isNaN(data15) &&
+                                          isFinite(data15)
+                                        )) {
+                                          const err34 = {
+                                            instancePath:
+                                              instancePath +
+                                              "/dimensions/width",
+                                            schemaPath:
+                                              "#/anyOf/0/properties/dimensions/properties/width/type",
+                                            keyword: "type",
+                                            params: { type: "integer" },
+                                            message: "must be integer",
+                                          };
+                                          if (vErrors === null)
+                                            vErrors = [err34];
+                                          else vErrors.push(err34);
+                                          errors++;
+                                        }
+                                        if (errors === _errs34) {
+                                          if (
+                                            typeof data15 == "number" &&
+                                            isFinite(data15)
+                                          ) {
+                                            if (data15 > 128 || isNaN(data15)) {
+                                              const err35 = {
+                                                instancePath:
+                                                  instancePath +
+                                                  "/dimensions/width",
+                                                schemaPath:
+                                                  "#/anyOf/0/properties/dimensions/properties/width/maximum",
+                                                keyword: "maximum",
+                                                params: {
+                                                  comparison: "<=",
+                                                  limit: 128,
+                                                },
+                                                message: "must be <= 128",
+                                              };
+                                              if (vErrors === null)
+                                                vErrors = [err35];
+                                              else vErrors.push(err35);
+                                              errors++;
+                                            } else if (
+                                              data15 < 1 ||
+                                              isNaN(data15)
+                                            ) {
+                                              const err36 = {
+                                                instancePath:
+                                                  instancePath +
+                                                  "/dimensions/width",
+                                                schemaPath:
+                                                  "#/anyOf/0/properties/dimensions/properties/width/minimum",
+                                                keyword: "minimum",
+                                                params: {
+                                                  comparison: ">=",
+                                                  limit: 1,
+                                                },
+                                                message: "must be >= 1",
+                                              };
+                                              if (vErrors === null)
+                                                vErrors = [err36];
+                                              else vErrors.push(err36);
+                                              errors++;
+                                            }
+                                          }
+                                        }
+                                        var valid5 = _errs34 === errors;
+                                      } else var valid5 = true;
+                                      if (valid5) {
+                                        if (data14.height !== void 0) {
+                                          let data16 = data14.height;
+                                          const _errs36 = errors;
+                                          if (!(
+                                            typeof data16 == "number" &&
+                                            !(data16 % 1) &&
+                                            !isNaN(data16) &&
+                                            isFinite(data16)
+                                          )) {
+                                            const err37 = {
+                                              instancePath:
+                                                instancePath +
+                                                "/dimensions/height",
+                                              schemaPath:
+                                                "#/anyOf/0/properties/dimensions/properties/height/type",
+                                              keyword: "type",
+                                              params: { type: "integer" },
+                                              message: "must be integer",
+                                            };
+                                            if (vErrors === null)
+                                              vErrors = [err37];
+                                            else vErrors.push(err37);
+                                            errors++;
+                                          }
+                                          if (errors === _errs36) {
+                                            if (
+                                              typeof data16 == "number" &&
+                                              isFinite(data16)
+                                            ) {
+                                              if (
+                                                data16 > 128 ||
+                                                isNaN(data16)
+                                              ) {
+                                                const err38 = {
+                                                  instancePath:
+                                                    instancePath +
+                                                    "/dimensions/height",
+                                                  schemaPath:
+                                                    "#/anyOf/0/properties/dimensions/properties/height/maximum",
+                                                  keyword: "maximum",
+                                                  params: {
+                                                    comparison: "<=",
+                                                    limit: 128,
+                                                  },
+                                                  message: "must be <= 128",
+                                                };
+                                                if (vErrors === null)
+                                                  vErrors = [err38];
+                                                else vErrors.push(err38);
+                                                errors++;
+                                              } else if (
+                                                data16 < 1 ||
+                                                isNaN(data16)
+                                              ) {
+                                                const err39 = {
+                                                  instancePath:
+                                                    instancePath +
+                                                    "/dimensions/height",
+                                                  schemaPath:
+                                                    "#/anyOf/0/properties/dimensions/properties/height/minimum",
+                                                  keyword: "minimum",
+                                                  params: {
+                                                    comparison: ">=",
+                                                    limit: 1,
+                                                  },
+                                                  message: "must be >= 1",
+                                                };
+                                                if (vErrors === null)
+                                                  vErrors = [err39];
+                                                else vErrors.push(err39);
+                                                errors++;
+                                              }
+                                            }
+                                          }
+                                          var valid5 = _errs36 === errors;
+                                        } else var valid5 = true;
                                       }
                                     }
                                   }
                                 } else {
-                                  validate52.errors = [
-                                    {
-                                      instancePath:
-                                        instancePath + "/limitations",
-                                      schemaPath:
-                                        "#/properties/limitations/type",
-                                      keyword: "type",
-                                      params: { type: "array" },
-                                      message: "must be array",
-                                    },
-                                  ];
-                                  return false;
+                                  const err40 = {
+                                    instancePath: instancePath + "/dimensions",
+                                    schemaPath:
+                                      "#/anyOf/0/properties/dimensions/type",
+                                    keyword: "type",
+                                    params: { type: "object" },
+                                    message: "must be object",
+                                  };
+                                  if (vErrors === null) vErrors = [err40];
+                                  else vErrors.push(err40);
+                                  errors++;
                                 }
-                                var valid1 = true;
-                              } else var valid1 = true;
-                              if (valid1) {
-                                if (data.sources !== void 0) {
-                                  let data21 = data.sources;
-                                  if (Array.isArray(data21)) {
-                                    if (data21.length > 16) {
-                                      validate52.errors = [
-                                        {
-                                          instancePath:
-                                            instancePath + "/sources",
-                                          schemaPath:
-                                            "#/properties/sources/maxItems",
-                                          keyword: "maxItems",
-                                          params: { limit: 16 },
-                                          message:
-                                            "must NOT have more than 16 items",
-                                        },
-                                      ];
-                                      return false;
-                                    } else if (data21.length < 1) {
-                                      validate52.errors = [
-                                        {
-                                          instancePath:
-                                            instancePath + "/sources",
-                                          schemaPath:
-                                            "#/properties/sources/minItems",
-                                          keyword: "minItems",
-                                          params: { limit: 1 },
-                                          message:
-                                            "must NOT have fewer than 1 items",
-                                        },
-                                      ];
-                                      return false;
-                                    } else {
-                                      const len1 = data21.length;
-                                      for (let i1 = 0; i1 < len1; i1++) {
-                                        let data22 = data21[i1];
-                                        if (typeof data22 === "string") {
-                                          if (func2(data22) > 512) {
-                                            validate52.errors = [
-                                              {
-                                                instancePath:
-                                                  instancePath +
-                                                  "/sources/" +
-                                                  i1,
-                                                schemaPath:
-                                                  "#/properties/sources/items/maxLength",
-                                                keyword: "maxLength",
-                                                params: { limit: 512 },
-                                                message:
-                                                  "must NOT have more than 512 characters",
-                                              },
-                                            ];
-                                            return false;
-                                          } else if (func2(data22) < 1) {
-                                            validate52.errors = [
-                                              {
-                                                instancePath:
-                                                  instancePath +
-                                                  "/sources/" +
-                                                  i1,
-                                                schemaPath:
-                                                  "#/properties/sources/items/minLength",
-                                                keyword: "minLength",
-                                                params: { limit: 1 },
-                                                message:
-                                                  "must NOT have fewer than 1 characters",
-                                              },
-                                            ];
-                                            return false;
-                                          }
+                              }
+                              var valid2 = _errs31 === errors;
+                            } else var valid2 = true;
+                            if (valid2) {
+                              if (data.parameters !== void 0) {
+                                const _errs38 = errors;
+                                if (
+                                  !func0(
+                                    data.parameters,
+                                    schema19.anyOf[0].properties.parameters
+                                      .const,
+                                  )
+                                ) {
+                                  const err41 = {
+                                    instancePath: instancePath + "/parameters",
+                                    schemaPath:
+                                      "#/anyOf/0/properties/parameters/const",
+                                    keyword: "const",
+                                    params: {
+                                      allowedValue:
+                                        schema19.anyOf[0].properties.parameters
+                                          .const,
+                                    },
+                                    message: "must be equal to constant",
+                                  };
+                                  if (vErrors === null) vErrors = [err41];
+                                  else vErrors.push(err41);
+                                  errors++;
+                                }
+                                var valid2 = _errs38 === errors;
+                              } else var valid2 = true;
+                              if (valid2) {
+                                if (data.templates !== void 0) {
+                                  const _errs39 = errors;
+                                  if (
+                                    !func0(
+                                      data.templates,
+                                      schema19.anyOf[0].properties.templates
+                                        .const,
+                                    )
+                                  ) {
+                                    const err42 = {
+                                      instancePath: instancePath + "/templates",
+                                      schemaPath:
+                                        "#/anyOf/0/properties/templates/const",
+                                      keyword: "const",
+                                      params: {
+                                        allowedValue:
+                                          schema19.anyOf[0].properties.templates
+                                            .const,
+                                      },
+                                      message: "must be equal to constant",
+                                    };
+                                    if (vErrors === null) vErrors = [err42];
+                                    else vErrors.push(err42);
+                                    errors++;
+                                  }
+                                  var valid2 = _errs39 === errors;
+                                } else var valid2 = true;
+                                if (valid2) {
+                                  if (data.limitations !== void 0) {
+                                    let data19 = data.limitations;
+                                    const _errs40 = errors;
+                                    if (errors === _errs40) {
+                                      if (Array.isArray(data19)) {
+                                        if (data19.length > 16) {
+                                          const err43 = {
+                                            instancePath:
+                                              instancePath + "/limitations",
+                                            schemaPath:
+                                              "#/anyOf/0/properties/limitations/maxItems",
+                                            keyword: "maxItems",
+                                            params: { limit: 16 },
+                                            message:
+                                              "must NOT have more than 16 items",
+                                          };
+                                          if (vErrors === null)
+                                            vErrors = [err43];
+                                          else vErrors.push(err43);
+                                          errors++;
+                                        } else if (data19.length < 1) {
+                                          const err44 = {
+                                            instancePath:
+                                              instancePath + "/limitations",
+                                            schemaPath:
+                                              "#/anyOf/0/properties/limitations/minItems",
+                                            keyword: "minItems",
+                                            params: { limit: 1 },
+                                            message:
+                                              "must NOT have fewer than 1 items",
+                                          };
+                                          if (vErrors === null)
+                                            vErrors = [err44];
+                                          else vErrors.push(err44);
+                                          errors++;
                                         } else {
-                                          validate52.errors = [
-                                            {
-                                              instancePath:
-                                                instancePath + "/sources/" + i1,
-                                              schemaPath:
-                                                "#/properties/sources/items/type",
-                                              keyword: "type",
-                                              params: { type: "string" },
-                                              message: "must be string",
-                                            },
-                                          ];
-                                          return false;
+                                          const len0 = data19.length;
+                                          for (let i0 = 0; i0 < len0; i0++) {
+                                            let data20 = data19[i0];
+                                            const _errs42 = errors;
+                                            if (errors === _errs42) {
+                                              if (typeof data20 === "string") {
+                                                if (func2(data20) > 512) {
+                                                  const err45 = {
+                                                    instancePath:
+                                                      instancePath +
+                                                      "/limitations/" +
+                                                      i0,
+                                                    schemaPath:
+                                                      "#/anyOf/0/properties/limitations/items/maxLength",
+                                                    keyword: "maxLength",
+                                                    params: { limit: 512 },
+                                                    message:
+                                                      "must NOT have more than 512 characters",
+                                                  };
+                                                  if (vErrors === null)
+                                                    vErrors = [err45];
+                                                  else vErrors.push(err45);
+                                                  errors++;
+                                                } else if (func2(data20) < 1) {
+                                                  const err46 = {
+                                                    instancePath:
+                                                      instancePath +
+                                                      "/limitations/" +
+                                                      i0,
+                                                    schemaPath:
+                                                      "#/anyOf/0/properties/limitations/items/minLength",
+                                                    keyword: "minLength",
+                                                    params: { limit: 1 },
+                                                    message:
+                                                      "must NOT have fewer than 1 characters",
+                                                  };
+                                                  if (vErrors === null)
+                                                    vErrors = [err46];
+                                                  else vErrors.push(err46);
+                                                  errors++;
+                                                }
+                                              } else {
+                                                const err47 = {
+                                                  instancePath:
+                                                    instancePath +
+                                                    "/limitations/" +
+                                                    i0,
+                                                  schemaPath:
+                                                    "#/anyOf/0/properties/limitations/items/type",
+                                                  keyword: "type",
+                                                  params: { type: "string" },
+                                                  message: "must be string",
+                                                };
+                                                if (vErrors === null)
+                                                  vErrors = [err47];
+                                                else vErrors.push(err47);
+                                                errors++;
+                                              }
+                                            }
+                                            if (!(_errs42 === errors)) break;
+                                          }
                                         }
+                                      } else {
+                                        const err48 = {
+                                          instancePath:
+                                            instancePath + "/limitations",
+                                          schemaPath:
+                                            "#/anyOf/0/properties/limitations/type",
+                                          keyword: "type",
+                                          params: { type: "array" },
+                                          message: "must be array",
+                                        };
+                                        if (vErrors === null) vErrors = [err48];
+                                        else vErrors.push(err48);
+                                        errors++;
                                       }
                                     }
-                                  } else {
-                                    validate52.errors = [
-                                      {
-                                        instancePath: instancePath + "/sources",
-                                        schemaPath: "#/properties/sources/type",
-                                        keyword: "type",
-                                        params: { type: "array" },
-                                        message: "must be array",
-                                      },
-                                    ];
-                                    return false;
+                                    var valid2 = _errs40 === errors;
+                                  } else var valid2 = true;
+                                  if (valid2) {
+                                    if (data.sources !== void 0) {
+                                      let data21 = data.sources;
+                                      const _errs44 = errors;
+                                      if (errors === _errs44) {
+                                        if (Array.isArray(data21)) {
+                                          if (data21.length > 16) {
+                                            const err49 = {
+                                              instancePath:
+                                                instancePath + "/sources",
+                                              schemaPath:
+                                                "#/anyOf/0/properties/sources/maxItems",
+                                              keyword: "maxItems",
+                                              params: { limit: 16 },
+                                              message:
+                                                "must NOT have more than 16 items",
+                                            };
+                                            if (vErrors === null)
+                                              vErrors = [err49];
+                                            else vErrors.push(err49);
+                                            errors++;
+                                          } else if (data21.length < 1) {
+                                            const err50 = {
+                                              instancePath:
+                                                instancePath + "/sources",
+                                              schemaPath:
+                                                "#/anyOf/0/properties/sources/minItems",
+                                              keyword: "minItems",
+                                              params: { limit: 1 },
+                                              message:
+                                                "must NOT have fewer than 1 items",
+                                            };
+                                            if (vErrors === null)
+                                              vErrors = [err50];
+                                            else vErrors.push(err50);
+                                            errors++;
+                                          } else {
+                                            const len1 = data21.length;
+                                            for (let i1 = 0; i1 < len1; i1++) {
+                                              let data22 = data21[i1];
+                                              const _errs46 = errors;
+                                              if (errors === _errs46) {
+                                                if (
+                                                  typeof data22 === "string"
+                                                ) {
+                                                  if (func2(data22) > 512) {
+                                                    const err51 = {
+                                                      instancePath:
+                                                        instancePath +
+                                                        "/sources/" +
+                                                        i1,
+                                                      schemaPath:
+                                                        "#/anyOf/0/properties/sources/items/maxLength",
+                                                      keyword: "maxLength",
+                                                      params: { limit: 512 },
+                                                      message:
+                                                        "must NOT have more than 512 characters",
+                                                    };
+                                                    if (vErrors === null)
+                                                      vErrors = [err51];
+                                                    else vErrors.push(err51);
+                                                    errors++;
+                                                  } else if (
+                                                    func2(data22) < 1
+                                                  ) {
+                                                    const err52 = {
+                                                      instancePath:
+                                                        instancePath +
+                                                        "/sources/" +
+                                                        i1,
+                                                      schemaPath:
+                                                        "#/anyOf/0/properties/sources/items/minLength",
+                                                      keyword: "minLength",
+                                                      params: { limit: 1 },
+                                                      message:
+                                                        "must NOT have fewer than 1 characters",
+                                                    };
+                                                    if (vErrors === null)
+                                                      vErrors = [err52];
+                                                    else vErrors.push(err52);
+                                                    errors++;
+                                                  }
+                                                } else {
+                                                  const err53 = {
+                                                    instancePath:
+                                                      instancePath +
+                                                      "/sources/" +
+                                                      i1,
+                                                    schemaPath:
+                                                      "#/anyOf/0/properties/sources/items/type",
+                                                    keyword: "type",
+                                                    params: { type: "string" },
+                                                    message: "must be string",
+                                                  };
+                                                  if (vErrors === null)
+                                                    vErrors = [err53];
+                                                  else vErrors.push(err53);
+                                                  errors++;
+                                                }
+                                              }
+                                              if (!(_errs46 === errors)) break;
+                                            }
+                                          }
+                                        } else {
+                                          const err54 = {
+                                            instancePath:
+                                              instancePath + "/sources",
+                                            schemaPath:
+                                              "#/anyOf/0/properties/sources/type",
+                                            keyword: "type",
+                                            params: { type: "array" },
+                                            message: "must be array",
+                                          };
+                                          if (vErrors === null)
+                                            vErrors = [err54];
+                                          else vErrors.push(err54);
+                                          errors++;
+                                        }
+                                      }
+                                      var valid2 = _errs44 === errors;
+                                    } else var valid2 = true;
                                   }
-                                  var valid1 = true;
-                                } else var valid1 = true;
+                                }
                               }
                             }
                           }
@@ -1256,25 +1688,2648 @@ var require_validator_input = __commonJSMin((exports, module) => {
             }
           }
         }
-      }
-    } else {
-      validate52.errors = [
-        {
+      } else {
+        const err55 = {
           instancePath,
-          schemaPath: "#/type",
+          schemaPath: "#/anyOf/0/type",
           keyword: "type",
           params: { type: "object" },
           message: "must be object",
-        },
-      ];
+        };
+        if (vErrors === null) vErrors = [err55];
+        else vErrors.push(err55);
+        errors++;
+      }
+    }
+    var _valid0 = _errs1 === errors;
+    valid0 = valid0 || _valid0;
+    if (_valid0) var props0 = true;
+    const _errs48 = errors;
+    const _errs51 = errors;
+    let valid9 = true;
+    const _errs52 = errors;
+    if (errors === _errs52) {
+      if (data && typeof data == "object" && !Array.isArray(data)) {
+        if (data.candidate !== void 0) {
+          let data23 = data.candidate;
+          if (errors === errors) {
+            if (data23 && typeof data23 == "object" && !Array.isArray(data23)) {
+              if (data23.history !== void 0) {
+                let data24 = data23.history;
+                if (errors === errors) {
+                  if (
+                    data24 &&
+                    typeof data24 == "object" &&
+                    !Array.isArray(data24)
+                  ) {
+                    if (data24.status !== void 0) {
+                      if ("incomplete" !== data24.status) {
+                        const err56 = {};
+                        if (vErrors === null) vErrors = [err56];
+                        else vErrors.push(err56);
+                        errors++;
+                      }
+                    }
+                  } else {
+                    const err57 = {};
+                    if (vErrors === null) vErrors = [err57];
+                    else vErrors.push(err57);
+                    errors++;
+                  }
+                }
+              }
+            } else {
+              const err58 = {};
+              if (vErrors === null) vErrors = [err58];
+              else vErrors.push(err58);
+              errors++;
+            }
+          }
+        }
+      } else {
+        const err59 = {};
+        if (vErrors === null) vErrors = [err59];
+        else vErrors.push(err59);
+        errors++;
+      }
+    }
+    var _valid1 = _errs52 === errors;
+    errors = _errs51;
+    if (vErrors !== null) {
+      if (_errs51) vErrors.length = _errs51;
+      else vErrors = null;
+    }
+    let ifClause0;
+    if (_valid1) {
+      const _errs59 = errors;
+      if (errors === _errs59) {
+        if (data && typeof data == "object" && !Array.isArray(data)) {
+          if (data.candidate !== void 0) {
+            let data26 = data.candidate;
+            if (!(
+              data26 &&
+              typeof data26 == "object" &&
+              !Array.isArray(data26)
+            )) {
+              const err60 = {
+                instancePath: instancePath + "/candidate",
+                schemaPath: "#/anyOf/1/allOf/0/then/properties/candidate/type",
+                keyword: "type",
+                params: { type: "object" },
+                message: "must be object",
+              };
+              if (vErrors === null) vErrors = [err60];
+              else vErrors.push(err60);
+              errors++;
+            }
+            const _errs63 = errors;
+            const _errs64 = errors;
+            if (errors === _errs64) {
+              if (
+                data26 &&
+                typeof data26 == "object" &&
+                !Array.isArray(data26)
+              ) {
+                if (data26.recommendation === void 0 && "recommendation") {
+                  const err61 = {};
+                  if (vErrors === null) vErrors = [err61];
+                  else vErrors.push(err61);
+                  errors++;
+                }
+              } else {
+                const err62 = {};
+                if (vErrors === null) vErrors = [err62];
+                else vErrors.push(err62);
+                errors++;
+              }
+            }
+            if (_errs64 === errors) {
+              const err63 = {
+                instancePath: instancePath + "/candidate",
+                schemaPath: "#/anyOf/1/allOf/0/then/properties/candidate/not",
+                keyword: "not",
+                params: {},
+                message: "must NOT be valid",
+              };
+              if (vErrors === null) vErrors = [err63];
+              else vErrors.push(err63);
+              errors++;
+            } else {
+              errors = _errs63;
+              if (vErrors !== null) {
+                if (_errs63) vErrors.length = _errs63;
+                else vErrors = null;
+              }
+            }
+          }
+        } else {
+          const err64 = {
+            instancePath,
+            schemaPath: "#/anyOf/1/allOf/0/then/type",
+            keyword: "type",
+            params: { type: "object" },
+            message: "must be object",
+          };
+          if (vErrors === null) vErrors = [err64];
+          else vErrors.push(err64);
+          errors++;
+        }
+      }
+      var _valid1 = _errs59 === errors;
+      valid9 = _valid1;
+      if (valid9) {
+        var props1 = {};
+        props1.candidate = true;
+      }
+      ifClause0 = "then";
+    } else {
+      const _errs66 = errors;
+      if (errors === _errs66) {
+        if (data && typeof data == "object" && !Array.isArray(data)) {
+          if (data.candidate !== void 0) {
+            let data27 = data.candidate;
+            if (errors === errors) {
+              if (
+                data27 &&
+                typeof data27 == "object" &&
+                !Array.isArray(data27)
+              ) {
+                let missing5;
+                if (
+                  data27.recommendation === void 0 &&
+                  (missing5 = "recommendation")
+                ) {
+                  const err65 = {
+                    instancePath: instancePath + "/candidate",
+                    schemaPath:
+                      "#/anyOf/1/allOf/0/else/properties/candidate/required",
+                    keyword: "required",
+                    params: { missingProperty: missing5 },
+                    message: "must have required property '" + missing5 + "'",
+                  };
+                  if (vErrors === null) vErrors = [err65];
+                  else vErrors.push(err65);
+                  errors++;
+                } else if (data27.history !== void 0) {
+                  let data28 = data27.history;
+                  if (errors === errors) {
+                    if (
+                      data28 &&
+                      typeof data28 == "object" &&
+                      !Array.isArray(data28)
+                    ) {
+                      if (data28.testIds !== void 0) {
+                        if (
+                          !func0(
+                            data28.testIds,
+                            schema19.anyOf[1].allOf[0].else.properties.candidate
+                              .properties.history.properties.testIds.const,
+                          )
+                        ) {
+                          const err66 = {
+                            instancePath:
+                              instancePath + "/candidate/history/testIds",
+                            schemaPath:
+                              "#/anyOf/1/allOf/0/else/properties/candidate/properties/history/properties/testIds/const",
+                            keyword: "const",
+                            params: {
+                              allowedValue:
+                                schema19.anyOf[1].allOf[0].else.properties
+                                  .candidate.properties.history.properties
+                                  .testIds.const,
+                            },
+                            message: "must be equal to constant",
+                          };
+                          if (vErrors === null) vErrors = [err66];
+                          else vErrors.push(err66);
+                          errors++;
+                        }
+                      }
+                    } else {
+                      const err67 = {
+                        instancePath: instancePath + "/candidate/history",
+                        schemaPath:
+                          "#/anyOf/1/allOf/0/else/properties/candidate/properties/history/type",
+                        keyword: "type",
+                        params: { type: "object" },
+                        message: "must be object",
+                      };
+                      if (vErrors === null) vErrors = [err67];
+                      else vErrors.push(err67);
+                      errors++;
+                    }
+                  }
+                }
+              } else {
+                const err68 = {
+                  instancePath: instancePath + "/candidate",
+                  schemaPath:
+                    "#/anyOf/1/allOf/0/else/properties/candidate/type",
+                  keyword: "type",
+                  params: { type: "object" },
+                  message: "must be object",
+                };
+                if (vErrors === null) vErrors = [err68];
+                else vErrors.push(err68);
+                errors++;
+              }
+            }
+          }
+        } else {
+          const err69 = {
+            instancePath,
+            schemaPath: "#/anyOf/1/allOf/0/else/type",
+            keyword: "type",
+            params: { type: "object" },
+            message: "must be object",
+          };
+          if (vErrors === null) vErrors = [err69];
+          else vErrors.push(err69);
+          errors++;
+        }
+      }
+      var _valid1 = _errs66 === errors;
+      valid9 = _valid1;
+      if (valid9) {
+        if (props1 !== true) {
+          props1 = props1 || {};
+          props1.candidate = true;
+        }
+      }
+      ifClause0 = "else";
+    }
+    if (!valid9) {
+      const err70 = {
+        instancePath,
+        schemaPath: "#/anyOf/1/allOf/0/if",
+        keyword: "if",
+        params: { failingKeyword: ifClause0 },
+        message: 'must match "' + ifClause0 + '" schema',
+      };
+      if (vErrors === null) vErrors = [err70];
+      else vErrors.push(err70);
+      errors++;
+    }
+    if (errors === _errs48) {
+      if (data && typeof data == "object" && !Array.isArray(data)) {
+        let missing6;
+        let valid18 = true;
+        for (missing6 of schema19.anyOf[1].required) {
+          valid18 = data[missing6] !== void 0;
+          if (!valid18) {
+            const err71 = {
+              instancePath,
+              schemaPath: "#/anyOf/1/required",
+              keyword: "required",
+              params: { missingProperty: missing6 },
+              message: "must have required property '" + missing6 + "'",
+            };
+            if (vErrors === null) vErrors = [err71];
+            else vErrors.push(err71);
+            errors++;
+            break;
+          }
+        }
+        if (valid18) {
+          const _errs73 = errors;
+          for (const key4 in data)
+            if (!func1.call(schema19.anyOf[1].properties, key4)) {
+              const err72 = {
+                instancePath,
+                schemaPath: "#/anyOf/1/additionalProperties",
+                keyword: "additionalProperties",
+                params: { additionalProperty: key4 },
+                message: "must NOT have additional properties",
+              };
+              if (vErrors === null) vErrors = [err72];
+              else vErrors.push(err72);
+              errors++;
+              break;
+            }
+          if (_errs73 === errors) {
+            if (data.documentVersion !== void 0) {
+              const _errs74 = errors;
+              if (2 !== data.documentVersion) {
+                const err73 = {
+                  instancePath: instancePath + "/documentVersion",
+                  schemaPath: "#/anyOf/1/properties/documentVersion/const",
+                  keyword: "const",
+                  params: { allowedValue: 2 },
+                  message: "must be equal to constant",
+                };
+                if (vErrors === null) vErrors = [err73];
+                else vErrors.push(err73);
+                errors++;
+              }
+              var valid19 = _errs74 === errors;
+            } else var valid19 = true;
+            if (valid19) {
+              if (data.namespace !== void 0) {
+                let data31 = data.namespace;
+                const _errs75 = errors;
+                if (errors === _errs75) {
+                  if (typeof data31 === "string") {
+                    if (!pattern3.test(data31)) {
+                      const err74 = {
+                        instancePath: instancePath + "/namespace",
+                        schemaPath: "#/anyOf/1/properties/namespace/pattern",
+                        keyword: "pattern",
+                        params: { pattern: "^[a-z0-9][a-z0-9-]{0,63}$" },
+                        message:
+                          'must match pattern "^[a-z0-9][a-z0-9-]{0,63}$"',
+                      };
+                      if (vErrors === null) vErrors = [err74];
+                      else vErrors.push(err74);
+                      errors++;
+                    }
+                  } else {
+                    const err75 = {
+                      instancePath: instancePath + "/namespace",
+                      schemaPath: "#/anyOf/1/properties/namespace/type",
+                      keyword: "type",
+                      params: { type: "string" },
+                      message: "must be string",
+                    };
+                    if (vErrors === null) vErrors = [err75];
+                    else vErrors.push(err75);
+                    errors++;
+                  }
+                }
+                var valid19 = _errs75 === errors;
+              } else var valid19 = true;
+              if (valid19) {
+                if (data.id !== void 0) {
+                  let data32 = data.id;
+                  const _errs77 = errors;
+                  if (errors === _errs77) {
+                    if (typeof data32 === "string") {
+                      if (!pattern3.test(data32)) {
+                        const err76 = {
+                          instancePath: instancePath + "/id",
+                          schemaPath: "#/anyOf/1/properties/id/pattern",
+                          keyword: "pattern",
+                          params: { pattern: "^[a-z0-9][a-z0-9-]{0,63}$" },
+                          message:
+                            'must match pattern "^[a-z0-9][a-z0-9-]{0,63}$"',
+                        };
+                        if (vErrors === null) vErrors = [err76];
+                        else vErrors.push(err76);
+                        errors++;
+                      }
+                    } else {
+                      const err77 = {
+                        instancePath: instancePath + "/id",
+                        schemaPath: "#/anyOf/1/properties/id/type",
+                        keyword: "type",
+                        params: { type: "string" },
+                        message: "must be string",
+                      };
+                      if (vErrors === null) vErrors = [err77];
+                      else vErrors.push(err77);
+                      errors++;
+                    }
+                  }
+                  var valid19 = _errs77 === errors;
+                } else var valid19 = true;
+                if (valid19) {
+                  if (data.revision !== void 0) {
+                    let data33 = data.revision;
+                    const _errs79 = errors;
+                    if (errors === _errs79) {
+                      if (typeof data33 === "string") {
+                        if (!pattern3.test(data33)) {
+                          const err78 = {
+                            instancePath: instancePath + "/revision",
+                            schemaPath: "#/anyOf/1/properties/revision/pattern",
+                            keyword: "pattern",
+                            params: { pattern: "^[a-z0-9][a-z0-9-]{0,63}$" },
+                            message:
+                              'must match pattern "^[a-z0-9][a-z0-9-]{0,63}$"',
+                          };
+                          if (vErrors === null) vErrors = [err78];
+                          else vErrors.push(err78);
+                          errors++;
+                        }
+                      } else {
+                        const err79 = {
+                          instancePath: instancePath + "/revision",
+                          schemaPath: "#/anyOf/1/properties/revision/type",
+                          keyword: "type",
+                          params: { type: "string" },
+                          message: "must be string",
+                        };
+                        if (vErrors === null) vErrors = [err79];
+                        else vErrors.push(err79);
+                        errors++;
+                      }
+                    }
+                    var valid19 = _errs79 === errors;
+                  } else var valid19 = true;
+                  if (valid19) {
+                    if (data.implementation !== void 0) {
+                      let data34 = data.implementation;
+                      const _errs81 = errors;
+                      if (errors === _errs81) {
+                        if (typeof data34 === "string") {
+                          if (!pattern3.test(data34)) {
+                            const err80 = {
+                              instancePath: instancePath + "/implementation",
+                              schemaPath:
+                                "#/anyOf/1/properties/implementation/pattern",
+                              keyword: "pattern",
+                              params: { pattern: "^[a-z0-9][a-z0-9-]{0,63}$" },
+                              message:
+                                'must match pattern "^[a-z0-9][a-z0-9-]{0,63}$"',
+                            };
+                            if (vErrors === null) vErrors = [err80];
+                            else vErrors.push(err80);
+                            errors++;
+                          }
+                        } else {
+                          const err81 = {
+                            instancePath: instancePath + "/implementation",
+                            schemaPath:
+                              "#/anyOf/1/properties/implementation/type",
+                            keyword: "type",
+                            params: { type: "string" },
+                            message: "must be string",
+                          };
+                          if (vErrors === null) vErrors = [err81];
+                          else vErrors.push(err81);
+                          errors++;
+                        }
+                      }
+                      var valid19 = _errs81 === errors;
+                    } else var valid19 = true;
+                    if (valid19) {
+                      if (data.label !== void 0) {
+                        let data35 = data.label;
+                        const _errs83 = errors;
+                        if (errors === _errs83) {
+                          if (typeof data35 === "string") {
+                            if (func2(data35) > 512) {
+                              const err82 = {
+                                instancePath: instancePath + "/label",
+                                schemaPath:
+                                  "#/anyOf/1/properties/label/maxLength",
+                                keyword: "maxLength",
+                                params: { limit: 512 },
+                                message:
+                                  "must NOT have more than 512 characters",
+                              };
+                              if (vErrors === null) vErrors = [err82];
+                              else vErrors.push(err82);
+                              errors++;
+                            } else if (func2(data35) < 1) {
+                              const err83 = {
+                                instancePath: instancePath + "/label",
+                                schemaPath:
+                                  "#/anyOf/1/properties/label/minLength",
+                                keyword: "minLength",
+                                params: { limit: 1 },
+                                message:
+                                  "must NOT have fewer than 1 characters",
+                              };
+                              if (vErrors === null) vErrors = [err83];
+                              else vErrors.push(err83);
+                              errors++;
+                            }
+                          } else {
+                            const err84 = {
+                              instancePath: instancePath + "/label",
+                              schemaPath: "#/anyOf/1/properties/label/type",
+                              keyword: "type",
+                              params: { type: "string" },
+                              message: "must be string",
+                            };
+                            if (vErrors === null) vErrors = [err84];
+                            else vErrors.push(err84);
+                            errors++;
+                          }
+                        }
+                        var valid19 = _errs83 === errors;
+                      } else var valid19 = true;
+                      if (valid19) {
+                        if (data.matching !== void 0) {
+                          let data36 = data.matching;
+                          const _errs85 = errors;
+                          if (errors === _errs85) {
+                            if (
+                              data36 &&
+                              typeof data36 == "object" &&
+                              !Array.isArray(data36)
+                            ) {
+                              let missing7;
+                              if (
+                                (data36.name === void 0 &&
+                                  (missing7 = "name")) ||
+                                (data36.serviceUuid === void 0 &&
+                                  (missing7 = "serviceUuid")) ||
+                                (data36.characteristicUuid === void 0 &&
+                                  (missing7 = "characteristicUuid")) ||
+                                (data36.requiredProperties === void 0 &&
+                                  (missing7 = "requiredProperties"))
+                              ) {
+                                const err85 = {
+                                  instancePath: instancePath + "/matching",
+                                  schemaPath:
+                                    "#/anyOf/1/properties/matching/required",
+                                  keyword: "required",
+                                  params: { missingProperty: missing7 },
+                                  message:
+                                    "must have required property '" +
+                                    missing7 +
+                                    "'",
+                                };
+                                if (vErrors === null) vErrors = [err85];
+                                else vErrors.push(err85);
+                                errors++;
+                              } else {
+                                const _errs87 = errors;
+                                for (const key5 in data36)
+                                  if (!(
+                                    key5 === "name" ||
+                                    key5 === "serviceUuid" ||
+                                    key5 === "characteristicUuid" ||
+                                    key5 === "requiredProperties"
+                                  )) {
+                                    const err86 = {
+                                      instancePath: instancePath + "/matching",
+                                      schemaPath:
+                                        "#/anyOf/1/properties/matching/additionalProperties",
+                                      keyword: "additionalProperties",
+                                      params: { additionalProperty: key5 },
+                                      message:
+                                        "must NOT have additional properties",
+                                    };
+                                    if (vErrors === null) vErrors = [err86];
+                                    else vErrors.push(err86);
+                                    errors++;
+                                    break;
+                                  }
+                                if (_errs87 === errors) {
+                                  if (data36.name !== void 0) {
+                                    let data37 = data36.name;
+                                    const _errs88 = errors;
+                                    if (errors === _errs88) {
+                                      if (typeof data37 === "string") {
+                                        if (func2(data37) > 512) {
+                                          const err87 = {
+                                            instancePath:
+                                              instancePath + "/matching/name",
+                                            schemaPath:
+                                              "#/anyOf/1/properties/matching/properties/name/maxLength",
+                                            keyword: "maxLength",
+                                            params: { limit: 512 },
+                                            message:
+                                              "must NOT have more than 512 characters",
+                                          };
+                                          if (vErrors === null)
+                                            vErrors = [err87];
+                                          else vErrors.push(err87);
+                                          errors++;
+                                        } else if (func2(data37) < 1) {
+                                          const err88 = {
+                                            instancePath:
+                                              instancePath + "/matching/name",
+                                            schemaPath:
+                                              "#/anyOf/1/properties/matching/properties/name/minLength",
+                                            keyword: "minLength",
+                                            params: { limit: 1 },
+                                            message:
+                                              "must NOT have fewer than 1 characters",
+                                          };
+                                          if (vErrors === null)
+                                            vErrors = [err88];
+                                          else vErrors.push(err88);
+                                          errors++;
+                                        }
+                                      } else {
+                                        const err89 = {
+                                          instancePath:
+                                            instancePath + "/matching/name",
+                                          schemaPath:
+                                            "#/anyOf/1/properties/matching/properties/name/type",
+                                          keyword: "type",
+                                          params: { type: "string" },
+                                          message: "must be string",
+                                        };
+                                        if (vErrors === null) vErrors = [err89];
+                                        else vErrors.push(err89);
+                                        errors++;
+                                      }
+                                    }
+                                    var valid20 = _errs88 === errors;
+                                  } else var valid20 = true;
+                                  if (valid20) {
+                                    if (data36.serviceUuid !== void 0) {
+                                      let data38 = data36.serviceUuid;
+                                      const _errs90 = errors;
+                                      if (errors === _errs90) {
+                                        if (typeof data38 === "string") {
+                                          if (!pattern7.test(data38)) {
+                                            const err90 = {
+                                              instancePath:
+                                                instancePath +
+                                                "/matching/serviceUuid",
+                                              schemaPath:
+                                                "#/anyOf/1/properties/matching/properties/serviceUuid/pattern",
+                                              keyword: "pattern",
+                                              params: {
+                                                pattern:
+                                                  "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+                                              },
+                                              message:
+                                                'must match pattern "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"',
+                                            };
+                                            if (vErrors === null)
+                                              vErrors = [err90];
+                                            else vErrors.push(err90);
+                                            errors++;
+                                          }
+                                        } else {
+                                          const err91 = {
+                                            instancePath:
+                                              instancePath +
+                                              "/matching/serviceUuid",
+                                            schemaPath:
+                                              "#/anyOf/1/properties/matching/properties/serviceUuid/type",
+                                            keyword: "type",
+                                            params: { type: "string" },
+                                            message: "must be string",
+                                          };
+                                          if (vErrors === null)
+                                            vErrors = [err91];
+                                          else vErrors.push(err91);
+                                          errors++;
+                                        }
+                                      }
+                                      var valid20 = _errs90 === errors;
+                                    } else var valid20 = true;
+                                    if (valid20) {
+                                      if (
+                                        data36.characteristicUuid !== void 0
+                                      ) {
+                                        let data39 = data36.characteristicUuid;
+                                        const _errs92 = errors;
+                                        if (errors === _errs92) {
+                                          if (typeof data39 === "string") {
+                                            if (!pattern7.test(data39)) {
+                                              const err92 = {
+                                                instancePath:
+                                                  instancePath +
+                                                  "/matching/characteristicUuid",
+                                                schemaPath:
+                                                  "#/anyOf/1/properties/matching/properties/characteristicUuid/pattern",
+                                                keyword: "pattern",
+                                                params: {
+                                                  pattern:
+                                                    "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+                                                },
+                                                message:
+                                                  'must match pattern "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"',
+                                              };
+                                              if (vErrors === null)
+                                                vErrors = [err92];
+                                              else vErrors.push(err92);
+                                              errors++;
+                                            }
+                                          } else {
+                                            const err93 = {
+                                              instancePath:
+                                                instancePath +
+                                                "/matching/characteristicUuid",
+                                              schemaPath:
+                                                "#/anyOf/1/properties/matching/properties/characteristicUuid/type",
+                                              keyword: "type",
+                                              params: { type: "string" },
+                                              message: "must be string",
+                                            };
+                                            if (vErrors === null)
+                                              vErrors = [err93];
+                                            else vErrors.push(err93);
+                                            errors++;
+                                          }
+                                        }
+                                        var valid20 = _errs92 === errors;
+                                      } else var valid20 = true;
+                                      if (valid20) {
+                                        if (
+                                          data36.requiredProperties !== void 0
+                                        ) {
+                                          const _errs94 = errors;
+                                          if (
+                                            !func0(
+                                              data36.requiredProperties,
+                                              schema19.anyOf[1].properties
+                                                .matching.properties
+                                                .requiredProperties.const,
+                                            )
+                                          ) {
+                                            const err94 = {
+                                              instancePath:
+                                                instancePath +
+                                                "/matching/requiredProperties",
+                                              schemaPath:
+                                                "#/anyOf/1/properties/matching/properties/requiredProperties/const",
+                                              keyword: "const",
+                                              params: {
+                                                allowedValue:
+                                                  schema19.anyOf[1].properties
+                                                    .matching.properties
+                                                    .requiredProperties.const,
+                                              },
+                                              message:
+                                                "must be equal to constant",
+                                            };
+                                            if (vErrors === null)
+                                              vErrors = [err94];
+                                            else vErrors.push(err94);
+                                            errors++;
+                                          }
+                                          var valid20 = _errs94 === errors;
+                                        } else var valid20 = true;
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            } else {
+                              const err95 = {
+                                instancePath: instancePath + "/matching",
+                                schemaPath:
+                                  "#/anyOf/1/properties/matching/type",
+                                keyword: "type",
+                                params: { type: "object" },
+                                message: "must be object",
+                              };
+                              if (vErrors === null) vErrors = [err95];
+                              else vErrors.push(err95);
+                              errors++;
+                            }
+                          }
+                          var valid19 = _errs85 === errors;
+                        } else var valid19 = true;
+                        if (valid19) {
+                          if (data.contradictions !== void 0) {
+                            let data41 = data.contradictions;
+                            const _errs95 = errors;
+                            if (errors === _errs95) {
+                              if (
+                                data41 &&
+                                typeof data41 == "object" &&
+                                !Array.isArray(data41)
+                              ) {
+                                let missing8;
+                                if (
+                                  (data41.companyId === void 0 &&
+                                    (missing8 = "companyId")) ||
+                                  (data41.geometry === void 0 &&
+                                    (missing8 = "geometry"))
+                                ) {
+                                  const err96 = {
+                                    instancePath:
+                                      instancePath + "/contradictions",
+                                    schemaPath:
+                                      "#/anyOf/1/properties/contradictions/required",
+                                    keyword: "required",
+                                    params: { missingProperty: missing8 },
+                                    message:
+                                      "must have required property '" +
+                                      missing8 +
+                                      "'",
+                                  };
+                                  if (vErrors === null) vErrors = [err96];
+                                  else vErrors.push(err96);
+                                  errors++;
+                                } else {
+                                  const _errs97 = errors;
+                                  for (const key6 in data41)
+                                    if (!(
+                                      key6 === "companyId" ||
+                                      key6 === "geometry"
+                                    )) {
+                                      const err97 = {
+                                        instancePath:
+                                          instancePath + "/contradictions",
+                                        schemaPath:
+                                          "#/anyOf/1/properties/contradictions/additionalProperties",
+                                        keyword: "additionalProperties",
+                                        params: { additionalProperty: key6 },
+                                        message:
+                                          "must NOT have additional properties",
+                                      };
+                                      if (vErrors === null) vErrors = [err97];
+                                      else vErrors.push(err97);
+                                      errors++;
+                                      break;
+                                    }
+                                  if (_errs97 === errors) {
+                                    if (data41.companyId !== void 0) {
+                                      let data42 = data41.companyId;
+                                      const _errs98 = errors;
+                                      if (
+                                        !(
+                                          typeof data42 == "number" &&
+                                          !(data42 % 1) &&
+                                          !isNaN(data42) &&
+                                          isFinite(data42)
+                                        ) &&
+                                        data42 !== null
+                                      ) {
+                                        const err98 = {
+                                          instancePath:
+                                            instancePath +
+                                            "/contradictions/companyId",
+                                          schemaPath:
+                                            "#/anyOf/1/properties/contradictions/properties/companyId/type",
+                                          keyword: "type",
+                                          params: {
+                                            type: schema19.anyOf[1].properties
+                                              .contradictions.properties
+                                              .companyId.type,
+                                          },
+                                          message: "must be integer,null",
+                                        };
+                                        if (vErrors === null) vErrors = [err98];
+                                        else vErrors.push(err98);
+                                        errors++;
+                                      }
+                                      if (errors === _errs98) {
+                                        if (
+                                          typeof data42 == "number" &&
+                                          isFinite(data42)
+                                        ) {
+                                          if (data42 > 65535 || isNaN(data42)) {
+                                            const err99 = {
+                                              instancePath:
+                                                instancePath +
+                                                "/contradictions/companyId",
+                                              schemaPath:
+                                                "#/anyOf/1/properties/contradictions/properties/companyId/maximum",
+                                              keyword: "maximum",
+                                              params: {
+                                                comparison: "<=",
+                                                limit: 65535,
+                                              },
+                                              message: "must be <= 65535",
+                                            };
+                                            if (vErrors === null)
+                                              vErrors = [err99];
+                                            else vErrors.push(err99);
+                                            errors++;
+                                          } else if (
+                                            data42 < 0 ||
+                                            isNaN(data42)
+                                          ) {
+                                            const err100 = {
+                                              instancePath:
+                                                instancePath +
+                                                "/contradictions/companyId",
+                                              schemaPath:
+                                                "#/anyOf/1/properties/contradictions/properties/companyId/minimum",
+                                              keyword: "minimum",
+                                              params: {
+                                                comparison: ">=",
+                                                limit: 0,
+                                              },
+                                              message: "must be >= 0",
+                                            };
+                                            if (vErrors === null)
+                                              vErrors = [err100];
+                                            else vErrors.push(err100);
+                                            errors++;
+                                          }
+                                        }
+                                      }
+                                      var valid21 = _errs98 === errors;
+                                    } else var valid21 = true;
+                                    if (valid21) {
+                                      if (data41.geometry !== void 0) {
+                                        const _errs100 = errors;
+                                        if (true !== data41.geometry) {
+                                          const err101 = {
+                                            instancePath:
+                                              instancePath +
+                                              "/contradictions/geometry",
+                                            schemaPath:
+                                              "#/anyOf/1/properties/contradictions/properties/geometry/const",
+                                            keyword: "const",
+                                            params: { allowedValue: true },
+                                            message:
+                                              "must be equal to constant",
+                                          };
+                                          if (vErrors === null)
+                                            vErrors = [err101];
+                                          else vErrors.push(err101);
+                                          errors++;
+                                        }
+                                        var valid21 = _errs100 === errors;
+                                      } else var valid21 = true;
+                                    }
+                                  }
+                                }
+                              } else {
+                                const err102 = {
+                                  instancePath:
+                                    instancePath + "/contradictions",
+                                  schemaPath:
+                                    "#/anyOf/1/properties/contradictions/type",
+                                  keyword: "type",
+                                  params: { type: "object" },
+                                  message: "must be object",
+                                };
+                                if (vErrors === null) vErrors = [err102];
+                                else vErrors.push(err102);
+                                errors++;
+                              }
+                            }
+                            var valid19 = _errs95 === errors;
+                          } else var valid19 = true;
+                          if (valid19) {
+                            if (data.dimensions !== void 0) {
+                              let data44 = data.dimensions;
+                              const _errs101 = errors;
+                              if (errors === _errs101) {
+                                if (
+                                  data44 &&
+                                  typeof data44 == "object" &&
+                                  !Array.isArray(data44)
+                                ) {
+                                  let missing9;
+                                  if (
+                                    (data44.width === void 0 &&
+                                      (missing9 = "width")) ||
+                                    (data44.height === void 0 &&
+                                      (missing9 = "height"))
+                                  ) {
+                                    const err103 = {
+                                      instancePath:
+                                        instancePath + "/dimensions",
+                                      schemaPath:
+                                        "#/anyOf/1/properties/dimensions/required",
+                                      keyword: "required",
+                                      params: { missingProperty: missing9 },
+                                      message:
+                                        "must have required property '" +
+                                        missing9 +
+                                        "'",
+                                    };
+                                    if (vErrors === null) vErrors = [err103];
+                                    else vErrors.push(err103);
+                                    errors++;
+                                  } else {
+                                    const _errs103 = errors;
+                                    for (const key7 in data44)
+                                      if (!(
+                                        key7 === "width" || key7 === "height"
+                                      )) {
+                                        const err104 = {
+                                          instancePath:
+                                            instancePath + "/dimensions",
+                                          schemaPath:
+                                            "#/anyOf/1/properties/dimensions/additionalProperties",
+                                          keyword: "additionalProperties",
+                                          params: { additionalProperty: key7 },
+                                          message:
+                                            "must NOT have additional properties",
+                                        };
+                                        if (vErrors === null)
+                                          vErrors = [err104];
+                                        else vErrors.push(err104);
+                                        errors++;
+                                        break;
+                                      }
+                                    if (_errs103 === errors) {
+                                      if (data44.width !== void 0) {
+                                        let data45 = data44.width;
+                                        const _errs104 = errors;
+                                        if (!(
+                                          typeof data45 == "number" &&
+                                          !(data45 % 1) &&
+                                          !isNaN(data45) &&
+                                          isFinite(data45)
+                                        )) {
+                                          const err105 = {
+                                            instancePath:
+                                              instancePath +
+                                              "/dimensions/width",
+                                            schemaPath:
+                                              "#/anyOf/1/properties/dimensions/properties/width/type",
+                                            keyword: "type",
+                                            params: { type: "integer" },
+                                            message: "must be integer",
+                                          };
+                                          if (vErrors === null)
+                                            vErrors = [err105];
+                                          else vErrors.push(err105);
+                                          errors++;
+                                        }
+                                        if (errors === _errs104) {
+                                          if (
+                                            typeof data45 == "number" &&
+                                            isFinite(data45)
+                                          ) {
+                                            if (data45 > 64 || isNaN(data45)) {
+                                              const err106 = {
+                                                instancePath:
+                                                  instancePath +
+                                                  "/dimensions/width",
+                                                schemaPath:
+                                                  "#/anyOf/1/properties/dimensions/properties/width/maximum",
+                                                keyword: "maximum",
+                                                params: {
+                                                  comparison: "<=",
+                                                  limit: 64,
+                                                },
+                                                message: "must be <= 64",
+                                              };
+                                              if (vErrors === null)
+                                                vErrors = [err106];
+                                              else vErrors.push(err106);
+                                              errors++;
+                                            } else if (
+                                              data45 < 16 ||
+                                              isNaN(data45)
+                                            ) {
+                                              const err107 = {
+                                                instancePath:
+                                                  instancePath +
+                                                  "/dimensions/width",
+                                                schemaPath:
+                                                  "#/anyOf/1/properties/dimensions/properties/width/minimum",
+                                                keyword: "minimum",
+                                                params: {
+                                                  comparison: ">=",
+                                                  limit: 16,
+                                                },
+                                                message: "must be >= 16",
+                                              };
+                                              if (vErrors === null)
+                                                vErrors = [err107];
+                                              else vErrors.push(err107);
+                                              errors++;
+                                            } else {
+                                              let res0;
+                                              if (
+                                                ((res0 = data45 / 8),
+                                                res0 !== parseInt(res0))
+                                              ) {
+                                                const err108 = {
+                                                  instancePath:
+                                                    instancePath +
+                                                    "/dimensions/width",
+                                                  schemaPath:
+                                                    "#/anyOf/1/properties/dimensions/properties/width/multipleOf",
+                                                  keyword: "multipleOf",
+                                                  params: { multipleOf: 8 },
+                                                  message:
+                                                    "must be multiple of 8",
+                                                };
+                                                if (vErrors === null)
+                                                  vErrors = [err108];
+                                                else vErrors.push(err108);
+                                                errors++;
+                                              }
+                                            }
+                                          }
+                                        }
+                                        var valid22 = _errs104 === errors;
+                                      } else var valid22 = true;
+                                      if (valid22) {
+                                        if (data44.height !== void 0) {
+                                          const _errs106 = errors;
+                                          if (16 !== data44.height) {
+                                            const err109 = {
+                                              instancePath:
+                                                instancePath +
+                                                "/dimensions/height",
+                                              schemaPath:
+                                                "#/anyOf/1/properties/dimensions/properties/height/const",
+                                              keyword: "const",
+                                              params: { allowedValue: 16 },
+                                              message:
+                                                "must be equal to constant",
+                                            };
+                                            if (vErrors === null)
+                                              vErrors = [err109];
+                                            else vErrors.push(err109);
+                                            errors++;
+                                          }
+                                          var valid22 = _errs106 === errors;
+                                        } else var valid22 = true;
+                                      }
+                                    }
+                                  }
+                                } else {
+                                  const err110 = {
+                                    instancePath: instancePath + "/dimensions",
+                                    schemaPath:
+                                      "#/anyOf/1/properties/dimensions/type",
+                                    keyword: "type",
+                                    params: { type: "object" },
+                                    message: "must be object",
+                                  };
+                                  if (vErrors === null) vErrors = [err110];
+                                  else vErrors.push(err110);
+                                  errors++;
+                                }
+                              }
+                              var valid19 = _errs101 === errors;
+                            } else var valid19 = true;
+                            if (valid19) {
+                              if (data.parameters !== void 0) {
+                                const _errs107 = errors;
+                                if (
+                                  !func0(
+                                    data.parameters,
+                                    schema19.anyOf[1].properties.parameters
+                                      .const,
+                                  )
+                                ) {
+                                  const err111 = {
+                                    instancePath: instancePath + "/parameters",
+                                    schemaPath:
+                                      "#/anyOf/1/properties/parameters/const",
+                                    keyword: "const",
+                                    params: {
+                                      allowedValue:
+                                        schema19.anyOf[1].properties.parameters
+                                          .const,
+                                    },
+                                    message: "must be equal to constant",
+                                  };
+                                  if (vErrors === null) vErrors = [err111];
+                                  else vErrors.push(err111);
+                                  errors++;
+                                }
+                                var valid19 = _errs107 === errors;
+                              } else var valid19 = true;
+                              if (valid19) {
+                                if (data.templates !== void 0) {
+                                  const _errs108 = errors;
+                                  if (
+                                    !func0(
+                                      data.templates,
+                                      schema19.anyOf[1].properties.templates
+                                        .const,
+                                    )
+                                  ) {
+                                    const err112 = {
+                                      instancePath: instancePath + "/templates",
+                                      schemaPath:
+                                        "#/anyOf/1/properties/templates/const",
+                                      keyword: "const",
+                                      params: {
+                                        allowedValue:
+                                          schema19.anyOf[1].properties.templates
+                                            .const,
+                                      },
+                                      message: "must be equal to constant",
+                                    };
+                                    if (vErrors === null) vErrors = [err112];
+                                    else vErrors.push(err112);
+                                    errors++;
+                                  }
+                                  var valid19 = _errs108 === errors;
+                                } else var valid19 = true;
+                                if (valid19) {
+                                  if (data.limitations !== void 0) {
+                                    let data49 = data.limitations;
+                                    const _errs109 = errors;
+                                    if (errors === _errs109) {
+                                      if (Array.isArray(data49)) {
+                                        if (data49.length > 16) {
+                                          const err113 = {
+                                            instancePath:
+                                              instancePath + "/limitations",
+                                            schemaPath:
+                                              "#/anyOf/1/properties/limitations/maxItems",
+                                            keyword: "maxItems",
+                                            params: { limit: 16 },
+                                            message:
+                                              "must NOT have more than 16 items",
+                                          };
+                                          if (vErrors === null)
+                                            vErrors = [err113];
+                                          else vErrors.push(err113);
+                                          errors++;
+                                        } else if (data49.length < 1) {
+                                          const err114 = {
+                                            instancePath:
+                                              instancePath + "/limitations",
+                                            schemaPath:
+                                              "#/anyOf/1/properties/limitations/minItems",
+                                            keyword: "minItems",
+                                            params: { limit: 1 },
+                                            message:
+                                              "must NOT have fewer than 1 items",
+                                          };
+                                          if (vErrors === null)
+                                            vErrors = [err114];
+                                          else vErrors.push(err114);
+                                          errors++;
+                                        } else {
+                                          const len2 = data49.length;
+                                          for (let i2 = 0; i2 < len2; i2++) {
+                                            let data50 = data49[i2];
+                                            const _errs111 = errors;
+                                            if (errors === _errs111) {
+                                              if (typeof data50 === "string") {
+                                                if (func2(data50) > 512) {
+                                                  const err115 = {
+                                                    instancePath:
+                                                      instancePath +
+                                                      "/limitations/" +
+                                                      i2,
+                                                    schemaPath:
+                                                      "#/anyOf/1/properties/limitations/items/maxLength",
+                                                    keyword: "maxLength",
+                                                    params: { limit: 512 },
+                                                    message:
+                                                      "must NOT have more than 512 characters",
+                                                  };
+                                                  if (vErrors === null)
+                                                    vErrors = [err115];
+                                                  else vErrors.push(err115);
+                                                  errors++;
+                                                } else if (func2(data50) < 1) {
+                                                  const err116 = {
+                                                    instancePath:
+                                                      instancePath +
+                                                      "/limitations/" +
+                                                      i2,
+                                                    schemaPath:
+                                                      "#/anyOf/1/properties/limitations/items/minLength",
+                                                    keyword: "minLength",
+                                                    params: { limit: 1 },
+                                                    message:
+                                                      "must NOT have fewer than 1 characters",
+                                                  };
+                                                  if (vErrors === null)
+                                                    vErrors = [err116];
+                                                  else vErrors.push(err116);
+                                                  errors++;
+                                                }
+                                              } else {
+                                                const err117 = {
+                                                  instancePath:
+                                                    instancePath +
+                                                    "/limitations/" +
+                                                    i2,
+                                                  schemaPath:
+                                                    "#/anyOf/1/properties/limitations/items/type",
+                                                  keyword: "type",
+                                                  params: { type: "string" },
+                                                  message: "must be string",
+                                                };
+                                                if (vErrors === null)
+                                                  vErrors = [err117];
+                                                else vErrors.push(err117);
+                                                errors++;
+                                              }
+                                            }
+                                            if (!(_errs111 === errors)) break;
+                                          }
+                                        }
+                                      } else {
+                                        const err118 = {
+                                          instancePath:
+                                            instancePath + "/limitations",
+                                          schemaPath:
+                                            "#/anyOf/1/properties/limitations/type",
+                                          keyword: "type",
+                                          params: { type: "array" },
+                                          message: "must be array",
+                                        };
+                                        if (vErrors === null)
+                                          vErrors = [err118];
+                                        else vErrors.push(err118);
+                                        errors++;
+                                      }
+                                    }
+                                    var valid19 = _errs109 === errors;
+                                  } else var valid19 = true;
+                                  if (valid19) {
+                                    if (data.sources !== void 0) {
+                                      let data51 = data.sources;
+                                      const _errs113 = errors;
+                                      if (errors === _errs113) {
+                                        if (Array.isArray(data51)) {
+                                          if (data51.length > 16) {
+                                            const err119 = {
+                                              instancePath:
+                                                instancePath + "/sources",
+                                              schemaPath:
+                                                "#/anyOf/1/properties/sources/maxItems",
+                                              keyword: "maxItems",
+                                              params: { limit: 16 },
+                                              message:
+                                                "must NOT have more than 16 items",
+                                            };
+                                            if (vErrors === null)
+                                              vErrors = [err119];
+                                            else vErrors.push(err119);
+                                            errors++;
+                                          } else if (data51.length < 1) {
+                                            const err120 = {
+                                              instancePath:
+                                                instancePath + "/sources",
+                                              schemaPath:
+                                                "#/anyOf/1/properties/sources/minItems",
+                                              keyword: "minItems",
+                                              params: { limit: 1 },
+                                              message:
+                                                "must NOT have fewer than 1 items",
+                                            };
+                                            if (vErrors === null)
+                                              vErrors = [err120];
+                                            else vErrors.push(err120);
+                                            errors++;
+                                          } else {
+                                            const len3 = data51.length;
+                                            for (let i3 = 0; i3 < len3; i3++) {
+                                              let data52 = data51[i3];
+                                              const _errs115 = errors;
+                                              if (errors === _errs115) {
+                                                if (
+                                                  typeof data52 === "string"
+                                                ) {
+                                                  if (func2(data52) > 512) {
+                                                    const err121 = {
+                                                      instancePath:
+                                                        instancePath +
+                                                        "/sources/" +
+                                                        i3,
+                                                      schemaPath:
+                                                        "#/anyOf/1/properties/sources/items/maxLength",
+                                                      keyword: "maxLength",
+                                                      params: { limit: 512 },
+                                                      message:
+                                                        "must NOT have more than 512 characters",
+                                                    };
+                                                    if (vErrors === null)
+                                                      vErrors = [err121];
+                                                    else vErrors.push(err121);
+                                                    errors++;
+                                                  } else if (
+                                                    func2(data52) < 1
+                                                  ) {
+                                                    const err122 = {
+                                                      instancePath:
+                                                        instancePath +
+                                                        "/sources/" +
+                                                        i3,
+                                                      schemaPath:
+                                                        "#/anyOf/1/properties/sources/items/minLength",
+                                                      keyword: "minLength",
+                                                      params: { limit: 1 },
+                                                      message:
+                                                        "must NOT have fewer than 1 characters",
+                                                    };
+                                                    if (vErrors === null)
+                                                      vErrors = [err122];
+                                                    else vErrors.push(err122);
+                                                    errors++;
+                                                  }
+                                                } else {
+                                                  const err123 = {
+                                                    instancePath:
+                                                      instancePath +
+                                                      "/sources/" +
+                                                      i3,
+                                                    schemaPath:
+                                                      "#/anyOf/1/properties/sources/items/type",
+                                                    keyword: "type",
+                                                    params: { type: "string" },
+                                                    message: "must be string",
+                                                  };
+                                                  if (vErrors === null)
+                                                    vErrors = [err123];
+                                                  else vErrors.push(err123);
+                                                  errors++;
+                                                }
+                                              }
+                                              if (!(_errs115 === errors)) break;
+                                            }
+                                          }
+                                        } else {
+                                          const err124 = {
+                                            instancePath:
+                                              instancePath + "/sources",
+                                            schemaPath:
+                                              "#/anyOf/1/properties/sources/type",
+                                            keyword: "type",
+                                            params: { type: "array" },
+                                            message: "must be array",
+                                          };
+                                          if (vErrors === null)
+                                            vErrors = [err124];
+                                          else vErrors.push(err124);
+                                          errors++;
+                                        }
+                                      }
+                                      var valid19 = _errs113 === errors;
+                                    } else var valid19 = true;
+                                    if (valid19) {
+                                      if (data.candidate !== void 0) {
+                                        let data53 = data.candidate;
+                                        const _errs117 = errors;
+                                        if (errors === _errs117) {
+                                          if (
+                                            data53 &&
+                                            typeof data53 == "object" &&
+                                            !Array.isArray(data53)
+                                          ) {
+                                            let missing10;
+                                            if (
+                                              (data53.kind === void 0 &&
+                                                (missing10 = "kind")) ||
+                                              (data53.assumptions === void 0 &&
+                                                (missing10 = "assumptions")) ||
+                                              (data53.identity === void 0 &&
+                                                (missing10 = "identity")) ||
+                                              (data53.history === void 0 &&
+                                                (missing10 = "history"))
+                                            ) {
+                                              const err125 = {
+                                                instancePath:
+                                                  instancePath + "/candidate",
+                                                schemaPath:
+                                                  "#/anyOf/1/properties/candidate/required",
+                                                keyword: "required",
+                                                params: {
+                                                  missingProperty: missing10,
+                                                },
+                                                message:
+                                                  "must have required property '" +
+                                                  missing10 +
+                                                  "'",
+                                              };
+                                              if (vErrors === null)
+                                                vErrors = [err125];
+                                              else vErrors.push(err125);
+                                              errors++;
+                                            } else {
+                                              const _errs119 = errors;
+                                              for (const key8 in data53)
+                                                if (!(
+                                                  key8 === "kind" ||
+                                                  key8 === "assumptions" ||
+                                                  key8 === "identity" ||
+                                                  key8 === "recommendation" ||
+                                                  key8 === "history"
+                                                )) {
+                                                  const err126 = {
+                                                    instancePath:
+                                                      instancePath +
+                                                      "/candidate",
+                                                    schemaPath:
+                                                      "#/anyOf/1/properties/candidate/additionalProperties",
+                                                    keyword:
+                                                      "additionalProperties",
+                                                    params: {
+                                                      additionalProperty: key8,
+                                                    },
+                                                    message:
+                                                      "must NOT have additional properties",
+                                                  };
+                                                  if (vErrors === null)
+                                                    vErrors = [err126];
+                                                  else vErrors.push(err126);
+                                                  errors++;
+                                                  break;
+                                                }
+                                              if (_errs119 === errors) {
+                                                if (data53.kind !== void 0) {
+                                                  const _errs120 = errors;
+                                                  if (
+                                                    "revalidation-required" !==
+                                                    data53.kind
+                                                  ) {
+                                                    const err127 = {
+                                                      instancePath:
+                                                        instancePath +
+                                                        "/candidate/kind",
+                                                      schemaPath:
+                                                        "#/anyOf/1/properties/candidate/properties/kind/const",
+                                                      keyword: "const",
+                                                      params: {
+                                                        allowedValue:
+                                                          "revalidation-required",
+                                                      },
+                                                      message:
+                                                        "must be equal to constant",
+                                                    };
+                                                    if (vErrors === null)
+                                                      vErrors = [err127];
+                                                    else vErrors.push(err127);
+                                                    errors++;
+                                                  }
+                                                  var valid25 =
+                                                    _errs120 === errors;
+                                                } else var valid25 = true;
+                                                if (valid25) {
+                                                  if (
+                                                    data53.assumptions !==
+                                                    void 0
+                                                  ) {
+                                                    const _errs121 = errors;
+                                                    if (
+                                                      !func0(
+                                                        data53.assumptions,
+                                                        schema19.anyOf[1]
+                                                          .properties.candidate
+                                                          .properties
+                                                          .assumptions.const,
+                                                      )
+                                                    ) {
+                                                      const err128 = {
+                                                        instancePath:
+                                                          instancePath +
+                                                          "/candidate/assumptions",
+                                                        schemaPath:
+                                                          "#/anyOf/1/properties/candidate/properties/assumptions/const",
+                                                        keyword: "const",
+                                                        params: {
+                                                          allowedValue:
+                                                            schema19.anyOf[1]
+                                                              .properties
+                                                              .candidate
+                                                              .properties
+                                                              .assumptions
+                                                              .const,
+                                                        },
+                                                        message:
+                                                          "must be equal to constant",
+                                                      };
+                                                      if (vErrors === null)
+                                                        vErrors = [err128];
+                                                      else vErrors.push(err128);
+                                                      errors++;
+                                                    }
+                                                    var valid25 =
+                                                      _errs121 === errors;
+                                                  } else var valid25 = true;
+                                                  if (valid25) {
+                                                    if (
+                                                      data53.identity !== void 0
+                                                    ) {
+                                                      const _errs122 = errors;
+                                                      if (
+                                                        !func0(
+                                                          data53.identity,
+                                                          schema19.anyOf[1]
+                                                            .properties
+                                                            .candidate
+                                                            .properties.identity
+                                                            .const,
+                                                        )
+                                                      ) {
+                                                        const err129 = {
+                                                          instancePath:
+                                                            instancePath +
+                                                            "/candidate/identity",
+                                                          schemaPath:
+                                                            "#/anyOf/1/properties/candidate/properties/identity/const",
+                                                          keyword: "const",
+                                                          params: {
+                                                            allowedValue:
+                                                              schema19.anyOf[1]
+                                                                .properties
+                                                                .candidate
+                                                                .properties
+                                                                .identity.const,
+                                                          },
+                                                          message:
+                                                            "must be equal to constant",
+                                                        };
+                                                        if (vErrors === null)
+                                                          vErrors = [err129];
+                                                        else
+                                                          vErrors.push(err129);
+                                                        errors++;
+                                                      }
+                                                      var valid25 =
+                                                        _errs122 === errors;
+                                                    } else var valid25 = true;
+                                                    if (valid25) {
+                                                      if (
+                                                        data53.recommendation !==
+                                                        void 0
+                                                      ) {
+                                                        const _errs123 = errors;
+                                                        if (
+                                                          "animation-single-frame" !==
+                                                          data53.recommendation
+                                                        ) {
+                                                          const err130 = {
+                                                            instancePath:
+                                                              instancePath +
+                                                              "/candidate/recommendation",
+                                                            schemaPath:
+                                                              "#/anyOf/1/properties/candidate/properties/recommendation/const",
+                                                            keyword: "const",
+                                                            params: {
+                                                              allowedValue:
+                                                                "animation-single-frame",
+                                                            },
+                                                            message:
+                                                              "must be equal to constant",
+                                                          };
+                                                          if (vErrors === null)
+                                                            vErrors = [err130];
+                                                          else
+                                                            vErrors.push(
+                                                              err130,
+                                                            );
+                                                          errors++;
+                                                        }
+                                                        var valid25 =
+                                                          _errs123 === errors;
+                                                      } else var valid25 = true;
+                                                      if (valid25) {
+                                                        if (
+                                                          data53.history !==
+                                                          void 0
+                                                        ) {
+                                                          let data58 =
+                                                            data53.history;
+                                                          const _errs124 =
+                                                            errors;
+                                                          if (
+                                                            errors === _errs124
+                                                          ) {
+                                                            if (
+                                                              data58 &&
+                                                              typeof data58 ==
+                                                                "object" &&
+                                                              !Array.isArray(
+                                                                data58,
+                                                              )
+                                                            ) {
+                                                              let missing11;
+                                                              if (
+                                                                (data58.status ===
+                                                                  void 0 &&
+                                                                  (missing11 =
+                                                                    "status")) ||
+                                                                (data58.createdAt ===
+                                                                  void 0 &&
+                                                                  (missing11 =
+                                                                    "createdAt")) ||
+                                                                (data58.definitionIdentity ===
+                                                                  void 0 &&
+                                                                  (missing11 =
+                                                                    "definitionIdentity")) ||
+                                                                (data58.evidenceDigest ===
+                                                                  void 0 &&
+                                                                  (missing11 =
+                                                                    "evidenceDigest")) ||
+                                                                (data58.testIds ===
+                                                                  void 0 &&
+                                                                  (missing11 =
+                                                                    "testIds"))
+                                                              ) {
+                                                                const err131 = {
+                                                                  instancePath:
+                                                                    instancePath +
+                                                                    "/candidate/history",
+                                                                  schemaPath:
+                                                                    "#/anyOf/1/properties/candidate/properties/history/required",
+                                                                  keyword:
+                                                                    "required",
+                                                                  params: {
+                                                                    missingProperty:
+                                                                      missing11,
+                                                                  },
+                                                                  message:
+                                                                    "must have required property '" +
+                                                                    missing11 +
+                                                                    "'",
+                                                                };
+                                                                if (
+                                                                  vErrors ===
+                                                                  null
+                                                                )
+                                                                  vErrors = [
+                                                                    err131,
+                                                                  ];
+                                                                else
+                                                                  vErrors.push(
+                                                                    err131,
+                                                                  );
+                                                                errors++;
+                                                              } else {
+                                                                const _errs126 =
+                                                                  errors;
+                                                                for (const key9 in data58)
+                                                                  if (!(
+                                                                    key9 ===
+                                                                      "status" ||
+                                                                    key9 ===
+                                                                      "createdAt" ||
+                                                                    key9 ===
+                                                                      "definitionIdentity" ||
+                                                                    key9 ===
+                                                                      "evidenceDigest" ||
+                                                                    key9 ===
+                                                                      "testIds"
+                                                                  )) {
+                                                                    const err132 =
+                                                                      {
+                                                                        instancePath:
+                                                                          instancePath +
+                                                                          "/candidate/history",
+                                                                        schemaPath:
+                                                                          "#/anyOf/1/properties/candidate/properties/history/additionalProperties",
+                                                                        keyword:
+                                                                          "additionalProperties",
+                                                                        params:
+                                                                          {
+                                                                            additionalProperty:
+                                                                              key9,
+                                                                          },
+                                                                        message:
+                                                                          "must NOT have additional properties",
+                                                                      };
+                                                                    if (
+                                                                      vErrors ===
+                                                                      null
+                                                                    )
+                                                                      vErrors =
+                                                                        [
+                                                                          err132,
+                                                                        ];
+                                                                    else
+                                                                      vErrors.push(
+                                                                        err132,
+                                                                      );
+                                                                    errors++;
+                                                                    break;
+                                                                  }
+                                                                if (
+                                                                  _errs126 ===
+                                                                  errors
+                                                                ) {
+                                                                  if (
+                                                                    data58.status !==
+                                                                    void 0
+                                                                  ) {
+                                                                    let data59 =
+                                                                      data58.status;
+                                                                    const _errs127 =
+                                                                      errors;
+                                                                    if (!(
+                                                                      data59 ===
+                                                                        "incomplete" ||
+                                                                      data59 ===
+                                                                        "locally-verified"
+                                                                    )) {
+                                                                      const err133 =
+                                                                        {
+                                                                          instancePath:
+                                                                            instancePath +
+                                                                            "/candidate/history/status",
+                                                                          schemaPath:
+                                                                            "#/anyOf/1/properties/candidate/properties/history/properties/status/enum",
+                                                                          keyword:
+                                                                            "enum",
+                                                                          params:
+                                                                            {
+                                                                              allowedValues:
+                                                                                schema19
+                                                                                  .anyOf[1]
+                                                                                  .properties
+                                                                                  .candidate
+                                                                                  .properties
+                                                                                  .history
+                                                                                  .properties
+                                                                                  .status
+                                                                                  .enum,
+                                                                            },
+                                                                          message:
+                                                                            "must be equal to one of the allowed values",
+                                                                        };
+                                                                      if (
+                                                                        vErrors ===
+                                                                        null
+                                                                      )
+                                                                        vErrors =
+                                                                          [
+                                                                            err133,
+                                                                          ];
+                                                                      else
+                                                                        vErrors.push(
+                                                                          err133,
+                                                                        );
+                                                                      errors++;
+                                                                    }
+                                                                    var valid26 =
+                                                                      _errs127 ===
+                                                                      errors;
+                                                                  } else
+                                                                    var valid26 = true;
+                                                                  if (valid26) {
+                                                                    if (
+                                                                      data58.createdAt !==
+                                                                      void 0
+                                                                    ) {
+                                                                      let data60 =
+                                                                        data58.createdAt;
+                                                                      const _errs128 =
+                                                                        errors;
+                                                                      if (
+                                                                        errors ===
+                                                                        _errs128
+                                                                      ) {
+                                                                        if (
+                                                                          typeof data60 ===
+                                                                          "string"
+                                                                        ) {
+                                                                          if (
+                                                                            func2(
+                                                                              data60,
+                                                                            ) >
+                                                                            64
+                                                                          ) {
+                                                                            const err134 =
+                                                                              {
+                                                                                instancePath:
+                                                                                  instancePath +
+                                                                                  "/candidate/history/createdAt",
+                                                                                schemaPath:
+                                                                                  "#/anyOf/1/properties/candidate/properties/history/properties/createdAt/maxLength",
+                                                                                keyword:
+                                                                                  "maxLength",
+                                                                                params:
+                                                                                  {
+                                                                                    limit: 64,
+                                                                                  },
+                                                                                message:
+                                                                                  "must NOT have more than 64 characters",
+                                                                              };
+                                                                            if (
+                                                                              vErrors ===
+                                                                              null
+                                                                            )
+                                                                              vErrors =
+                                                                                [
+                                                                                  err134,
+                                                                                ];
+                                                                            else
+                                                                              vErrors.push(
+                                                                                err134,
+                                                                              );
+                                                                            errors++;
+                                                                          } else if (
+                                                                            func2(
+                                                                              data60,
+                                                                            ) <
+                                                                            1
+                                                                          ) {
+                                                                            const err135 =
+                                                                              {
+                                                                                instancePath:
+                                                                                  instancePath +
+                                                                                  "/candidate/history/createdAt",
+                                                                                schemaPath:
+                                                                                  "#/anyOf/1/properties/candidate/properties/history/properties/createdAt/minLength",
+                                                                                keyword:
+                                                                                  "minLength",
+                                                                                params:
+                                                                                  {
+                                                                                    limit: 1,
+                                                                                  },
+                                                                                message:
+                                                                                  "must NOT have fewer than 1 characters",
+                                                                              };
+                                                                            if (
+                                                                              vErrors ===
+                                                                              null
+                                                                            )
+                                                                              vErrors =
+                                                                                [
+                                                                                  err135,
+                                                                                ];
+                                                                            else
+                                                                              vErrors.push(
+                                                                                err135,
+                                                                              );
+                                                                            errors++;
+                                                                          } else if (
+                                                                            !pattern15.test(
+                                                                              data60,
+                                                                            )
+                                                                          ) {
+                                                                            const err136 =
+                                                                              {
+                                                                                instancePath:
+                                                                                  instancePath +
+                                                                                  "/candidate/history/createdAt",
+                                                                                schemaPath:
+                                                                                  "#/anyOf/1/properties/candidate/properties/history/properties/createdAt/pattern",
+                                                                                keyword:
+                                                                                  "pattern",
+                                                                                params:
+                                                                                  {
+                                                                                    pattern:
+                                                                                      "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$",
+                                                                                  },
+                                                                                message:
+                                                                                  'must match pattern "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$"',
+                                                                              };
+                                                                            if (
+                                                                              vErrors ===
+                                                                              null
+                                                                            )
+                                                                              vErrors =
+                                                                                [
+                                                                                  err136,
+                                                                                ];
+                                                                            else
+                                                                              vErrors.push(
+                                                                                err136,
+                                                                              );
+                                                                            errors++;
+                                                                          }
+                                                                        } else {
+                                                                          const err137 =
+                                                                            {
+                                                                              instancePath:
+                                                                                instancePath +
+                                                                                "/candidate/history/createdAt",
+                                                                              schemaPath:
+                                                                                "#/anyOf/1/properties/candidate/properties/history/properties/createdAt/type",
+                                                                              keyword:
+                                                                                "type",
+                                                                              params:
+                                                                                {
+                                                                                  type: "string",
+                                                                                },
+                                                                              message:
+                                                                                "must be string",
+                                                                            };
+                                                                          if (
+                                                                            vErrors ===
+                                                                            null
+                                                                          )
+                                                                            vErrors =
+                                                                              [
+                                                                                err137,
+                                                                              ];
+                                                                          else
+                                                                            vErrors.push(
+                                                                              err137,
+                                                                            );
+                                                                          errors++;
+                                                                        }
+                                                                      }
+                                                                      var valid26 =
+                                                                        _errs128 ===
+                                                                        errors;
+                                                                    } else
+                                                                      var valid26 = true;
+                                                                    if (
+                                                                      valid26
+                                                                    ) {
+                                                                      if (
+                                                                        data58.definitionIdentity !==
+                                                                        void 0
+                                                                      ) {
+                                                                        let data61 =
+                                                                          data58.definitionIdentity;
+                                                                        const _errs130 =
+                                                                          errors;
+                                                                        if (
+                                                                          errors ===
+                                                                          _errs130
+                                                                        ) {
+                                                                          if (
+                                                                            typeof data61 ===
+                                                                            "string"
+                                                                          ) {
+                                                                            if (
+                                                                              func2(
+                                                                                data61,
+                                                                              ) >
+                                                                              128
+                                                                            ) {
+                                                                              const err138 =
+                                                                                {
+                                                                                  instancePath:
+                                                                                    instancePath +
+                                                                                    "/candidate/history/definitionIdentity",
+                                                                                  schemaPath:
+                                                                                    "#/anyOf/1/properties/candidate/properties/history/properties/definitionIdentity/maxLength",
+                                                                                  keyword:
+                                                                                    "maxLength",
+                                                                                  params:
+                                                                                    {
+                                                                                      limit: 128,
+                                                                                    },
+                                                                                  message:
+                                                                                    "must NOT have more than 128 characters",
+                                                                                };
+                                                                              if (
+                                                                                vErrors ===
+                                                                                null
+                                                                              )
+                                                                                vErrors =
+                                                                                  [
+                                                                                    err138,
+                                                                                  ];
+                                                                              else
+                                                                                vErrors.push(
+                                                                                  err138,
+                                                                                );
+                                                                              errors++;
+                                                                            } else if (
+                                                                              func2(
+                                                                                data61,
+                                                                              ) <
+                                                                              1
+                                                                            ) {
+                                                                              const err139 =
+                                                                                {
+                                                                                  instancePath:
+                                                                                    instancePath +
+                                                                                    "/candidate/history/definitionIdentity",
+                                                                                  schemaPath:
+                                                                                    "#/anyOf/1/properties/candidate/properties/history/properties/definitionIdentity/minLength",
+                                                                                  keyword:
+                                                                                    "minLength",
+                                                                                  params:
+                                                                                    {
+                                                                                      limit: 1,
+                                                                                    },
+                                                                                  message:
+                                                                                    "must NOT have fewer than 1 characters",
+                                                                                };
+                                                                              if (
+                                                                                vErrors ===
+                                                                                null
+                                                                              )
+                                                                                vErrors =
+                                                                                  [
+                                                                                    err139,
+                                                                                  ];
+                                                                              else
+                                                                                vErrors.push(
+                                                                                  err139,
+                                                                                );
+                                                                              errors++;
+                                                                            }
+                                                                          } else {
+                                                                            const err140 =
+                                                                              {
+                                                                                instancePath:
+                                                                                  instancePath +
+                                                                                  "/candidate/history/definitionIdentity",
+                                                                                schemaPath:
+                                                                                  "#/anyOf/1/properties/candidate/properties/history/properties/definitionIdentity/type",
+                                                                                keyword:
+                                                                                  "type",
+                                                                                params:
+                                                                                  {
+                                                                                    type: "string",
+                                                                                  },
+                                                                                message:
+                                                                                  "must be string",
+                                                                              };
+                                                                            if (
+                                                                              vErrors ===
+                                                                              null
+                                                                            )
+                                                                              vErrors =
+                                                                                [
+                                                                                  err140,
+                                                                                ];
+                                                                            else
+                                                                              vErrors.push(
+                                                                                err140,
+                                                                              );
+                                                                            errors++;
+                                                                          }
+                                                                        }
+                                                                        var valid26 =
+                                                                          _errs130 ===
+                                                                          errors;
+                                                                      } else
+                                                                        var valid26 = true;
+                                                                      if (
+                                                                        valid26
+                                                                      ) {
+                                                                        if (
+                                                                          data58.evidenceDigest !==
+                                                                          void 0
+                                                                        ) {
+                                                                          let data62 =
+                                                                            data58.evidenceDigest;
+                                                                          const _errs132 =
+                                                                            errors;
+                                                                          if (
+                                                                            errors ===
+                                                                            _errs132
+                                                                          ) {
+                                                                            if (
+                                                                              typeof data62 ===
+                                                                              "string"
+                                                                            ) {
+                                                                              if (
+                                                                                func2(
+                                                                                  data62,
+                                                                                ) >
+                                                                                128
+                                                                              ) {
+                                                                                const err141 =
+                                                                                  {
+                                                                                    instancePath:
+                                                                                      instancePath +
+                                                                                      "/candidate/history/evidenceDigest",
+                                                                                    schemaPath:
+                                                                                      "#/anyOf/1/properties/candidate/properties/history/properties/evidenceDigest/maxLength",
+                                                                                    keyword:
+                                                                                      "maxLength",
+                                                                                    params:
+                                                                                      {
+                                                                                        limit: 128,
+                                                                                      },
+                                                                                    message:
+                                                                                      "must NOT have more than 128 characters",
+                                                                                  };
+                                                                                if (
+                                                                                  vErrors ===
+                                                                                  null
+                                                                                )
+                                                                                  vErrors =
+                                                                                    [
+                                                                                      err141,
+                                                                                    ];
+                                                                                else
+                                                                                  vErrors.push(
+                                                                                    err141,
+                                                                                  );
+                                                                                errors++;
+                                                                              } else if (
+                                                                                func2(
+                                                                                  data62,
+                                                                                ) <
+                                                                                1
+                                                                              ) {
+                                                                                const err142 =
+                                                                                  {
+                                                                                    instancePath:
+                                                                                      instancePath +
+                                                                                      "/candidate/history/evidenceDigest",
+                                                                                    schemaPath:
+                                                                                      "#/anyOf/1/properties/candidate/properties/history/properties/evidenceDigest/minLength",
+                                                                                    keyword:
+                                                                                      "minLength",
+                                                                                    params:
+                                                                                      {
+                                                                                        limit: 1,
+                                                                                      },
+                                                                                    message:
+                                                                                      "must NOT have fewer than 1 characters",
+                                                                                  };
+                                                                                if (
+                                                                                  vErrors ===
+                                                                                  null
+                                                                                )
+                                                                                  vErrors =
+                                                                                    [
+                                                                                      err142,
+                                                                                    ];
+                                                                                else
+                                                                                  vErrors.push(
+                                                                                    err142,
+                                                                                  );
+                                                                                errors++;
+                                                                              } else if (
+                                                                                !pattern16.test(
+                                                                                  data62,
+                                                                                )
+                                                                              ) {
+                                                                                const err143 =
+                                                                                  {
+                                                                                    instancePath:
+                                                                                      instancePath +
+                                                                                      "/candidate/history/evidenceDigest",
+                                                                                    schemaPath:
+                                                                                      "#/anyOf/1/properties/candidate/properties/history/properties/evidenceDigest/pattern",
+                                                                                    keyword:
+                                                                                      "pattern",
+                                                                                    params:
+                                                                                      {
+                                                                                        pattern:
+                                                                                          "^sha256:[0-9a-f]{64}$",
+                                                                                      },
+                                                                                    message:
+                                                                                      'must match pattern "^sha256:[0-9a-f]{64}$"',
+                                                                                  };
+                                                                                if (
+                                                                                  vErrors ===
+                                                                                  null
+                                                                                )
+                                                                                  vErrors =
+                                                                                    [
+                                                                                      err143,
+                                                                                    ];
+                                                                                else
+                                                                                  vErrors.push(
+                                                                                    err143,
+                                                                                  );
+                                                                                errors++;
+                                                                              }
+                                                                            } else {
+                                                                              const err144 =
+                                                                                {
+                                                                                  instancePath:
+                                                                                    instancePath +
+                                                                                    "/candidate/history/evidenceDigest",
+                                                                                  schemaPath:
+                                                                                    "#/anyOf/1/properties/candidate/properties/history/properties/evidenceDigest/type",
+                                                                                  keyword:
+                                                                                    "type",
+                                                                                  params:
+                                                                                    {
+                                                                                      type: "string",
+                                                                                    },
+                                                                                  message:
+                                                                                    "must be string",
+                                                                                };
+                                                                              if (
+                                                                                vErrors ===
+                                                                                null
+                                                                              )
+                                                                                vErrors =
+                                                                                  [
+                                                                                    err144,
+                                                                                  ];
+                                                                              else
+                                                                                vErrors.push(
+                                                                                  err144,
+                                                                                );
+                                                                              errors++;
+                                                                            }
+                                                                          }
+                                                                          var valid26 =
+                                                                            _errs132 ===
+                                                                            errors;
+                                                                        } else
+                                                                          var valid26 = true;
+                                                                        if (
+                                                                          valid26
+                                                                        ) {
+                                                                          if (
+                                                                            data58.testIds !==
+                                                                            void 0
+                                                                          ) {
+                                                                            let data63 =
+                                                                              data58.testIds;
+                                                                            const _errs134 =
+                                                                              errors;
+                                                                            if (
+                                                                              errors ===
+                                                                              _errs134
+                                                                            ) {
+                                                                              if (
+                                                                                Array.isArray(
+                                                                                  data63,
+                                                                                )
+                                                                              ) {
+                                                                                if (
+                                                                                  data63.length >
+                                                                                  3
+                                                                                ) {
+                                                                                  const err145 =
+                                                                                    {
+                                                                                      instancePath:
+                                                                                        instancePath +
+                                                                                        "/candidate/history/testIds",
+                                                                                      schemaPath:
+                                                                                        "#/anyOf/1/properties/candidate/properties/history/properties/testIds/maxItems",
+                                                                                      keyword:
+                                                                                        "maxItems",
+                                                                                      params:
+                                                                                        {
+                                                                                          limit: 3,
+                                                                                        },
+                                                                                      message:
+                                                                                        "must NOT have more than 3 items",
+                                                                                    };
+                                                                                  if (
+                                                                                    vErrors ===
+                                                                                    null
+                                                                                  )
+                                                                                    vErrors =
+                                                                                      [
+                                                                                        err145,
+                                                                                      ];
+                                                                                  else
+                                                                                    vErrors.push(
+                                                                                      err145,
+                                                                                    );
+                                                                                  errors++;
+                                                                                } else {
+                                                                                  var valid27 = true;
+                                                                                  const len4 =
+                                                                                    data63.length;
+                                                                                  for (
+                                                                                    let i4 = 0;
+                                                                                    i4 <
+                                                                                    len4;
+                                                                                    i4++
+                                                                                  ) {
+                                                                                    let data64 =
+                                                                                      data63[
+                                                                                        i4
+                                                                                      ];
+                                                                                    const _errs136 =
+                                                                                      errors;
+                                                                                    if (!(
+                                                                                      data64 ===
+                                                                                        "coolledux-still-bootstrap" ||
+                                                                                      data64 ===
+                                                                                        "coolledux-still-channels" ||
+                                                                                      data64 ===
+                                                                                        "coolledux-still-encoder"
+                                                                                    )) {
+                                                                                      const err146 =
+                                                                                        {
+                                                                                          instancePath:
+                                                                                            instancePath +
+                                                                                            "/candidate/history/testIds/" +
+                                                                                            i4,
+                                                                                          schemaPath:
+                                                                                            "#/anyOf/1/properties/candidate/properties/history/properties/testIds/items/enum",
+                                                                                          keyword:
+                                                                                            "enum",
+                                                                                          params:
+                                                                                            {
+                                                                                              allowedValues:
+                                                                                                schema19
+                                                                                                  .anyOf[1]
+                                                                                                  .properties
+                                                                                                  .candidate
+                                                                                                  .properties
+                                                                                                  .history
+                                                                                                  .properties
+                                                                                                  .testIds
+                                                                                                  .items
+                                                                                                  .enum,
+                                                                                            },
+                                                                                          message:
+                                                                                            "must be equal to one of the allowed values",
+                                                                                        };
+                                                                                      if (
+                                                                                        vErrors ===
+                                                                                        null
+                                                                                      )
+                                                                                        vErrors =
+                                                                                          [
+                                                                                            err146,
+                                                                                          ];
+                                                                                      else
+                                                                                        vErrors.push(
+                                                                                          err146,
+                                                                                        );
+                                                                                      errors++;
+                                                                                    }
+                                                                                    var valid27 =
+                                                                                      _errs136 ===
+                                                                                      errors;
+                                                                                    if (
+                                                                                      !valid27
+                                                                                    )
+                                                                                      break;
+                                                                                  }
+                                                                                  if (
+                                                                                    valid27
+                                                                                  ) {
+                                                                                    let i5 =
+                                                                                      data63.length;
+                                                                                    let j0;
+                                                                                    if (
+                                                                                      i5 >
+                                                                                      1
+                                                                                    ) {
+                                                                                      outer0: for (
+                                                                                        ;
+                                                                                        i5--;
+                                                                                      )
+                                                                                        for (
+                                                                                          j0 =
+                                                                                            i5;
+                                                                                          j0--;
+                                                                                        )
+                                                                                          if (
+                                                                                            func0(
+                                                                                              data63[
+                                                                                                i5
+                                                                                              ],
+                                                                                              data63[
+                                                                                                j0
+                                                                                              ],
+                                                                                            )
+                                                                                          ) {
+                                                                                            const err147 =
+                                                                                              {
+                                                                                                instancePath:
+                                                                                                  instancePath +
+                                                                                                  "/candidate/history/testIds",
+                                                                                                schemaPath:
+                                                                                                  "#/anyOf/1/properties/candidate/properties/history/properties/testIds/uniqueItems",
+                                                                                                keyword:
+                                                                                                  "uniqueItems",
+                                                                                                params:
+                                                                                                  {
+                                                                                                    i: i5,
+                                                                                                    j: j0,
+                                                                                                  },
+                                                                                                message:
+                                                                                                  "must NOT have duplicate items (items ## " +
+                                                                                                  j0 +
+                                                                                                  " and " +
+                                                                                                  i5 +
+                                                                                                  " are identical)",
+                                                                                              };
+                                                                                            if (
+                                                                                              vErrors ===
+                                                                                              null
+                                                                                            )
+                                                                                              vErrors =
+                                                                                                [
+                                                                                                  err147,
+                                                                                                ];
+                                                                                            else
+                                                                                              vErrors.push(
+                                                                                                err147,
+                                                                                              );
+                                                                                            errors++;
+                                                                                            break outer0;
+                                                                                          }
+                                                                                    }
+                                                                                  }
+                                                                                }
+                                                                              } else {
+                                                                                const err148 =
+                                                                                  {
+                                                                                    instancePath:
+                                                                                      instancePath +
+                                                                                      "/candidate/history/testIds",
+                                                                                    schemaPath:
+                                                                                      "#/anyOf/1/properties/candidate/properties/history/properties/testIds/type",
+                                                                                    keyword:
+                                                                                      "type",
+                                                                                    params:
+                                                                                      {
+                                                                                        type: "array",
+                                                                                      },
+                                                                                    message:
+                                                                                      "must be array",
+                                                                                  };
+                                                                                if (
+                                                                                  vErrors ===
+                                                                                  null
+                                                                                )
+                                                                                  vErrors =
+                                                                                    [
+                                                                                      err148,
+                                                                                    ];
+                                                                                else
+                                                                                  vErrors.push(
+                                                                                    err148,
+                                                                                  );
+                                                                                errors++;
+                                                                              }
+                                                                            }
+                                                                            var valid26 =
+                                                                              _errs134 ===
+                                                                              errors;
+                                                                          } else
+                                                                            var valid26 = true;
+                                                                        }
+                                                                      }
+                                                                    }
+                                                                  }
+                                                                }
+                                                              }
+                                                            } else {
+                                                              const err149 = {
+                                                                instancePath:
+                                                                  instancePath +
+                                                                  "/candidate/history",
+                                                                schemaPath:
+                                                                  "#/anyOf/1/properties/candidate/properties/history/type",
+                                                                keyword: "type",
+                                                                params: {
+                                                                  type: "object",
+                                                                },
+                                                                message:
+                                                                  "must be object",
+                                                              };
+                                                              if (
+                                                                vErrors === null
+                                                              )
+                                                                vErrors = [
+                                                                  err149,
+                                                                ];
+                                                              else
+                                                                vErrors.push(
+                                                                  err149,
+                                                                );
+                                                              errors++;
+                                                            }
+                                                          }
+                                                          var valid25 =
+                                                            _errs124 === errors;
+                                                        } else
+                                                          var valid25 = true;
+                                                      }
+                                                    }
+                                                  }
+                                                }
+                                              }
+                                            }
+                                          } else {
+                                            const err150 = {
+                                              instancePath:
+                                                instancePath + "/candidate",
+                                              schemaPath:
+                                                "#/anyOf/1/properties/candidate/type",
+                                              keyword: "type",
+                                              params: { type: "object" },
+                                              message: "must be object",
+                                            };
+                                            if (vErrors === null)
+                                              vErrors = [err150];
+                                            else vErrors.push(err150);
+                                            errors++;
+                                          }
+                                        }
+                                        var valid19 = _errs117 === errors;
+                                      } else var valid19 = true;
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      } else {
+        const err151 = {
+          instancePath,
+          schemaPath: "#/anyOf/1/type",
+          keyword: "type",
+          params: { type: "object" },
+          message: "must be object",
+        };
+        if (vErrors === null) vErrors = [err151];
+        else vErrors.push(err151);
+        errors++;
+      }
+    }
+    var _valid0 = _errs48 === errors;
+    valid0 = valid0 || _valid0;
+    if (_valid0) {
+      if (props0 !== true) props0 = true;
+    }
+    if (!valid0) {
+      const err152 = {
+        instancePath,
+        schemaPath: "#/anyOf",
+        keyword: "anyOf",
+        params: {},
+        message: "must match a schema in anyOf",
+      };
+      if (vErrors === null) vErrors = [err152];
+      else vErrors.push(err152);
+      errors++;
+      validate52.errors = vErrors;
       return false;
+    } else {
+      errors = _errs0;
+      if (vErrors !== null) {
+        if (_errs0) vErrors.length = _errs0;
+        else vErrors = null;
+      }
     }
     validate52.errors = vErrors;
-    return true;
+    evaluated0.props = props0;
+    return errors === 0;
   }
   validate52.evaluated = {
-    props: true,
-    dynamicProps: false,
+    dynamicProps: true,
     dynamicItems: false,
   };
 });

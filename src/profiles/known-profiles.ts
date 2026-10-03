@@ -29,7 +29,7 @@ export interface KnownProfileSignature {
   readonly serviceUuid: string;
   readonly characteristicUuid: string;
   /** Manufacturer company identifier, as observed in the advertisement. */
-  readonly companyId: number;
+  readonly companyId: number | null;
   readonly width: number;
   readonly height: number;
   /** Driver this profile's own physical evidence assigns. */
@@ -121,7 +121,7 @@ export function evaluateKnownProfile(
   // Manufacturer data and geometry are corroborating when present and
   // disqualifying when they disagree. Absence proves nothing either way.
   const manufacturer = fingerprint.manufacturerDataHex?.toUpperCase();
-  if (manufacturer) {
+  if (manufacturer && signature.companyId !== null) {
     if (manufacturer.startsWith(companyPrefix(signature.companyId))) {
       reasons.push(
         `observed manufacturer company field 0x${signature.companyId.toString(16).toUpperCase()}`,

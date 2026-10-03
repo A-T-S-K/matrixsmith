@@ -175,6 +175,25 @@ export class IdentificationService {
     if (!interpreted) return;
     try {
       const geometry = validateGeometry(interpreted.width, interpreted.height);
+      if (
+        session.profile?.metadata.candidateProfile &&
+        (session.profile.width !== geometry.width ||
+          session.profile.height !== geometry.height)
+      ) {
+        session.disableExperimentalTx();
+        session.consumePersistentConfirmation();
+        this.ports
+          .connection()
+          .patchSession({ profile: null, validatedRasterStrategy: null });
+        this.ports.investigation()._reconcileDeviceBoundary();
+        this.ports
+          .protocolEvidence()
+          .getTrace()
+          .record("geometry.proposal.rejected", {
+            width: geometry.width,
+            height: geometry.height,
+          });
+      }
       session.geometryProposal = Object.freeze({
         ...geometry,
         id: transaction.id,
@@ -215,7 +234,8 @@ export class IdentificationService {
                 session.protocolResolution.source === "live-probe"
               ? "current-live"
               : session.profile &&
-                  !session.profile.id.startsWith("provisional:")
+                  !session.profile.id.startsWith("provisional:") &&
+                  !session.profile.metadata.candidateProfile
                 ? "built-in-profile"
                 : "unknown",
     };

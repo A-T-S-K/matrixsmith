@@ -11,9 +11,11 @@ const output =
     ? "src/profiles/generated/profile-validator.js"
     : process.argv[outputIndex + 1];
 if (!output) throw new Error("Missing --output path.");
-const schema = JSON.parse(
-  readFileSync("public/profile-v1.schema.json", "utf8"),
-);
+const schema = {
+  anyOf: [1, 2].map((version) =>
+    JSON.parse(readFileSync(`public/profile-v${version}.schema.json`, "utf8")),
+  ),
+};
 const ajv = new Ajv2020({
   code: { source: true },
   allErrors: false,

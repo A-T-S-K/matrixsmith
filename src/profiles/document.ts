@@ -2,7 +2,7 @@ import { freezeDefinition } from "./freeze";
 export { freezeDefinition } from "./freeze";
 import validate from "./generated/profile-validator.js";
 
-export interface ProfileDocument {
+export interface ProfileDocumentV1 {
   readonly documentVersion: 1;
   readonly namespace: string;
   readonly id: string;
@@ -31,6 +31,42 @@ export interface ProfileDocument {
   readonly limitations: readonly string[];
   readonly sources: readonly string[];
 }
+
+export interface CandidateConfiguration {
+  readonly kind: "revalidation-required";
+  readonly assumptions: {
+    readonly pixelFormat: "RGB444";
+    readonly rowStride: 16;
+    readonly tileWidth: 8;
+    readonly channelMap: readonly ["r", "g", "b"];
+  };
+  readonly identity: {
+    readonly manufacturer: null;
+    readonly firmware: null;
+    readonly model: null;
+    readonly chip: null;
+  };
+  readonly recommendation?: "animation-single-frame";
+  readonly history: {
+    readonly status: "incomplete" | "locally-verified";
+    readonly createdAt: string;
+    readonly definitionIdentity: string;
+    readonly evidenceDigest: string;
+    readonly testIds: readonly string[];
+  };
+}
+export interface ProfileDocumentV2 extends Omit<
+  ProfileDocumentV1,
+  "documentVersion" | "contradictions"
+> {
+  readonly documentVersion: 2;
+  readonly contradictions: {
+    readonly companyId: number | null;
+    readonly geometry: true;
+  };
+  readonly candidate: CandidateConfiguration;
+}
+export type ProfileDocument = ProfileDocumentV1 | ProfileDocumentV2;
 
 export const PROFILE_BYTE_LIMIT = 16_384;
 
@@ -72,6 +108,15 @@ export function boundedJson(
 
 export function parseProfileDocument(text: string): ProfileDocument {
   const value = boundedJson(text);
+  if (
+    value &&
+    typeof value === "object" &&
+    "documentVersion" in value &&
+    ![1, 2].includes(Number(value.documentVersion))
+  )
+    throw new Error(
+      `Unsupported profile document version ${String(value.documentVersion)}; supported versions are 1 and 2.`,
+    );
   if (!validate(value))
     throw new Error(
       `Unsupported profile document at ${validate.errors?.[0]?.instancePath || "/"}: ${validate.errors?.[0]?.message ?? "invalid structure"}.`,

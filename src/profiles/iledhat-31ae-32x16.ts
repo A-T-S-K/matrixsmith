@@ -1,12 +1,12 @@
 import type { DeviceProfile } from "../core/device";
 import data from "./data/iledhat.json";
 import { freezeDefinition } from "./freeze";
-import type { ProfileDocument } from "./document";
+import type { ProfileDocumentV1 } from "./document";
 import { ILEDHAT_QUIRKS } from "../core/quirks";
 
 export const ILEDHAT_DOCUMENT = freezeDefinition(
   data,
-) as unknown as ProfileDocument;
+) as unknown as ProfileDocumentV1;
 export const ILEDHAT_PROFILE_ID = ILEDHAT_DOCUMENT.id;
 export const ILEDHAT_ADVERTISEMENT_HEX =
   "0201060303F0FF0EFFAE315EEA07000001100020031E0809694C6564486174";
