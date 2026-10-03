@@ -155,7 +155,36 @@ describe("bounded machine discovery owner (software fixtures only)", () => {
       },
     ]);
     expect(runtime.discovery?.hypotheses[1]?.contradictions).toEqual([]);
+    expect(runtime.discovery?.hypotheses[0]?.unanswered).toEqual([
+      "Is this software a?",
+    ]);
     expect(runtime.session.protocolResolution).toBeNull();
+  });
+  it("family rejection answers only its scope even when candidates share a question label", async () => {
+    const question = "Which family answers this check?";
+    const { runtime } = await setup(
+      [
+        discoveryDriver("a", 0x91, {
+          metadata: { question },
+          interpretation: {
+            matched: false,
+            reason: "Reviewed rejection of family a",
+            rejection: { driverId: "a" },
+          },
+        }),
+        discoveryDriver("b", 0x92, {
+          metadata: { question, prerequisites: ["a/info"] },
+        }),
+      ],
+      0x91,
+    );
+    await runtime.startDiscovery();
+    expect(
+      runtime.discovery?.attempts.map((attempt) => attempt.stepId),
+    ).toEqual(["a/info", "b/info"]);
+    expect(runtime.discovery?.hypotheses[0]?.unanswered).toEqual([]);
+    expect(runtime.discovery?.hypotheses[1]?.unanswered).toEqual([question]);
+    expect(runtime.discovery?.hypotheses[1]?.contradictions).toEqual([]);
   });
   it("cannot reject a different undeclared family", async () => {
     const { runtime } = await setup(

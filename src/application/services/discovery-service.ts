@@ -409,7 +409,12 @@ export class DiscoveryService {
                   ]
                 : hypothesis.contradictions,
             unanswered:
-              outcome === "identified" || outcome === "rejected"
+              (outcome === "identified" &&
+                hypothesis.driverId === step.driverId) ||
+              (outcome === "rejected" &&
+                rejection?.driverId === hypothesis.driverId &&
+                !rejection.configurationId &&
+                step.metadata.distinguishes.includes(rejection.driverId))
                 ? hypothesis.unanswered.filter(
                     (question) => question !== step.metadata.question,
                   )
@@ -423,7 +428,8 @@ export class DiscoveryService {
           step.metadata.distinguishes.includes(rejection.driverId)
         )
           candidates.delete(rejection.driverId);
-        if (outcome === "identified") completed.add(step.id);
+        if (outcome === "identified" || outcome === "rejected")
+          completed.add(step.id);
         if (this.stopped || !current()) break;
         if (outcome === "identified" && step.metadata.stopping === "identity") {
           if (
