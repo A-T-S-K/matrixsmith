@@ -7,6 +7,7 @@ export default [
       "dist/**",
       "src/diagnostics/generated/bundle-validator.js",
       "src/profiles/generated/profile-validator.js",
+      "src/knowledge/generated/knowledge-validator.js",
       "coverage/**",
       "node_modules/**",
       "test-results/**",
