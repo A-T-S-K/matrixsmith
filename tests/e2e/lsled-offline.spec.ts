@@ -1,5 +1,28 @@
 import { expect, test } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
+test("offline lazy entry recovers from a module load failure", async ({
+  page,
+}) => {
+  let attempts = 0;
+  await page.route("**/src/ui/pages/OfflineLegacy.tsx*", (route) => {
+    attempts++;
+    return attempts === 1
+      ? route.fulfill({ status: 503, body: "controlled module failure" })
+      : route.continue();
+  });
+  await page.goto("/?offline=lsled");
+  await expect(page.getByRole("alert")).toHaveText(
+    "Could not load the offline LSLED preview.",
+  );
+  const retry = page.getByRole("button", { name: "Retry offline preview" });
+  await retry.focus();
+  await expect(retry).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(
+    page.getByRole("heading", { name: "LSLED legacy preview" }),
+  ).toBeVisible();
+  expect(attempts).toBe(2);
+});
 for (const width of [1280, 390]) {
   test(`offline LSLED inspect/copy/retry at ${width}px`, async ({
     page,

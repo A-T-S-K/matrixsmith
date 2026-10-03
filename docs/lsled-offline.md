@@ -78,5 +78,7 @@ use the existing browser file adapter; all-packet copy emits one exact hex line
 per packet in order. Changing example or packet clears copy status and suppresses
 late completion; leaving the page discards its state. Copy and source-detail
 failures have accessible retry actions. Citations load only when details open.
+The lazy page entry also presents an accessible loading/failure state; retry
+reloads the page to recover from a failed module fetch without cached rejection.
 No Send or Connect action is present. Source detail is separated from the main
 preview to keep the small workflow useful on phone and desktop.
