@@ -20,6 +20,12 @@ export interface OfflineEntry {
 }
 export const offlineCatalog = freezeDefinition([
   {
+    id: "microbit",
+    label: "micro:bit LED Matrix State 5×5",
+    load: async (): Promise<OfflineEntry> =>
+      (await import("./offline-entries/microbit")).microbitEntry,
+  },
+  {
     id: "lsled",
     label: "LSLED legacy 44×11",
     load: async (): Promise<OfflineEntry> =>

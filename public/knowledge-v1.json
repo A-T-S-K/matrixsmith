@@ -5080,9 +5080,9 @@
       "sha256": null,
       "origin": "microbit-led",
       "license": null,
-      "attribution": "See cited issuer/author",
-      "retrieved": "2026-10-02",
-      "status": "public page/search extract inspected",
+      "attribution": "Lancaster University micro:bit runtime documentation",
+      "retrieved": "2026-10-03",
+      "status": "DAL v2.1.1 documentation inspected; five binary row octets, not UTF-8 text",
       "derivedFrom": []
     },
     {
@@ -5419,6 +5419,42 @@
       "attribution": "cat-in-136/led-name-badge",
       "retrieved": "2026-10-02",
       "status": "Lineage reference; original not inspected",
+      "derivedFrom": []
+    },
+    {
+      "id": "microbit-dal-led-cpp",
+      "url": "https://github.com/lancaster-university/microbit-dal/blob/318c6abbb3d952d3f49a595a726486230e82fb5b/source/bluetooth/MicroBitLEDService.cpp",
+      "revision": "318c6abbb3d952d3f49a595a726486230e82fb5b",
+      "sha256": "af98931811bdfbbdc84fc84fb72a9ce620c9ef19228ba4e72b3caf9d7037a1c5",
+      "origin": "Lancaster microbit-dal",
+      "license": "MIT",
+      "attribution": "Copyright (c) 2016 British Broadcasting Corporation; provided by Lancaster University by arrangement with the BBC.",
+      "retrieved": "2026-10-03",
+      "status": "Pinned source inspected; offline reference only, physical support unverified",
+      "derivedFrom": []
+    },
+    {
+      "id": "microbit-dal-led-header",
+      "url": "https://github.com/lancaster-university/microbit-dal/blob/318c6abbb3d952d3f49a595a726486230e82fb5b/inc/bluetooth/MicroBitLEDService.h",
+      "revision": "318c6abbb3d952d3f49a595a726486230e82fb5b",
+      "sha256": "e6c583e4ec97e1aea22fc4d608000667e80d16d1ced69e342c56a19d593f2598",
+      "origin": "Lancaster microbit-dal",
+      "license": "MIT",
+      "attribution": "Copyright (c) 2016 British Broadcasting Corporation; provided by Lancaster University by arrangement with the BBC.",
+      "retrieved": "2026-10-03",
+      "status": "Pinned source inspected; offline reference only, physical support unverified",
+      "derivedFrom": []
+    },
+    {
+      "id": "microbit-makecode-led",
+      "url": "https://makecode.microbit.org/reference/bluetooth/start-led-service",
+      "revision": null,
+      "sha256": null,
+      "origin": "microbit-led",
+      "license": null,
+      "attribution": "Microsoft MakeCode",
+      "retrieved": "2026-10-03",
+      "status": "Enablement documentation inspected; firmware/security compatibility not established",
       "derivedFrom": []
     }
   ],

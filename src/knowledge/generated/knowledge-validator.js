@@ -421,7 +421,7 @@ var require_validator_input = __commonJSMin((exports, module) => {
               type: "string",
               maxLength: 2048,
             },
-            retrieved: { const: "2026-10-02" },
+            retrieved: { enum: ["2026-10-02", "2026-10-03"] },
             status: {
               type: "string",
               maxLength: 2048,
@@ -5440,12 +5440,16 @@ var require_validator_input = __commonJSMin((exports, module) => {
                                                               data56.retrieved !==
                                                               void 0
                                                             ) {
+                                                              let data64 =
+                                                                data56.retrieved;
                                                               const _errs164 =
                                                                 errors;
-                                                              if (
-                                                                "2026-10-02" !==
-                                                                data56.retrieved
-                                                              ) {
+                                                              if (!(
+                                                                data64 ===
+                                                                  "2026-10-02" ||
+                                                                data64 ===
+                                                                  "2026-10-03"
+                                                              )) {
                                                                 validate52.errors =
                                                                   [
                                                                     {
@@ -5455,15 +5459,21 @@ var require_validator_input = __commonJSMin((exports, module) => {
                                                                         i13 +
                                                                         "/retrieved",
                                                                       schemaPath:
-                                                                        "#/properties/sources/items/properties/retrieved/const",
+                                                                        "#/properties/sources/items/properties/retrieved/enum",
                                                                       keyword:
-                                                                        "const",
+                                                                        "enum",
                                                                       params: {
-                                                                        allowedValue:
-                                                                          "2026-10-02",
+                                                                        allowedValues:
+                                                                          schema19
+                                                                            .properties
+                                                                            .sources
+                                                                            .items
+                                                                            .properties
+                                                                            .retrieved
+                                                                            .enum,
                                                                       },
                                                                       message:
-                                                                        "must be equal to constant",
+                                                                        "must be equal to one of the allowed values",
                                                                     },
                                                                   ];
                                                                 return false;

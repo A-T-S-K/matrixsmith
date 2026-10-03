@@ -408,7 +408,7 @@
             "maxLength": 2048
           },
           "retrieved": {
-            "const": "2026-10-02"
+            "enum": ["2026-10-02", "2026-10-03"]
           },
           "status": {
             "type": "string",
