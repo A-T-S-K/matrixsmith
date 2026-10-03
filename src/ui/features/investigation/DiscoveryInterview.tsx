@@ -7,7 +7,12 @@ import type {
 export function showDiscovery(snapshot: AppSnapshot): boolean {
   return (
     !!snapshot.discovery &&
-    (snapshot.discovery.status !== "retired" ||
+    ((snapshot.discovery.status !== "retired" &&
+      !(
+        snapshot.geometryProfile?.driverId === "coolledux" &&
+        (snapshot.discovery.terminal === "geometry" ||
+          snapshot.discovery.terminal === "dimensions")
+      )) ||
       snapshot.assessment.readiness === "needs-identification" ||
       !snapshot.liveConnected)
   );

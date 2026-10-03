@@ -341,6 +341,8 @@ export function CoreComplete({
         {strategy ? (
           <>
             This display can show still images via <strong>{strategy}</strong>.
+            {snapshot.coreProgress?.title === "Verify one still-image route" &&
+              " Verified for this session only. Text and images remain experimental and each replacement needs exact-send confirmation. Other operations remain separately gated."}
           </>
         ) : (
           <>
@@ -351,9 +353,21 @@ export function CoreComplete({
         )}
       </p>
       <div class="next-action-cta">
-        <button class="primary" onClick={() => store.stopInvestigation()}>
-          Finish
-        </button>
+        {strategy ? (
+          <button
+            class="primary"
+            onClick={() => {
+              store.stopInvestigation();
+              store.setView("control");
+            }}
+          >
+            Create content
+          </button>
+        ) : (
+          <button class="primary" onClick={() => store.stopInvestigation()}>
+            Finish
+          </button>
+        )}
         <button
           class="secondary"
           onClick={() => void store.copyInvestigationReport()}

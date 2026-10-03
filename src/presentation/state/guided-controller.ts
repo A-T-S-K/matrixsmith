@@ -126,7 +126,6 @@ export class GuidedController {
     options: { readonly includeOptional?: boolean } = {},
   ): void {
     this._guidedFlow = null;
-    this.ports.navigationStore()._closeOverlay("guided");
     const retryable = this._retryableOnCurrentMilestone();
     if (retryable) {
       this.ports
@@ -134,6 +133,7 @@ export class GuidedController {
         .setInfo(
           `${retryable.title} did not run long enough to settle this milestone. Choose Measure again to repeat the same parameters.`,
         );
+      this.ports.navigationStore()._closeOverlay("guided");
       this.ports.snapshotStore()._emit();
       return;
     }
@@ -147,6 +147,7 @@ export class GuidedController {
         .setInfo(
           "Core characterization is complete. You can finish now or choose optional measurements.",
         );
+      this.ports.navigationStore()._closeOverlay("guided");
       this.ports.snapshotStore()._emit();
       return;
     }
@@ -156,6 +157,7 @@ export class GuidedController {
       this.ports
         .noticeStore()
         .setInfo("No further guided tests are currently available.");
+      this.ports.navigationStore()._closeOverlay("guided");
       this.ports.snapshotStore()._emit();
       return;
     }
@@ -175,6 +177,7 @@ export class GuidedController {
         .setError(
           `${next.title} already produced a result. Reopen it deliberately if you want to run it again.`,
         );
+      this.ports.navigationStore()._closeOverlay("guided");
       this.ports.snapshotStore()._emit();
       return;
     }

@@ -57,7 +57,10 @@ interface Ports {
     | "_updateOrchestration"
     | "allClaimEvidence"
   >;
-  guidedOrchestration(): Pick<GuidedOrchestrationService, "corePlanProgress">;
+  guidedOrchestration(): Pick<
+    GuidedOrchestrationService,
+    "corePlanProgress" | "acceptedAttemptIsCurrent"
+  >;
   experiment(): Pick<ExperimentService, "reopenedTestIds">;
   transmission(): Pick<TransmissionService, "plan">;
 }
@@ -131,7 +134,21 @@ export class GuidedTestCatalogService {
       this.ports.investigation().getInvestigation()?.completedTests ?? []
     ).filter(
       (test) =>
-        Boolean(test.experimentRunId) && runs.has(test.experimentRunId!),
+        Boolean(test.experimentRunId) &&
+        runs.has(test.experimentRunId!) &&
+        (!test.testId.startsWith("coolledux-still-") ||
+          this.ports
+            .investigation()
+            .orchestration.transfers.some(
+              (transfer) =>
+                transfer.fingerprint.testId === test.testId &&
+                transfer.transactionIds.some((id) =>
+                  test.transactionIds.includes(id),
+                ) &&
+                this.ports
+                  .guidedOrchestration()
+                  .acceptedAttemptIsCurrent(transfer.attemptId),
+            )),
     );
   }
   recordedTests(): readonly CompletedGuidedTest[] {

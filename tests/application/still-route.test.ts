@@ -174,7 +174,7 @@ describe("unfamiliar static route authority", () => {
     }
   });
   it("only opens ordinary image/text experimentally after all three physical observations; reconnect retires authority", async () => {
-    const { runtime } = await setup();
+    const { runtime, transport } = await setup();
     try {
       (
         await observed(runtime, "coolledux-still-bootstrap", bootstrapValues)
@@ -235,6 +235,14 @@ describe("unfamiliar static route authority", () => {
           .filter((entry) => entry.testId?.startsWith("coolledux-still-"))
           .every((entry) => entry.scope !== "current-session"),
       ).toBe(true);
+      transport.notificationOnWriteEndpoint = COOLLED_ENDPOINT;
+      transport.notificationOnWrite = parseHexBytes(info.rxHex);
+      await runtime.probe();
+      runtime.confirmProvisionalGeometry(32, 16);
+      expect(runtime.executedTests()).toEqual([]);
+      expect(runtime.recommendations()[0]?.testId).toBe(
+        "coolledux-still-bootstrap",
+      );
       runtime.importBundle(archive);
       expect(runtime.staticViability().selected).toBeNull();
     } finally {

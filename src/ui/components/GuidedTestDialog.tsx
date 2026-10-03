@@ -193,16 +193,24 @@ function AboutStage({
           <FramePreview
             frame={frame}
             scale={8}
-            label="The image this test will show"
+            label="Intended diagnostic pattern; physical result unknown"
           />
           <small>
             {flow.regions.length > 0
-              ? "Zones are labelled once the pattern is on the display."
-              : "What the display will show"}
+              ? "Intended positions only; observe the physical display after transfer."
+              : "Intended pattern; physical appearance is unverified"}
           </small>
         </div>
       )}
       <dl class="about-facts">
+        <div>
+          <dt>Target</dt>
+          <dd>
+            {snapshot.device?.name} ·{" "}
+            {snapshot.device?.profileGeometry || snapshot.device?.liveGeometry}{" "}
+            · {snapshot.device?.protocol}
+          </dd>
+        </div>
         <div>
           <dt>What changes on the display</dt>
           <dd>{flow.about.whatChangesOnDevice}</dd>
@@ -435,6 +443,18 @@ function RetryConfirmation({
   return (
     <div class="retry-confirm">
       <h2>Retry this observation?</h2>
+      <p>
+        Target: {store.getSnapshot().device?.name} ·{" "}
+        {store.getSnapshot().device?.profileGeometry}
+      </p>
+      {flow.previews[0] && (
+        <FramePreview
+          frame={flow.previews[0]}
+          scale={8}
+          label="Intended retry pattern; physical result unknown"
+        />
+      )}
+      <p class="notice warning">{flow.consequence}</p>
       <p>
         MatrixSmith will send the same diagnostic image again so the timing can
         start over.

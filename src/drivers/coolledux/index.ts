@@ -692,7 +692,9 @@ function createContentPlan(
     timeoutMs: 15000,
     recoveryNotes: [
       "This replaces the stored display program.",
-      "The hardware reset path has been observed to restore factory content; automatic restoration is not implemented or verified.",
+      isReviewedIledHat(profile)
+        ? "The hardware reset path has been observed to restore factory content; automatic restoration is not implemented or verified."
+        : "Existing content cannot be read back; restoration and hardware reset behavior have not been verified on this target.",
     ],
     metadata: {
       family: "CoolLEDUX",

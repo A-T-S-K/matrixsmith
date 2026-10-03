@@ -36,6 +36,17 @@ export function ControlView({
   return (
     <section class="view create">
       <h1 class="view-title">Create</h1>
+      {snapshot.assessment.capabilities["static-frame"].availability ===
+        "available" &&
+        snapshot.assessment.capabilities["static-frame"].confidence ===
+          "experimental" &&
+        snapshot.coreProgress?.title === "Verify one still-image route" && (
+          <p class="notice">
+            Text and images are available experimentally via{" "}
+            {snapshot.rasterStrategyLabel}, verified for this session only.
+            Review each stored-content replacement before sending.
+          </p>
+        )}
       <Tabs
         label="Content type"
         selected={selected}

@@ -1,3 +1,7 @@
+import {
+  isPreparedTransmission,
+  type TargetBinding,
+} from "../../core/transmission";
 import { RESPONSE_AMBIGUITY_MESSAGE } from "../../app/notifications";
 import { guidedExecutionClass } from "../../investigation/tests";
 import {
@@ -37,7 +41,10 @@ interface Ports {
     | "guidedTestOperation"
     | "executedTests"
   >;
-  connection(): Pick<ConnectionService, "getSession" | "getTransport">;
+  connection(): Pick<
+    ConnectionService,
+    "getSession" | "getTransport" | "_currentTargetBinding"
+  >;
   investigation(): Pick<
     InvestigationService,
     | "ensureInvestigation"
@@ -61,9 +68,24 @@ interface Ports {
 }
 export class GuidedOrchestrationService {
   // Ephemeral authority: never serialized or restored from reports/history.
-  private readonly acceptedAttemptDigests = new Map<string, string>();
+  private readonly acceptedAttemptDigests = new Map<
+    string,
+    { digest: string; binding: TargetBinding }
+  >();
   acceptedAttemptDigest(attemptId: string): string | null {
-    return this.acceptedAttemptDigests.get(attemptId) ?? null;
+    return this.acceptedAttemptDigests.get(attemptId)?.digest ?? null;
+  }
+  acceptedAttemptIsCurrent(attemptId: string): boolean {
+    const accepted = this.acceptedAttemptDigests.get(attemptId);
+    const current = this.ports.connection()._currentTargetBinding();
+    return Boolean(
+      accepted &&
+      current &&
+      this.ports.connection().getSession().source === "live" &&
+      accepted.binding.connectionId === current.connectionId &&
+      accepted.binding.fingerprintKey === current.fingerprintKey &&
+      accepted.binding.browserDeviceId === current.browserDeviceId,
+    );
   }
   constructor(private readonly ports: Ports) {}
   async runGuidedTestTransfer(
@@ -248,8 +270,11 @@ export class GuidedOrchestrationService {
         .getTransactions()
         .slice(transactionIndex)
         .map(({ id }) => id);
-      if ("digest" in plan && typeof plan.digest === "string")
-        this.acceptedAttemptDigests.set(options.attemptId, plan.digest);
+      if (isPreparedTransmission(plan))
+        this.acceptedAttemptDigests.set(options.attemptId, {
+          digest: plan.digest,
+          binding: { ...plan.targetBinding },
+        });
       this._recordTransfer(
         {
           transferId,

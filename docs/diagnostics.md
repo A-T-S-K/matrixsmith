@@ -146,3 +146,59 @@ that ID membership changes. Disposal clears the active review caches. The caches
 retain references and identities,
 not extra normalized copies of large packet strings. Replacing or disposing a
 workspace releases its captured review state; no global evidence cache is used.
+
+## Bounded unfamiliar CoolLEDUX still-image verification
+
+Current live CoolLEDUX family identification, an explicit target geometry and
+application-registered `coolledux-reviewed-v1` are required. Profile names,
+local assertions and advisory knowledge do not identify the family. The reviewed
+compiler uses full 16-row pixel streams and eight-column Animation tiles;
+verification conservatively accepts height 16 and widths 16–64 divisible by eight.
+Other geometries keep their drafts and can use Protocol workbench/reports; the
+suite does not crop or search for another stride.
+
+Three application-owned fixed definitions form one finite goal. Each transfer
+requires target/preview review and deliberate stored-content replacement consent.
+Content cannot be read back, so restoration is not promised. No definition accepts
+caller pixel words, framebuffers or numeric parameters.
+
+1. `still-bootstrap`: one Animation frame with asymmetric axes and distinct
+   increasing-height markers in every eight-column tile. Physical full-image,
+   coverage and orientation answers establish upload, single-frame container
+   behavior and tile placement. Only a complete measured timeline with at least
+   15 seconds from full-image-visible establishes single-frame static hold.
+   Transport acceptance and receipt/echo evidence establish none of these claims.
+2. `still-raw-channels`: three small raw patches, left/middle/right, transmitting
+   0x0F00/0x00F0/0x000F, with literal 0x0000 background. Explicit observed RGB
+   answers establish raw channel mapping; a separate off/black answer establishes
+   Animation black semantics. This does not verify the logical RGB encoder.
+3. `still-encoder`: the fixed asymmetric spatial/color image through
+   `compileAnimationStaticFrame` and the ordinary logical-frame encoder. Explicit
+   coverage, orientation/seam and labeled color agreement establishes encoder
+   correctness. The existing atomic static-strategy evaluator then selects the
+   single-frame Animation route. No Graffiti rejection or direct `static.strategy`
+   assertion is needed. This is deliberately a proof of one still-image route,
+   not multi-frame playback, perceptual calibration or full family support.
+
+Six tiles are described at 48 columns; 16/32 columns use two/four. Markers and axes
+allow spatial judgments independent of color. Unknown answers never verify a
+color claim. Missing/negative/contradictory observations stop the sequence with
+partial evidence and explicit retry/report alternatives. Nothing auto-sends the
+next experiment. Completion offers Create; optional work does not prolong the goal.
+
+Attempt, transfer and observation owners remain authoritative. Successful new
+claims include target/profile, codec definition, geometry, attempt, transactions
+and accepted-write timing. An ephemeral accepted-plan digest binds observation
+adoption to the exact current connection, definition, bytes and geometry; it is
+never exported or restored. Stop/Back/disconnect/context replacement retire pending
+work. Failed persistent transfers leave panel state uncertain and never retry
+implicitly. History/import/reconnect retain evidence as history and require fresh
+current-session proof. Built-in iLedHat evidence and its existing suite remain
+separate and immutable.
+
+Once all requirements hold, ordinary still text/images use that tested route with
+experimental plan validation and exact-send confirmation. Assessment, driver
+contribution and transmission authorization agree. Animation/GIF, brightness,
+power and power-cycle persistence keep their separate gates. Simulator journeys
+and regression fixtures prove software behavior only; no hardware or human
+acceptance follows from them.
