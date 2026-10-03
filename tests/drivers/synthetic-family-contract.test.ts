@@ -7,11 +7,11 @@ import { parseDiagnosticBundle } from "../../src/diagnostics/bundle";
 import { operationalTrust } from "../../src/investigation/claims";
 import {
   lumenFrame,
+  SYNTHETIC_SERVICE,
+  SYNTHETIC_NOTIFY,
   syntheticDriver,
   syntheticFingerprint,
   syntheticProfile,
-  SYNTHETIC_SERVICE,
-  SYNTHETIC_NOTIFY,
 } from "../helpers/synthetic-driver";
 
 function harness(known = false) {
@@ -24,6 +24,10 @@ function harness(known = false) {
   );
   // connect() deliberately exercises the live command path on a fake transport,
   // as other application contract tests do. This grants no hardware evidence.
+  transport.notificationOnWriteEndpoint = {
+    serviceUuid: SYNTHETIC_SERVICE,
+    characteristicUuid: SYNTHETIC_NOTIFY,
+  };
   transport.notificationOnWrite = lumenFrame(0x91, [0x4c, 0x4d, 24, 8, 7]);
   return { runtime, transport, registry };
 }
@@ -87,6 +91,10 @@ describe("test-only third-family contracts", () => {
     ];
     const before = structuredClone(tools);
     const transport = new FakeTransport(syntheticFingerprint());
+    transport.notificationOnWriteEndpoint = {
+      serviceUuid: SYNTHETIC_SERVICE,
+      characteristicUuid: SYNTHETIC_NOTIFY,
+    };
     transport.notificationOnWrite = lumenFrame(0x91, [0x4c, 0x4d, 24, 8, 7]);
     const runtime = new ApplicationRuntime(
       transport,
@@ -129,6 +137,10 @@ describe("test-only third-family contracts", () => {
 
   it("keeps correlated execution separate from a rejected family interpretation", async () => {
     const transport = new FakeTransport(syntheticFingerprint());
+    transport.notificationOnWriteEndpoint = {
+      serviceUuid: SYNTHETIC_SERVICE,
+      characteristicUuid: SYNTHETIC_NOTIFY,
+    };
     transport.notificationOnWrite = lumenFrame(0x91, [0x4c, 0x4d, 24, 8, 7]);
     const rejecting = {
       ...syntheticDriver,
@@ -313,6 +325,10 @@ describe("test-only third-family contracts", () => {
       "unsupported",
     ] as const) {
       const transport = new FakeTransport(syntheticFingerprint());
+      transport.notificationOnWriteEndpoint = {
+        serviceUuid: SYNTHETIC_SERVICE,
+        characteristicUuid: SYNTHETIC_NOTIFY,
+      };
       transport.notificationOnWrite = lumenFrame(0x91, [0x4c, 0x4d, 24, 8, 7]);
       const driver = {
         ...syntheticDriver,

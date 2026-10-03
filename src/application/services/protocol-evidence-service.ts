@@ -2,7 +2,12 @@ import type { GattEndpoint } from "../../core/device";
 import type { TransmissionPlan } from "../../core/transmission";
 import type { DecodedNotification } from "../../drivers/types";
 import { type ExecutionResult } from "../../app/executor";
-import { type NotificationRecord } from "../../app/notifications";
+import {
+  endpointKey,
+  RESPONSE_AMBIGUITY_MESSAGE,
+  type ResponseContext,
+  type NotificationRecord,
+} from "../../app/notifications";
 import { packetHex } from "../../core/transmission";
 import type { TransactionSource } from "../../diagnostics/transactions";
 import { transactionId } from "../../diagnostics/transactions";
@@ -143,15 +148,33 @@ export class ProtocolEvidenceService {
           : {}),
       };
     });
-    const rx = session.notifications.slice(notificationStart).map((record) => ({
+    const records = session.notifications.filter(
+      (record) =>
+        record.receiveSequence !== undefined &&
+        record.receiveSequence > notificationStart,
+    );
+    // The selected record stays attributable even if the bounded UI collection evicts it.
+    if (result?.responseRecord && !records.includes(result.responseRecord))
+      records.push(result.responseRecord);
+    records.sort((a, b) => (a.receiveSequence ?? 0) - (b.receiveSequence ?? 0));
+    const receiptEndpoints =
+      plan.responseExpectation.type === "notification"
+        ? plan.responseExpectation.endpoints
+        : plan.packets.map((packet) => packet.endpoint);
+    const rx = records.map((record) => ({
       timestamp: record.timestamp,
       direction: "RX" as const,
       hex: record.rawHex,
       ...(record.endpoint ? { endpoint: record.endpoint } : {}),
       relation:
-        result?.response === record.decoded
+        result?.responseRecord === record
           ? ("matched-response" as const)
-          : record.decoded?.kind.includes("receipt")
+          : record.decoded?.kind.includes("receipt") &&
+              record.endpoint &&
+              receiptEndpoints.some(
+                (endpoint) =>
+                  endpointKey(endpoint) === endpointKey(record.endpoint!),
+              )
             ? ("related-receipt" as const)
             : ("unrelated-concurrent" as const),
     }));
@@ -178,7 +201,11 @@ export class ProtocolEvidenceService {
       deviceStateVerified: result?.deviceStateVerified ?? false,
       responseTimedOut: result?.responseTimedOut ?? false,
       error,
-      findings: result?.response ? [result.response.summary] : [],
+      findings: result?.responseAmbiguous
+        ? [RESPONSE_AMBIGUITY_MESSAGE]
+        : result?.response
+          ? [result.response.summary]
+          : [],
       observationIds: [],
       diagnosticRunId: diagnosticRunIdValue,
     };
@@ -192,6 +219,7 @@ export class ProtocolEvidenceService {
     recordTrace: boolean,
     endpoint: GattEndpoint | null,
     recordedAt?: string,
+    liveContext?: ResponseContext,
   ): NotificationRecord {
     const session = this.ports.connection().getSession();
     const raw = packet.slice();
@@ -213,13 +241,17 @@ export class ProtocolEvidenceService {
     const decoded =
       candidates.sort((a, b) => decodePriority(b) - decodePriority(a))[0] ??
       null;
-    const record = {
+    const incoming = {
       timestamp: recordedAt ?? new Date().toISOString(),
       raw,
       rawHex: packetHex(raw),
       decoded,
-      ...(endpoint ? { endpoint } : {}),
+      ...(endpoint ? { endpoint: { ...endpoint } } : {}),
     };
+    const record =
+      liveContext && session.source === "live"
+        ? this._notificationRouter.recordLive(incoming, liveContext)
+        : incoming;
     session.recordNotification(record);
     if (decoded)
       this.trace.record("notification.decoded", {

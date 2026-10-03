@@ -16,6 +16,8 @@ import {
 } from "../../src/diagnostics/report";
 import {
   lumenFrame,
+  SYNTHETIC_SERVICE,
+  SYNTHETIC_NOTIFY,
   syntheticDriver,
   syntheticFingerprint,
 } from "../helpers/synthetic-driver";
@@ -34,6 +36,10 @@ it("projects identifying geometry provenance without mutating archives, source s
     manufacturerDataHex: manufacturerData,
   };
   const transport = new FakeTransport(fingerprint);
+  transport.notificationOnWriteEndpoint = {
+    serviceUuid: SYNTHETIC_SERVICE,
+    characteristicUuid: SYNTHETIC_NOTIFY,
+  };
   transport.notificationOnWrite = lumenFrame(0x91, [0x4c, 0x4d, 24, 8, 7]);
   const runtime = new ApplicationRuntime(transport, undefined, registry);
   const replay = new ReplayTransport(fingerprint);

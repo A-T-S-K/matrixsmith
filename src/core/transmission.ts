@@ -78,6 +78,39 @@ export interface AuthorizedTransmission {
   readonly policyDecision: "allow";
 }
 
+/** Runtime guard for reviewed response context; absence never means wildcard. */
+export function responseContractProblem(plan: TransmissionPlan): string | null {
+  const expected = plan.responseExpectation;
+  if (expected.type === "none") return null;
+  if (
+    !Array.isArray(expected.endpoints) ||
+    !expected.endpoints.length ||
+    expected.endpoints.some(
+      (endpoint) =>
+        !endpoint ||
+        typeof endpoint.serviceUuid !== "string" ||
+        !endpoint.serviceUuid.trim() ||
+        typeof endpoint.characteristicUuid !== "string" ||
+        !endpoint.characteristicUuid.trim(),
+    )
+  )
+    return "A response requires a nonempty reviewed notification endpoint set.";
+  if (
+    !Number.isInteger(expected.dispatchPacketIndex) ||
+    !plan.packets.some(
+      (packet) => packet.index === expected.dispatchPacketIndex,
+    )
+  )
+    return "The response dispatch packet index is unavailable.";
+  if (
+    !Number.isFinite(expected.timeoutMs) ||
+    expected.timeoutMs < 1 ||
+    expected.timeoutMs > 120_000
+  )
+    return "Response timeout is outside the safe budget.";
+  return null;
+}
+
 export function createPlanId(prefix = "plan"): string {
   const random =
     globalThis.crypto?.randomUUID?.() ??
@@ -136,7 +169,7 @@ export function transmissionDigest(
         ? plan.responseExpectation
         : {
             ...plan.responseExpectation,
-            endpoints: plan.responseExpectation.endpoints.map((endpoint) => ({
+            endpoints: plan.responseExpectation.endpoints?.map((endpoint) => ({
               serviceUuid: normalizeUuid(endpoint.serviceUuid),
               characteristicUuid: normalizeUuid(endpoint.characteristicUuid),
             })),

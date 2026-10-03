@@ -1,5 +1,7 @@
+import { normalizeUuid } from "../core/device";
 import {
   transmissionDigest,
+  responseContractProblem,
   type AuthorizedTransmission,
   type TargetBinding,
 } from "../core/transmission";
@@ -9,7 +11,12 @@ import type {
   TransportReceipt,
 } from "../application/ports/transport";
 import type { DecodedNotification, MatrixDriver } from "../drivers/types";
-import { ResponseTimeoutError, type NotificationRouter } from "./notifications";
+import {
+  ResponseAmbiguityError,
+  ResponseTimeoutError,
+  type NotificationRecord,
+  type NotificationRouter,
+} from "./notifications";
 import { fingerprintIdentityKey } from "../investigation/device-identity";
 
 export class IndeterminateWriteError extends Error {
@@ -53,6 +60,8 @@ export interface ExecutionResult {
   readonly deviceStateVerified: boolean;
   readonly response: DecodedNotification | null;
   readonly responseTimedOut: boolean;
+  readonly responseRecord: NotificationRecord | null;
+  readonly responseAmbiguous: boolean;
   /** Wall-clock timestamp of the final packet's host acceptance. */
   readonly finalWriteAcceptedAt: string | null;
 }
@@ -84,11 +93,19 @@ export class TransmissionExecutor {
     if (this.transport.state !== "connected")
       throw new Error("Cannot transmit while disconnected.");
     this.#verifyAuthorization(authorized);
-    this.#running = true;
+    const responseProblem = responseContractProblem(authorized.plan);
+    if (responseProblem) throw new Error(responseProblem);
+    const expectation = authorized.plan.responseExpectation;
+    if (
+      expectation.type === "notification" &&
+      (!this.notifications ||
+        !driver?.responseMatches ||
+        driver.id !== authorized.plan.driverId)
+    )
+      throw new Error("The response contract has no reviewed driver context.");
     const receipts: TransportReceipt[] = [];
     const packetTimings: PacketTiming[] = [];
     let previousWriteStartMs: number | null = null;
-    const expectation = authorized.plan.responseExpectation;
     const executionStartedMs = Date.now();
     const armed =
       expectation.type === "notification" && this.notifications && driver
@@ -96,6 +113,7 @@ export class TransmissionExecutor {
             expectation,
             (notification, expected) =>
               driver.responseMatches?.(notification, expected) ?? false,
+            authorized.targetBinding.connectionId,
           )
         : null;
     // Observe both outcomes before any write can remain pending.
@@ -103,6 +121,7 @@ export class TransmissionExecutor {
       (response) => ({ ok: true as const, response }),
       (error: unknown) => ({ ok: false as const, error }),
     );
+    this.#running = true;
     try {
       for (const packet of authorized.plan.packets) {
         this.#verifyAuthorization(authorized);
@@ -121,6 +140,11 @@ export class TransmissionExecutor {
           );
           try {
             const writeStartMs = Date.now();
+            if (
+              expectation.type === "notification" &&
+              packet.index === expectation.dispatchPacketIndex
+            )
+              armed?.dispatch();
             const pendingWrite = this.transport.write(
               packet.endpoint,
               packet.bytes,
@@ -232,13 +256,23 @@ export class TransmissionExecutor {
       }
       let response: DecodedNotification | null = null;
       let responseTimedOut = false;
+      let responseAmbiguous = false;
+      let responseRecord: NotificationRecord | null = null;
       this.#verifyAuthorization(authorized);
       if (responseOutcome) {
         const outcome = await responseOutcome;
-        if (outcome.ok) response = outcome.response;
-        else if (outcome.error instanceof ResponseTimeoutError) {
+        if (outcome.ok) {
+          responseRecord = outcome.response;
+          response = responseRecord.decoded;
+        } else if (outcome.error instanceof ResponseTimeoutError) {
           responseTimedOut = true;
           this.trace.record("tx.response.timeout", {
+            planId: authorized.plan.id,
+            message: errorMessage(outcome.error),
+          });
+        } else if (outcome.error instanceof ResponseAmbiguityError) {
+          responseAmbiguous = true;
+          this.trace.record("tx.response.ambiguous", {
             planId: authorized.plan.id,
             message: errorMessage(outcome.error),
           });
@@ -274,6 +308,8 @@ export class TransmissionExecutor {
         deviceStateVerified,
         response,
         responseTimedOut,
+        responseRecord,
+        responseAmbiguous,
         finalWriteAcceptedAt:
           packetTimings[packetTimings.length - 1]?.hostAcceptedAt ?? null,
       };
@@ -352,11 +388,11 @@ function endpointAvailable(
   return (
     transport.fingerprint?.services.some(
       (service) =>
-        service.uuid.toLowerCase() === endpoint.serviceUuid.toLowerCase() &&
+        normalizeUuid(service.uuid) === normalizeUuid(endpoint.serviceUuid) &&
         service.characteristics.some(
           (characteristic) =>
-            characteristic.uuid.toLowerCase() ===
-              endpoint.characteristicUuid.toLowerCase() &&
+            normalizeUuid(characteristic.uuid) ===
+              normalizeUuid(endpoint.characteristicUuid) &&
             (mode === "without-response"
               ? characteristic.properties.writeWithoutResponse
               : characteristic.properties.write),

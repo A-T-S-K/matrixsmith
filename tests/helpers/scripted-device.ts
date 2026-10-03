@@ -1,3 +1,4 @@
+import { COOLLEDX_ENDPOINT } from "../../src/drivers/coolledx/gatt";
 import { FakeTransport } from "../../src/transport/fake";
 import { parseHexBytes } from "../../src/discovery/advertisement";
 import type { GattEndpoint } from "../../src/core/device";
@@ -32,6 +33,7 @@ export class ScriptedCoolLedUxDevice extends FakeTransport {
     bytes: Uint8Array,
     mode: WriteMode,
   ): Promise<TransportReceipt> {
+    this.notificationOnWriteEndpoint = COOLLEDX_ENDPOINT;
     this.notificationOnWrite = this.#respond(bytes);
     return super.write(endpoint, bytes, mode);
   }

@@ -115,3 +115,57 @@ built-in driver/profile IDs and real source references are bound here. When real
 loaded definition and interpretation-engine identities exist, they must join this
 identity/provenance input before approval. No definition hash or signing identity
 is invented today.
+
+## Live response correlation and ambiguity
+
+Notification contracts declare reviewed RX endpoints, independently of TX.
+CoolLEDUX queries and brightness echoes use FFF0/FFF1; authored Synthetic Lumen
+queries write its command characteristic and receive on its separate notification
+characteristic. UUID comparisons use the same normalization throughout preparation,
+policy, dispatch and correlation. Missing endpoint or connection context never
+falls back to opcode-only ownership.
+
+The application connection boundary stamps live records with its connection
+generation and a monotonically increasing receive sequence. Router-owned object
+membership, rather than serialized context fields, establishes eligibility.
+Imported/replayed records never acquire this membership; importing historical
+state retires the live waiter context. Raw evidence is still decoded for inspection
+regardless of correlation. The router checks ownership, current generation,
+post-dispatch ordering and RX endpoint before calling the driver's matching
+predicate. Wrong-endpoint, malformed, unmatched and late current-connection packets
+remain in the bounded evidence collections.
+
+Waiters are registered and both outcomes supervised before any writes. Eligibility
+and the response deadline open immediately before transport.write for the explicitly
+reviewed dispatch packet, preserving replies emitted synchronously inside write.
+Records received before that boundary cannot satisfy the request, even if
+republished later. Response deadlines are separate from per-write deadlines and
+connection retirement. A write failure remains primary if the response also fails;
+only an indeterminate write invokes write quarantine. Cancel/reset settle promises
+and clear timers. Authorization is checked again before adopting completion.
+
+Current protocols have no request tokens: endpoint, generation and receive order
+establish eligibility, not causality. A dispatched request that times out or is
+cancelled without a selected response leaves an unresolved signature for that
+connection. Later requests with overlapping endpoints and opcode/kind cannot adopt
+responses as family, geometry or capability evidence. They still record actual
+host acceptance and raw RX, with an explicit ambiguity finding; reconnect retires
+the ambiguity. Distinct signatures remain usable. There is no quiet interval,
+automatic retry, or response-timeout write quarantine. Delayed duplicate replies to
+successfully answered requests and unsolicited identical notifications remain a
+protocol limitation; software cannot distinguish them without protocol tokens.
+
+ExecutionResult.response retains the decoded compatibility view, while
+responseRecord identifies the exact selected record. Live device-info presentation
+also uses this selection; raw rejected packets remain available in the inspector.
+Transactions project that
+identity into the existing matched-response relation, so duplicate-looking decoded
+objects and wrong-endpoint packets cannot steal attribution. Receive sequence,
+not collection length, selects concurrent evidence across bounded eviction; the
+selected record survives eviction for transaction attribution. Related receipts
+must share a reviewed RX endpoint (or a TX endpoint for plans expecting no response)
+and remain weaker than matched responses.
+Ambiguity is projected into existing findings and trace metadata. Bundle V3 remains
+unchanged and carries no runtime ownership tokens. Host acceptance, correlated
+response, declared operation fulfillment and physical observation remain separate;
+no response alone establishes visible rendering or retention.

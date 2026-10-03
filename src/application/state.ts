@@ -12,6 +12,7 @@ export class ApplicationState {
   profile: DeviceProfile | null = null;
   source: "live" | "imported" | "fake" | "replay" = "live";
   readonly notifications: NotificationRecord[] = [];
+  private selectedDeviceInfo: NotificationRecord | null = null;
   geometryRevision = 0;
   geometryProposal:
     import("./services/identification-service").GeometryProposal | null = null;
@@ -56,13 +57,18 @@ export class ApplicationState {
   get latestDeviceInfo(): DecodedNotification | null {
     return this.latestDeviceInfoRecord?.decoded ?? null;
   }
-  /** Associated notification from the single connection-owned record collection. */
+  /** Live state uses only the executor-selected response; history remains inspectable. */
   get latestDeviceInfoRecord(): NotificationRecord | null {
+    if (this.source === "live") return this.selectedDeviceInfo;
     for (let index = this.notifications.length - 1; index >= 0; index -= 1) {
       const record = this.notifications[index];
       if (record?.decoded?.kind === "device-info") return record;
     }
     return null;
+  }
+  recordCorrelatedResponse(record: NotificationRecord | null): void {
+    if (this.source === "live" && record?.decoded?.kind === "device-info")
+      this.selectedDeviceInfo = record;
   }
   recordNotification(record: NotificationRecord): void {
     this.notifications.push(record);
@@ -74,6 +80,7 @@ export class ApplicationState {
     this.selection = null;
     this.profile = null;
     this.notifications.length = 0;
+    this.selectedDeviceInfo = null;
     this.protocolResolution = null;
     this.geometryProposal = null;
     this.validatedRasterStrategy = null;

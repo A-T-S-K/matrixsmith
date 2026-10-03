@@ -191,6 +191,17 @@ describe("SafetyPolicy", () => {
       /changed after its digest/i,
     );
   });
+  it.each([
+    { endpoints: [] },
+    { dispatchPacketIndex: 1 },
+    { timeoutMs: 0 },
+    { timeoutMs: Infinity },
+  ])("rejects an invalid reviewed response context: %j", (change) => {
+    const prepared = plan({
+      responseExpectation: { ...responseContract, ...change },
+    });
+    expect(policy.authorize(prepared, context()).allowed).toBe(false);
+  });
   it("owns nested response endpoints at preparation and authorization", () => {
     const original = {
       ...responseContract,

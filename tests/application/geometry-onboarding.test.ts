@@ -6,6 +6,8 @@ import { validateGeometry } from "../../src/domain/device/geometry";
 import { parseDiagnosticBundle } from "../../src/diagnostics/bundle";
 import {
   lumenFrame,
+  SYNTHETIC_SERVICE,
+  SYNTHETIC_NOTIFY,
   syntheticDriver,
   syntheticFingerprint,
   syntheticProfile,
@@ -13,6 +15,10 @@ import {
 
 function setup(driver = syntheticDriver, known = false) {
   const transport = new FakeTransport(syntheticFingerprint(known));
+  transport.notificationOnWriteEndpoint = {
+    serviceUuid: SYNTHETIC_SERVICE,
+    characteristicUuid: SYNTHETIC_NOTIFY,
+  };
   transport.notificationOnWrite = lumenFrame(0x91, [0x4c, 0x4d, 24, 8, 7]);
   const runtime = new ApplicationRuntime(
     transport,

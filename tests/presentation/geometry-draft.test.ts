@@ -7,6 +7,8 @@ import { PresentationStore } from "../../src/presentation/store";
 import { createBrowserEnvironment } from "../../src/adapters/presentation/browser-environment";
 import {
   lumenFrame,
+  SYNTHETIC_SERVICE,
+  SYNTHETIC_NOTIFY,
   syntheticDriver,
   syntheticFingerprint,
 } from "../helpers/synthetic-driver";
@@ -14,6 +16,10 @@ import {
 it("keeps blank/raw drafts per workspace and authorized target, retaining text but expiring response provenance on reconnect", async () => {
   const registry = new DriverRegistry([syntheticDriver]);
   const transport = new FakeTransport(syntheticFingerprint());
+  transport.notificationOnWriteEndpoint = {
+    serviceUuid: SYNTHETIC_SERVICE,
+    characteristicUuid: SYNTHETIC_NOTIFY,
+  };
   transport.notificationOnWrite = lumenFrame(0x91, [0x4c, 0x4d, 24, 8, 7]);
   const runtime = new ApplicationRuntime(transport, undefined, registry);
   const store = new PresentationStore(runtime, transport, {

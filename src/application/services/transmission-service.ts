@@ -1,3 +1,4 @@
+import { RESPONSE_AMBIGUITY_MESSAGE } from "../../app/notifications";
 import { SHARED_OPERATIONS } from "../../domain/device/assessment";
 import { TransmissionAuthorization } from "../../app/transmission-authorization";
 import type { MatrixOperation } from "../../core/operations";
@@ -298,10 +299,17 @@ export class TransmissionService {
   ): Promise<ExecutionResult> {
     const session = this.ports.connection().getSession();
     const connectionId = this.ports.connection().getTransport().connectionId;
+    const fingerprint = session.fingerprint;
+    const geometryRevision = session.geometryRevision;
     const current = () =>
+      session.source === "live" &&
+      session.fingerprint === fingerprint &&
+      session.geometryRevision === geometryRevision &&
       connectionId === this.ports.connection().getTransport().connectionId;
     const startedAt = new Date().toISOString();
-    const notificationStart = session.notifications.length;
+    const notificationStart = this.ports
+      .protocolEvidence()
+      .getNotificationRouter().receiveSequence;
     const sessionSource = session.source;
     if (!decision.allowed || !decision.authorized)
       throw new Error(decision.reasons.join(" "));
@@ -335,12 +343,16 @@ export class TransmissionService {
           plan,
           result,
           startedAt,
-          current() ? notificationStart : session.notifications.length,
+          current()
+            ? notificationStart
+            : this.ports.protocolEvidence().getNotificationRouter()
+                .receiveSequence,
           source,
           diagnosticRunIdValue,
           null,
           sessionSource,
         );
+      if (current()) session.recordCorrelatedResponse(result.responseRecord);
       if (current() && replacesStoredProgram) {
         // "Written at" is the final host-accepted write, never the moment the
         // transfer began — a report that labels transfer-start as accepted is
@@ -394,7 +406,10 @@ export class TransmissionService {
           plan,
           null,
           startedAt,
-          current() ? notificationStart : session.notifications.length,
+          current()
+            ? notificationStart
+            : this.ports.protocolEvidence().getNotificationRouter()
+                .receiveSequence,
           source,
           diagnosticRunIdValue,
           errorMessage(error),
@@ -486,7 +501,9 @@ export class TransmissionService {
         "The probe belongs to a retired connection or changed target.",
       );
     const startedAt = new Date().toISOString();
-    const notificationStart = session.notifications.length;
+    const notificationStart = this.ports
+      .protocolEvidence()
+      .getNotificationRouter().receiveSequence;
     const sessionSource = session.source;
     let result: ExecutionResult;
     let transaction: import("../../diagnostics/transactions").ProtocolTransaction;
@@ -500,7 +517,8 @@ export class TransmissionService {
           startedAt,
           connectionId === this.ports.connection().getTransport().connectionId
             ? notificationStart
-            : session.notifications.length,
+            : this.ports.protocolEvidence().getNotificationRouter()
+                .receiveSequence,
           "probe",
           null,
           null,
@@ -515,7 +533,8 @@ export class TransmissionService {
           startedAt,
           connectionId === this.ports.connection().getTransport().connectionId
             ? notificationStart
-            : session.notifications.length,
+            : this.ports.protocolEvidence().getNotificationRouter()
+                .receiveSequence,
           "probe",
           null,
           errorMessage(error),
@@ -523,17 +542,22 @@ export class TransmissionService {
         );
       throw error;
     }
-    const interpretation = familyProbe
-      ? familyProbe.identify(
-          {
-            response: result.response,
-            responseTimedOut: result.responseTimedOut,
-          },
-          candidateContext,
-        )
-      : result.response
-        ? profileProbe!.interpret(result.response)
-        : null;
+    const interpretation = result.responseAmbiguous
+      ? {
+          matched: false as const,
+          reason: RESPONSE_AMBIGUITY_MESSAGE,
+        }
+      : familyProbe
+        ? familyProbe.identify(
+            {
+              response: result.response,
+              responseTimedOut: result.responseTimedOut,
+            },
+            candidateContext,
+          )
+        : result.response
+          ? profileProbe!.interpret(result.response)
+          : null;
     if (
       connectionId !== this.ports.connection().getTransport().connectionId ||
       session.fingerprint !== fingerprint ||
@@ -544,6 +568,7 @@ export class TransmissionService {
         "The probe belongs to a retired connection or changed target.",
       );
     if (interpretation?.matched) {
+      session.recordCorrelatedResponse(result.responseRecord);
       this.ports
         .identification()
         ._resolveProtocol(

@@ -30,6 +30,7 @@ export type TraceEventType =
   | "tx.completed"
   | "tx.response.matched"
   | "tx.response.timeout"
+  | "tx.response.ambiguous"
   | "protocol.probe.started"
   | "protocol.probe.resolved"
   | "protocol.probe.rejected"

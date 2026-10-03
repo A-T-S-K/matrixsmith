@@ -4,6 +4,8 @@ import { DriverRegistry } from "../../src/drivers/registry";
 import { FakeTransport } from "../../src/transport/fake";
 import {
   lumenFrame,
+  SYNTHETIC_SERVICE,
+  SYNTHETIC_NOTIFY,
   syntheticDriver,
   syntheticFingerprint,
   syntheticQueryTest,
@@ -12,6 +14,10 @@ import type { MatrixDriver } from "../../src/drivers/types";
 
 async function harness(driver: MatrixDriver = syntheticDriver) {
   const transport = new FakeTransport(syntheticFingerprint(true));
+  transport.notificationOnWriteEndpoint = {
+    serviceUuid: SYNTHETIC_SERVICE,
+    characteristicUuid: SYNTHETIC_NOTIFY,
+  };
   transport.notificationOnWrite = lumenFrame(0x91, [0x4c, 0x4d, 24, 8, 7]);
   const runtime = new ApplicationRuntime(
     transport,

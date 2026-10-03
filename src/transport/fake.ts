@@ -1,4 +1,8 @@
-import type { DeviceFingerprint, GattEndpoint } from "../core/device";
+import {
+  normalizeUuid,
+  type DeviceFingerprint,
+  type GattEndpoint,
+} from "../core/device";
 import type { WriteMode } from "../core/transmission";
 import type {
   ConnectionState,
@@ -25,7 +29,8 @@ export class FakeTransport implements MatrixTransport {
   failWriteAt: number | null = null;
   writeDelayMs = 0;
   notificationOnWrite: Uint8Array | null = null;
-  readonly #listeners = new Set<(bytes: Uint8Array) => void>();
+  notificationOnWriteEndpoint: GattEndpoint | null = null;
+  readonly #listeners = new Map<(bytes: Uint8Array) => void, GattEndpoint>();
   readonly #stateListeners = new Set<(state: ConnectionState) => void>();
 
   constructor(fingerprint: DeviceFingerprint | null = null) {
@@ -72,12 +77,12 @@ export class FakeTransport implements MatrixTransport {
   }
 
   async subscribe(
-    _endpoint: GattEndpoint,
+    endpoint: GattEndpoint,
     listener: (bytes: Uint8Array) => void,
   ): Promise<() => Promise<void>> {
     if (this.state !== "connected")
       throw new Error("Transport is disconnected.");
-    this.#listeners.add(listener);
+    this.#listeners.set(listener, { ...endpoint });
     return async () => {
       this.#listeners.delete(listener);
     };
@@ -94,9 +99,16 @@ export class FakeTransport implements MatrixTransport {
     const writeIndex = this.writes.length;
     if (this.failWriteAt === writeIndex)
       throw new Error(`Injected write failure at packet ${writeIndex}.`);
-    if (this.notificationOnWrite)
-      for (const listener of this.#listeners)
-        listener(this.notificationOnWrite.slice());
+    if (this.notificationOnWrite) {
+      if (!this.notificationOnWriteEndpoint)
+        throw new Error(
+          "A scripted notification requires an explicit RX endpoint.",
+        );
+      this.emitNotification(
+        this.notificationOnWriteEndpoint,
+        this.notificationOnWrite,
+      );
+    }
     if (this.writeDelayMs > 0)
       await new Promise<void>((resolve) =>
         setTimeout(resolve, this.writeDelayMs),
@@ -108,6 +120,17 @@ export class FakeTransport implements MatrixTransport {
       writeMode: mode,
       byteLength: bytes.length,
     };
+  }
+
+  emitNotification(endpoint: GattEndpoint, bytes: Uint8Array): void {
+    for (const [listener, subscribed] of this.#listeners)
+      if (
+        normalizeUuid(subscribed.serviceUuid) ===
+          normalizeUuid(endpoint.serviceUuid) &&
+        normalizeUuid(subscribed.characteristicUuid) ===
+          normalizeUuid(endpoint.characteristicUuid)
+      )
+        listener(bytes.slice());
   }
 
   #setState(state: ConnectionState): void {

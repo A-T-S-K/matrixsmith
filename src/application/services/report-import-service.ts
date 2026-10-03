@@ -54,6 +54,7 @@ interface Ports {
     ProtocolEvidenceService,
     | "getContentCompilations"
     | "getTransactions"
+    | "getNotificationRouter"
     | "_notificationDecoder"
     | "getObservations"
     | "editObservations"
@@ -237,6 +238,10 @@ export class ReportImportService {
   importBundle(json: string): DiagnosticBundle {
     const session = this.ports.connection().getSession();
     const bundle = parseDiagnosticBundle(json);
+    this.ports
+      .protocolEvidence()
+      .getNotificationRouter()
+      .reset("Live response context was retired by historical import.");
     session.clearConnection();
     this.ports
       .identification()
@@ -363,6 +368,10 @@ export class ReportImportService {
     const liveSessionActive =
       session.source === "live" && session.fingerprint !== null;
     if (!liveSessionActive) {
+      this.ports
+        .protocolEvidence()
+        .getNotificationRouter()
+        .reset("Live response context was retired by historical import.");
       session.clearConnection();
       if (evidence.fingerprint)
         this.ports

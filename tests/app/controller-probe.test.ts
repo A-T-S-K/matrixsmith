@@ -1,3 +1,4 @@
+import { COOLLEDX_ENDPOINT } from "../../src/drivers/coolledx/gatt";
 import { describe, expect, it } from "vitest";
 import { ApplicationRuntime } from "../../src/application/runtime";
 import { TraceRecorder } from "../../src/diagnostics/trace";
@@ -17,6 +18,7 @@ describe("active protocol probing", () => {
     // is no longer a gate — it still runs, and still refreshes device state.
     expect(controller.session.selection?.ambiguous).toBe(false);
     expect(controller.session.selection?.selected?.id).toBe("coolledux");
+    transport.notificationOnWriteEndpoint = COOLLEDX_ENDPOINT;
     transport.notificationOnWrite = parseHexBytes(INFO);
     const result = await controller.probe();
     expect(result.protocolAcknowledged).toBe(true);
@@ -43,6 +45,7 @@ describe("active protocol probing", () => {
     const liveTransport = new FakeTransport(knownIledHatFingerprint());
     const live = new ApplicationRuntime(liveTransport, new TraceRecorder());
     await live.connect();
+    liveTransport.notificationOnWriteEndpoint = COOLLEDX_ENDPOINT;
     liveTransport.notificationOnWrite = parseHexBytes(INFO);
     await live.probe();
     const imported = new ApplicationRuntime(

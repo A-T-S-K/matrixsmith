@@ -1,4 +1,9 @@
-import type { DeviceFingerprint, GattEndpoint } from "../core/device";
+import { COOLLEDX_ENDPOINT } from "../drivers/coolledx/gatt";
+import {
+  normalizeUuid,
+  type DeviceFingerprint,
+  type GattEndpoint,
+} from "../core/device";
 import type { WriteMode } from "../core/transmission";
 import type {
   ConnectionState,
@@ -61,7 +66,7 @@ export class SimulatedIledHatTransport implements MatrixTransport {
    * in progress forever.
    */
   failNextWrite = false;
-  readonly #listeners = new Set<(bytes: Uint8Array) => void>();
+  readonly #listeners = new Map<(bytes: Uint8Array) => void, GattEndpoint>();
 
   /**
    * Present as a display MatrixSmith knows nothing about: the same FFF0/FFF1
@@ -111,10 +116,10 @@ export class SimulatedIledHatTransport implements MatrixTransport {
   }
 
   async subscribe(
-    _endpoint: GattEndpoint,
+    endpoint: GattEndpoint,
     listener: (bytes: Uint8Array) => void,
   ): Promise<() => Promise<void>> {
-    this.#listeners.add(listener);
+    this.#listeners.set(listener, { ...endpoint });
     return async () => {
       this.#listeners.delete(listener);
     };
@@ -132,7 +137,15 @@ export class SimulatedIledHatTransport implements MatrixTransport {
       throw new Error("Simulated write failure.");
     }
     const reply = this.#respond(bytes);
-    if (reply) for (const listener of this.#listeners) listener(reply);
+    if (reply)
+      for (const [listener, endpoint] of this.#listeners)
+        if (
+          normalizeUuid(endpoint.serviceUuid) ===
+            normalizeUuid(COOLLEDX_ENDPOINT.serviceUuid) &&
+          normalizeUuid(endpoint.characteristicUuid) ===
+            normalizeUuid(COOLLEDX_ENDPOINT.characteristicUuid)
+        )
+          listener(reply.slice());
     if (this.writeDelayMs > 0)
       await new Promise<void>((resolve) =>
         setTimeout(resolve, this.writeDelayMs),

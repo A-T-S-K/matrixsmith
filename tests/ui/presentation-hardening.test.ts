@@ -335,6 +335,8 @@ it("progress publications reuse previews and the cached display never authorizes
         planId: plan.id,
         receipts: [],
         packetTimings: [],
+        responseRecord: null,
+        responseAmbiguous: false,
         completedAt: "2026-10-02T00:00:00Z",
         hostAccepted: true,
         protocolAcknowledged: null,

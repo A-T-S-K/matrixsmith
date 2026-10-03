@@ -160,8 +160,18 @@ export class ConnectionService {
       throw new Error("This workspace was disposed while connecting.");
     }
     this.session.clearConnection();
-    this.patchSession({ source: "live" });
-    this.ports.identification().applyFingerprint(fingerprint, "live");
+    if (!this.transport.connectionId)
+      throw new Error("Connected transport has no generation identity.");
+    const source = this.transport.kind === "replay" ? "replay" : "live";
+    const router = this.ports.protocolEvidence().getNotificationRouter();
+    if (source === "live")
+      router.beginConnection({
+        connectionId: this.transport.connectionId,
+        generation: epoch,
+      });
+    else router.reset();
+    this.patchSession({ source });
+    this.ports.identification().applyFingerprint(fingerprint, source);
     const target = this.ports.identification().deviceTarget();
     if (target)
       this._connectionState = transitionConnection(this._connectionState, {
@@ -209,8 +219,18 @@ export class ConnectionService {
       throw new Error("This workspace was disposed while connecting.");
     }
     this.session.clearConnection();
-    this.patchSession({ source: "live" });
-    this.ports.identification().applyFingerprint(fingerprint, "live");
+    if (!this.transport.connectionId)
+      throw new Error("Connected transport has no generation identity.");
+    const source = this.transport.kind === "replay" ? "replay" : "live";
+    const router = this.ports.protocolEvidence().getNotificationRouter();
+    if (source === "live")
+      router.beginConnection({
+        connectionId: this.transport.connectionId,
+        generation: epoch,
+      });
+    else router.reset();
+    this.patchSession({ source });
+    this.ports.identification().applyFingerprint(fingerprint, source);
     const target = this.ports.identification().deviceTarget();
     if (target)
       this._connectionState = transitionConnection(this._connectionState, {
@@ -369,6 +389,10 @@ export class ConnectionService {
   }
   async enableNotifications(endpoint: GattEndpoint): Promise<void> {
     if (this.disposed) throw new Error("This workspace has been disposed.");
+    endpoint = {
+      serviceUuid: normalizeUuid(endpoint.serviceUuid),
+      characteristicUuid: normalizeUuid(endpoint.characteristicUuid),
+    };
     const key = notificationKey(endpoint);
     this._desiredNotificationEndpoints.set(key, endpoint);
     if (this.isNotificationActive(endpoint)) return;
@@ -385,7 +409,12 @@ export class ConnectionService {
     const startup = (async () => {
       const unsubscribe = await this.transport.subscribe(endpoint, (packet) => {
         if (current())
-          this.ports.protocolEvidence()._recordIncoming(packet, true, endpoint);
+          this.ports
+            .protocolEvidence()
+            ._recordIncoming(packet, true, endpoint, undefined, {
+              connectionId: connectionId!,
+              generation: epoch,
+            });
       });
       if (!current()) {
         void unsubscribe().catch(() => undefined);
@@ -428,11 +457,13 @@ export class ConnectionService {
         : candidateEndpoints(fingerprint).filter((endpoint) =>
             endpointNotifies(fingerprint, endpoint),
           );
-      for (const endpoint of available)
+      for (const endpoint of available) {
+        if (!endpointNotifies(fingerprint, endpoint)) continue;
         endpoints.set(
           `${endpoint.serviceUuid}/${endpoint.characteristicUuid}`,
           endpoint,
         );
+      }
     }
     for (const endpoint of endpoints.values()) {
       if (epoch !== this._lifetimeGeneration)
@@ -489,7 +520,13 @@ export class ConnectionService {
   _currentTargetBinding(): TargetBinding | null {
     const fingerprint = this.transport.fingerprint;
     const connectionId = this.transport.connectionId;
-    if (!fingerprint || !connectionId) return null;
+    if (
+      this.session.source !== "live" ||
+      !this.session.fingerprint ||
+      !fingerprint ||
+      !connectionId
+    )
+      return null;
     return {
       connectionId,
       fingerprintKey: `${fingerprintIdentityKey(fingerprint)}|geometry-revision:${this.session.geometryRevision}`,

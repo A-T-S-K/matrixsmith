@@ -1,3 +1,4 @@
+import { RESPONSE_AMBIGUITY_MESSAGE } from "../../app/notifications";
 import { guidedExecutionClass } from "../../investigation/tests";
 import {
   buildExecutionFingerprint,
@@ -224,6 +225,8 @@ export class GuidedOrchestrationService {
         throw new Error(
           "The diagnostic execution belongs to a retired physical context.",
         );
+      if (executionClass === "read-only-query" && result.responseAmbiguous)
+        throw new Error(RESPONSE_AMBIGUITY_MESSAGE);
       if (
         executionClass === "read-only-query" &&
         (!result.hostAccepted ||

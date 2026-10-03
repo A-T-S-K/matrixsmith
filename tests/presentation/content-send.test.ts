@@ -16,6 +16,8 @@ const result = (patch: Partial<ExecutionResult> = {}): ExecutionResult => ({
   planId: "test",
   receipts: [],
   packetTimings: [],
+  responseRecord: null,
+  responseAmbiguous: false,
   completedAt: "2026-10-02T20:00:00.000Z",
   hostAccepted: true,
   protocolAcknowledged: null,

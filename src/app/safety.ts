@@ -1,8 +1,9 @@
-import type { DeviceFingerprint } from "../core/device";
+import { normalizeUuid, type DeviceFingerprint } from "../core/device";
 import {
   copyPreparedTransmission,
   isPreparedTransmission,
   packetHex,
+  responseContractProblem,
   transmissionDigest,
   type AuthorizedTransmission,
   type TargetBinding,
@@ -143,6 +144,8 @@ function sameBinding(a: TargetBinding, b: TargetBinding): boolean {
 
 function validatePlan(plan: TransmissionPlan): string[] {
   const reasons: string[] = [];
+  const responseProblem = responseContractProblem(plan);
+  if (responseProblem) reasons.push(responseProblem);
   if (plan.packets.length === 0)
     reasons.push("A transmission must contain at least one packet.");
   const seen = new Set<number>();
@@ -179,12 +182,12 @@ function endpointAvailable(
   return plan.packets.every((packet) =>
     fingerprint.services.some(
       (service) =>
-        service.uuid.toLowerCase() ===
-          packet.endpoint.serviceUuid.toLowerCase() &&
+        normalizeUuid(service.uuid) ===
+          normalizeUuid(packet.endpoint.serviceUuid) &&
         service.characteristics.some(
           (characteristic) =>
-            characteristic.uuid.toLowerCase() ===
-              packet.endpoint.characteristicUuid.toLowerCase() &&
+            normalizeUuid(characteristic.uuid) ===
+              normalizeUuid(packet.endpoint.characteristicUuid) &&
             (packet.writeMode === "without-response"
               ? characteristic.properties.writeWithoutResponse
               : characteristic.properties.write),

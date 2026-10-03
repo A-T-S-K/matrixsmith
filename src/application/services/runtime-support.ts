@@ -1,4 +1,4 @@
-import type { DeviceFingerprint } from "../../core/device";
+import { normalizeUuid, type DeviceFingerprint } from "../../core/device";
 import type { GattEndpoint } from "../../core/device";
 
 import type { DecodedNotification } from "../../drivers/types";
@@ -20,11 +20,11 @@ export function endpointNotifies(
 ): boolean {
   return fingerprint.services.some(
     (service) =>
-      service.uuid.toLowerCase() === endpoint.serviceUuid.toLowerCase() &&
+      normalizeUuid(service.uuid) === normalizeUuid(endpoint.serviceUuid) &&
       service.characteristics.some(
         (characteristic) =>
-          characteristic.uuid.toLowerCase() ===
-            endpoint.characteristicUuid.toLowerCase() &&
+          normalizeUuid(characteristic.uuid) ===
+            normalizeUuid(endpoint.characteristicUuid) &&
           (characteristic.properties.notify ||
             characteristic.properties.indicate),
       ),
