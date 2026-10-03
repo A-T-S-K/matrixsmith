@@ -237,7 +237,7 @@ function structuredCloneValue<T>(value: T): T {
   return value;
 }
 
-function canonicalJson(value: unknown): string {
+export function canonicalJson(value: unknown): string {
   if (value instanceof Uint8Array) return `[${[...value].join(",")}]`;
   if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
   if (value && typeof value === "object") {
@@ -252,6 +252,10 @@ function canonicalJson(value: unknown): string {
 
 // Small synchronous SHA-256 implementation keeps authorization synchronous
 // in browsers while still producing a standard, portable digest.
+export function definitionDigest(value: unknown): string {
+  return `sha256:${sha256(canonicalJson(value))}`;
+}
+
 function sha256(input: string): string {
   const bytes = new TextEncoder().encode(input);
   const bitLength = bytes.length * 8;

@@ -49,6 +49,7 @@ describe("test-only third-family contracts", () => {
     const rival = {
       ...syntheticDriver,
       id: "test-rival",
+      profiles: () => [],
       match: (input: typeof fingerprint) => ({
         ...syntheticDriver.match(input),
         driverId: "test-rival",

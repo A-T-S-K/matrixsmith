@@ -3,7 +3,7 @@ import {
   COOLLED_IO_UUID,
   COOLLED_SERVICE_UUID,
 } from "../drivers/coolled/common/gatt";
-import { ILEDHAT_PROFILE_ID } from "./iledhat-31ae-32x16";
+import { ILEDHAT_DOCUMENT, ILEDHAT_PROFILE_ID } from "./iledhat-31ae-32x16";
 
 /**
  * Recognizing a display MatrixSmith has already characterized.
@@ -71,12 +71,11 @@ function companyPrefix(companyId: number): string {
  */
 export const ILEDHAT_SIGNATURE: KnownProfileSignature = Object.freeze({
   profileId: ILEDHAT_PROFILE_ID,
-  name: "iledhat",
+  name: ILEDHAT_DOCUMENT.matching.name,
   serviceUuid: COOLLED_SERVICE_UUID,
   characteristicUuid: COOLLED_IO_UUID,
-  companyId: 0x31ae,
-  width: 32,
-  height: 16,
+  companyId: ILEDHAT_DOCUMENT.contradictions.companyId,
+  ...ILEDHAT_DOCUMENT.dimensions,
   driverId: "coolledux",
   rejectedDrivers: Object.freeze({
     coolledx:

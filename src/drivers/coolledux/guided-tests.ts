@@ -14,7 +14,7 @@ import {
   type GuidedTestTimer,
 } from "../../investigation/tests";
 import { operationalTrust } from "../../investigation/claims";
-import { ILEDHAT_PROFILE_ID } from "../../profiles/iledhat-31ae-32x16";
+import { isReviewedIledHat } from "../../profiles/iledhat-31ae-32x16";
 import { formatDuration } from "../../investigation/observations";
 import { approximateSeconds } from "../../investigation/timing";
 import {
@@ -1715,7 +1715,7 @@ export const COOLLEDUX_GENERIC_GUIDED_TESTS: readonly GuidedTestDefinition[] =
 
 /** Declarative applicability: which profiles each suite applies to. */
 function appliesToIledHat(profile: DeviceProfile): boolean {
-  return profile.id === ILEDHAT_PROFILE_ID;
+  return isReviewedIledHat(profile);
 }
 
 export function coolLedUxGuidedTests(

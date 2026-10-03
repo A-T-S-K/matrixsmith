@@ -1,6 +1,6 @@
 import type { DeviceProfile } from "../../core/device";
 import type { ClaimEvidence } from "../../investigation/claims";
-import { ILEDHAT_PROFILE_ID } from "../../profiles/iledhat-31ae-32x16";
+import { isReviewedIledHat } from "../../profiles/iledhat-31ae-32x16";
 
 /**
  * Baseline atomic-claim evidence the CoolLEDUX driver ships for its known
@@ -13,7 +13,7 @@ import { ILEDHAT_PROFILE_ID } from "../../profiles/iledhat-31ae-32x16";
 export function coolLedUxBaselineClaimEvidence(
   profile: DeviceProfile,
 ): readonly ClaimEvidence[] {
-  if (profile.id !== ILEDHAT_PROFILE_ID) return SOURCE_REFERENCE_EVIDENCE;
+  if (!isReviewedIledHat(profile)) return SOURCE_REFERENCE_EVIDENCE;
   return [...ILEDHAT_PROFILE_EVIDENCE, ...SOURCE_REFERENCE_EVIDENCE];
 }
 

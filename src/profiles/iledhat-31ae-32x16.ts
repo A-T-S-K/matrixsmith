@@ -1,16 +1,21 @@
 import type { DeviceProfile } from "../core/device";
+import data from "./data/iledhat.json";
+import { freezeDefinition } from "./freeze";
+import type { ProfileDocument } from "./document";
 import { ILEDHAT_QUIRKS } from "../core/quirks";
 
-export const ILEDHAT_PROFILE_ID = "iledhat-31ae-32x16";
+export const ILEDHAT_DOCUMENT = freezeDefinition(
+  data,
+) as unknown as ProfileDocument;
+export const ILEDHAT_PROFILE_ID = ILEDHAT_DOCUMENT.id;
 export const ILEDHAT_ADVERTISEMENT_HEX =
   "0201060303F0FF0EFFAE315EEA07000001100020031E0809694C6564486174";
 
-export const iledHat31aeProfile: DeviceProfile = {
+export const iledHat31aeProfile: DeviceProfile = freezeDefinition({
   id: ILEDHAT_PROFILE_ID,
-  name: "iLedHat 31AE 32×16",
+  name: ILEDHAT_DOCUMENT.label,
   driverId: "coolledux",
-  width: 32,
-  height: 16,
+  ...ILEDHAT_DOCUMENT.dimensions,
   validation: "verified",
   evidence: [
     {
@@ -65,4 +70,9 @@ export const iledHat31aeProfile: DeviceProfile = {
     verifiedBrightnessRaw: 0x40,
   },
   quirks: ILEDHAT_QUIRKS,
-};
+});
+
+/** Trust is application-owned object identity, never a serialized label. */
+export function isReviewedIledHat(profile: DeviceProfile): boolean {
+  return profile === iledHat31aeProfile;
+}

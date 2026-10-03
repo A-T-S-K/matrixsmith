@@ -1,0 +1,35 @@
+{
+  "documentVersion": 1,
+  "namespace": "local",
+  "id": "test-coolledux-48x8",
+  "revision": "1",
+  "implementation": "coolledux-reviewed-v1",
+  "label": "Synthetic UX Banner",
+  "matching": {
+    "name": "synthetic ux banner",
+    "serviceUuid": "0000fff0-0000-1000-8000-00805f9b34fb",
+    "characteristicUuid": "0000fff1-0000-1000-8000-00805f9b34fb",
+    "requiredProperties": ["read", "notify", "writeWithoutResponse"]
+  },
+  "contradictions": {
+    "companyId": 12718,
+    "geometry": true
+  },
+  "dimensions": {
+    "width": 48,
+    "height": 8
+  },
+  "parameters": {
+    "brightness": {
+      "min": 0,
+      "max": 255
+    }
+  },
+  "templates": ["coolledux-source-v1"],
+  "limitations": [
+    "Authored 48\u00d78 fixture; geometry is not a physical observation.",
+    "Existing source codecs only. No iLedHat tests, physical evidence or routine-send permission.",
+    "Reviewed row stride remains 16; this document does not generalize rendering to an eight-row firmware."
+  ],
+  "sources": ["tests/helpers/second-coolledux-profile.ts"]
+}

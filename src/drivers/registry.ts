@@ -1,6 +1,12 @@
 import type { DeviceFingerprint } from "../core/device";
 import type { DiscoveryHints } from "../application/ports/transport";
 import type { DriverMatch, MatrixDriver } from "./types";
+import { definitionDigest } from "../core/transmission";
+import {
+  ILEDHAT_DOCUMENT,
+  iledHat31aeProfile,
+} from "../profiles/iledhat-31ae-32x16";
+import type { AcceptedProfile } from "../profiles/registration";
 import { coolLedXDriver } from "./coolledx";
 import { coolLedUxDriver } from "./coolledux";
 
@@ -17,11 +23,43 @@ export interface DriverSelection {
 
 export class DriverRegistry {
   readonly #drivers: readonly MatrixDriver[];
-  constructor(drivers: readonly MatrixDriver[]) {
-    this.#drivers = [...drivers];
+  constructor(
+    drivers: readonly MatrixDriver[],
+    readonly acceptedProfiles: readonly AcceptedProfile[] = [],
+  ) {
+    if (new Set(drivers.map(({ id }) => id)).size !== drivers.length)
+      throw new Error("Duplicate driver registration.");
+    const profiles = drivers.flatMap((driver) => driver.profiles());
+    if (new Set(profiles.map(({ id }) => id)).size !== profiles.length)
+      throw new Error("Duplicate profile registration.");
+    if (
+      new Set(
+        acceptedProfiles.map(({ definitionIdentity }) => definitionIdentity),
+      ).size !== acceptedProfiles.length
+    )
+      throw new Error("Duplicate definition registration.");
+    this.acceptedProfiles = Object.freeze([...acceptedProfiles]);
+    this.#drivers = Object.freeze(
+      drivers.map((driver) => Object.freeze({ ...driver })),
+    );
   }
   get drivers(): readonly MatrixDriver[] {
     return this.#drivers;
+  }
+
+  definitionIdentity(
+    driverId: string,
+    profile: import("../core/device").DeviceProfile | null,
+  ): string {
+    const accepted = this.acceptedProfiles.find(
+      (entry) => entry.profile === profile,
+    );
+    if (accepted)
+      return `${accepted.document.implementation}/${accepted.definitionIdentity}`;
+    if (profile === iledHat31aeProfile)
+      return `coolledux-reviewed-v1/${definitionDigest(ILEDHAT_DOCUMENT)}`;
+    // No engine hash is fabricated for injected machinery or provisional geometry.
+    return `${driverId}/unversioned:${profile?.id ?? "family-candidate"}`;
   }
 
   match(fingerprint: DeviceFingerprint): DriverSelection {

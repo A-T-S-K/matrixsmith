@@ -167,7 +167,16 @@ export class TransmissionService {
       ),
     });
     const plan = prepareTransmission(
-      rawPlan,
+      {
+        ...rawPlan,
+        metadata: {
+          ...rawPlan.metadata,
+          definitionIdentity: this.ports
+            .identification()
+            .getRegistry()
+            .definitionIdentity(driver.id, profile),
+        },
+      },
       this.ports.connection()._requireTargetBinding(),
     );
     this.ports.protocolEvidence().getTrace().record("tx.plan.created", {
@@ -473,10 +482,20 @@ export class TransmissionService {
       throw new Error(
         `Probe ${selectedProbeId ?? "(none)"} is unavailable for this device candidate.`,
       );
+    const rawPlan = familyProbe
+      ? familyProbe.plan(candidateContext)
+      : profileProbe!.plan(profileContext!);
     const plan = prepareTransmission(
-      familyProbe
-        ? familyProbe.plan(candidateContext)
-        : profileProbe!.plan(profileContext!),
+      {
+        ...rawPlan,
+        metadata: {
+          ...rawPlan.metadata,
+          definitionIdentity: this.ports
+            .identification()
+            .getRegistry()
+            .definitionIdentity(driver.id, profile),
+        },
+      },
       this.ports.connection()._requireTargetBinding(),
     );
     this.ports

@@ -6,7 +6,10 @@ import {
   type ClaimId,
 } from "../../investigation/claims";
 import { evaluateStaticViability } from "../../investigation/static-viability";
-import { ILEDHAT_PROFILE_ID } from "../../profiles/iledhat-31ae-32x16";
+import {
+  ILEDHAT_PROFILE_ID,
+  isReviewedIledHat,
+} from "../../profiles/iledhat-31ae-32x16";
 
 /**
  * The bounded core plan for iLedHat characterization.
@@ -141,5 +144,5 @@ export const ILEDHAT_CORE_PLAN: CorePlan = {
 };
 
 export function coolLedUxCorePlan(profile: DeviceProfile): CorePlan | null {
-  return profile.id === ILEDHAT_PROFILE_ID ? ILEDHAT_CORE_PLAN : null;
+  return isReviewedIledHat(profile) ? ILEDHAT_CORE_PLAN : null;
 }

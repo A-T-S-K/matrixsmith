@@ -7,7 +7,7 @@ import {
   type TransmissionPlan,
 } from "../../core/transmission";
 import {
-  ILEDHAT_PROFILE_ID,
+  isReviewedIledHat,
   iledHat31aeProfile,
 } from "../../profiles/iledhat-31ae-32x16";
 import {
@@ -260,7 +260,7 @@ function resolveIledHatProfile(
 export function coolLedUxCapabilities(
   profile: DeviceProfile,
 ): readonly Capability[] {
-  const exact = profile.id === ILEDHAT_PROFILE_ID;
+  const exact = isReviewedIledHat(profile);
   const characterized =
     exact &&
     profile.quirks?.preferredRasterStrategy !== undefined &&
@@ -305,7 +305,9 @@ export function coolLedUxCapabilities(
       persistence: "none",
       evidenceConfidence: "observed",
       validation: exact ? "verified" : "experimental",
-      evidenceRefs: ["iledhat-coolledux-probe", "coolledux-ble@4f5656d"],
+      evidenceRefs: exact
+        ? ["iledhat-coolledux-probe", "coolledux-ble@4f5656d"]
+        : ["coolledux-ble@4f5656d"],
     },
     {
       id: "brightness",
@@ -316,7 +318,9 @@ export function coolLedUxCapabilities(
       persistence: "unknown",
       evidenceConfidence: "corroborated",
       validation: exact ? "verified" : "experimental",
-      evidenceRefs: ["iledhat-coolledux-brightness", "coolledux-ble@4f5656d"],
+      evidenceRefs: exact
+        ? ["iledhat-coolledux-brightness", "coolledux-ble@4f5656d"]
+        : ["coolledux-ble@4f5656d"],
     },
     // Untested on this panel and unchanged: source-confirmed upstream only.
     {
@@ -419,7 +423,9 @@ export function createCoolLedUxPlan(
       break;
     case "SetBrightness":
       bytes = encodeBrightness(operation.raw);
-      validation = "verified";
+      validation = isReviewedIledHat(context.profile)
+        ? "verified"
+        : "experimental";
       execution = "live";
       responseExpectation = {
         type: "notification",
@@ -460,9 +466,7 @@ export function createCoolLedUxPlan(
     purpose,
     evidenceRefs: [
       "coolledux-ble@4f5656d",
-      ...(context.profile.id === ILEDHAT_PROFILE_ID
-        ? ["iledhat-nrf-2026-08-31"]
-        : []),
+      ...(isReviewedIledHat(context.profile) ? ["iledhat-nrf-2026-08-31"] : []),
     ],
     packets: Object.freeze([packet]),
     responseExpectation,
@@ -650,7 +654,7 @@ function createContentPlan(
     delayAfterMs: compiled.pacingMs,
   }));
   const verifiedRoutine =
-    profile.id === ILEDHAT_PROFILE_ID &&
+    isReviewedIledHat(profile) &&
     operation.type !== "ShowGif" &&
     operation.type !== "ShowDiagnostic";
   return Object.freeze({
@@ -667,7 +671,7 @@ function createContentPlan(
     purpose: "operation" as const,
     evidenceRefs: [
       "coolledux-ble@4f5656d",
-      ...(profile.id === ILEDHAT_PROFILE_ID ? ["iledhat-nrf-2026-08-31"] : []),
+      ...(isReviewedIledHat(profile) ? ["iledhat-nrf-2026-08-31"] : []),
     ],
     packets: Object.freeze(packets),
     responseExpectation: { type: "none" as const },
