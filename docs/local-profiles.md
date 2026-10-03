@@ -30,7 +30,12 @@ The authored 48×8 fixture now uses the same declarative adapter as local docume
 This is a software extension proof; eight-row firmware rendering is unverified.
 
 Driver and profile duplicate IDs fail registration. Local namespace `matrixsmith`
-and the built-in iLedHat ID are reserved. Duplicate local identity/revision and
+and the built-in iLedHat ID are reserved. Runtime namespaces `provisional` and
+`protocol-candidate` are also reserved: their `provisional:` geometry and
+`protocol-candidate:` probe-plan identity prefixes belong to the application.
+These reservations are compatibility checks shared by review and direct
+acceptance; structurally valid documents remain parseable for inspection.
+Duplicate local identity/revision and
 matching-name collisions fail; there is no silent replacement. Registries copy
 and freeze their list and implementation facade, accepted documents and profile
 snapshots are deeply frozen. Plans receive the accepted document digest and
@@ -41,7 +46,9 @@ unversioned; no engine hash is invented.
 Home provides one local-file entry and a focused review showing identity,
 compatibility, matching, contradictions, geometry, parameters, provenance and
 limitations before loading. A malformed or incompatible file preserves the
-previous registry/workspace. The prepared immutable registry is published only
+previous registry/workspace, drafts and any pending valid profile review; the
+rejected attempt reports its problems or error without replacing that review.
+The prepared immutable registry is published only
 when a fresh runtime can be constructed. Active or retained connections block
 loading; disconnect first. Drafts stay with their existing UI owners. Replacing
 the runtime drops current evidence, confirmations and prepared work. Exported

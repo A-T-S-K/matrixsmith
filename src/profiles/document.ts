@@ -100,6 +100,12 @@ export function profileCompatibility(
     problems.push(
       "The reviewed codec requires widths divisible by eight; tiling is not configurable.",
     );
+  // These namespaces produce application-owned geometry and probe identities.
+  // Keep parsing available for inspection; both review and acceptance enforce this.
+  if (["provisional", "protocol-candidate"].includes(document.namespace))
+    problems.push(
+      `Runtime namespace ${document.namespace} is reserved; local documents cannot use its identity prefix.`,
+    );
   if (
     document.namespace === "matrixsmith" ||
     document.id === "iledhat-31ae-32x16"

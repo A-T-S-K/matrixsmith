@@ -7,6 +7,9 @@ import { FakeTransport } from "../../src/transport/fake";
 import { operationalTrust } from "../../src/investigation/claims";
 import { coolLedUxDriver } from "../../src/drivers/coolledux";
 import { knownIledHatFingerprint } from "../helpers/fixtures";
+import data from "../../src/profiles/data/authored-ux-banner.json";
+import { parseProfileDocument } from "../../src/profiles/document";
+import { registryWithLocalProfile } from "../../src/profiles/local-catalog";
 import {
   secondFingerprint,
   secondProfile,
@@ -15,6 +18,72 @@ import {
 } from "../helpers/second-coolledux-profile";
 
 describe("local second-profile contribution", () => {
+  it.each(["local", "provisional-banner", "protocol-candidate-banner"])(
+    "loads and reloads namespace %s as a profile-resolved target with valid diagnostic exports",
+    async (namespace) => {
+      const document = parseProfileDocument(
+        JSON.stringify({ ...data, namespace }),
+      );
+      const registry = registryWithLocalProfile(
+        document,
+        new DriverRegistry([coolLedUxDriver]),
+      );
+      const runtime = new ApplicationRuntime(
+        new FakeTransport(secondFingerprint()),
+        undefined,
+        registry,
+      );
+      const reloadedRegistry = registryWithLocalProfile(
+        parseProfileDocument(
+          JSON.stringify(registry.acceptedProfiles[0]!.document),
+        ),
+        new DriverRegistry([coolLedUxDriver]),
+      );
+      const imported = new ApplicationRuntime(
+        new FakeTransport(secondFingerprint()),
+        undefined,
+        reloadedRegistry,
+      );
+      try {
+        await runtime.connect();
+        const profile = registry.acceptedProfiles[0]!.profile;
+        expect(runtime.deviceTarget()).toMatchObject({
+          kind: "profile-resolved",
+          profile,
+        });
+        expect(runtime.guidedTestDefinitions()).toEqual([]);
+        expect(
+          runtime
+            .baselineClaimEvidence()
+            .some(({ scope }) => scope === "built-in-profile"),
+        ).toBe(false);
+        const plan = runtime.plan({ type: "GetDeviceInfo" });
+        for (const privacy of ["full-local-archive", "shareable"] as const) {
+          const exported = runtime.exportBundle(privacy);
+          const bundle = parseDiagnosticBundle(exported);
+          expect(bundle.selectedProfile).toBe(`${namespace}:${data.id}`);
+          expect(bundle.provisionalProfile).toBeUndefined();
+          imported.importBundle(exported);
+          expect(imported.deviceTarget()?.kind).toBe(
+            privacy === "full-local-archive"
+              ? "profile-resolved"
+              : "unresolved",
+          );
+          expect(imported.session.source).toBe("imported");
+          expect(imported.assessment().readiness).toBe("offline");
+          expect(imported.session.experimentalTxEnabled).toBe(false);
+          expect(imported.contentGates().every((gate) => !gate.allowed)).toBe(
+            true,
+          );
+          expect(imported.authorize(plan).allowed).toBe(false);
+          expect(() => imported.plan({ type: "GetDeviceInfo" })).toThrow();
+        }
+      } finally {
+        await runtime.dispose();
+        await imported.dispose();
+      }
+    },
+  );
   it("recognizes its own geometry while explicit geometry, manufacturer and GATT contradictions withdraw recognition", () => {
     const fingerprint = secondFingerprint();
     expect(secondProfileDriver.resolveProfile(fingerprint)).toBe(secondProfile);

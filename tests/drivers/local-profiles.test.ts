@@ -6,7 +6,10 @@ import {
   profileCompatibility,
 } from "../../src/profiles/document";
 import { acceptLocalProfile } from "../../src/profiles/registration";
-import { registryWithLocalProfile } from "../../src/profiles/local-catalog";
+import {
+  reviewLocalProfile,
+  registryWithLocalProfile,
+} from "../../src/profiles/local-catalog";
 import { builtInDrivers, DriverRegistry } from "../../src/drivers/registry";
 import {
   iledHat31aeProfile,
@@ -22,6 +25,23 @@ import {
 
 describe("bounded local profile registration", () => {
   const parse = (value: unknown) => parseProfileDocument(JSON.stringify(value));
+  it.each(["provisional", "protocol-candidate"])(
+    "keeps reserved runtime namespace %s inspectable but rejects review and direct acceptance",
+    (namespace) => {
+      const document = parse({ ...data, namespace });
+      const registry = new DriverRegistry(builtInDrivers);
+      expect(document.namespace).toBe(namespace);
+      expect(reviewLocalProfile(document, registry).join(" ")).toContain(
+        `Runtime namespace ${namespace} is reserved`,
+      );
+      expect(() => acceptLocalProfile(document)).toThrow("reserved");
+      expect(() => registryWithLocalProfile(document, registry)).toThrow(
+        "reserved",
+      );
+      expect(registry.acceptedProfiles).toEqual([]);
+      expect(registry.drivers[1]!.profiles()).toEqual([iledHat31aeProfile]);
+    },
+  );
   it("rejects malformed, oversized, deep, unsupported and forged documents", () => {
     for (const text of [
       "{",

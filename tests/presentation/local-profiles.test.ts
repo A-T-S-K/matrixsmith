@@ -33,6 +33,75 @@ function setup() {
   };
 }
 describe("local review and workspace publication", () => {
+  it("rejects runtime namespaces without installing and retains inspection details", async () => {
+    const { store, transports } = setup();
+    try {
+      const original = store.controller;
+      store.updateContentSettings({ text: "keep reserved-attempt draft" });
+      for (const namespace of ["provisional", "protocol-candidate"]) {
+        await store.reviewLocalProfile(JSON.stringify({ ...data, namespace }));
+        expect(store.getSnapshot().profileReview?.document?.namespace).toBe(
+          namespace,
+        );
+        expect(store.getSnapshot().profileReview?.problems.join(" ")).toContain(
+          "reserved",
+        );
+        store.loadLocalProfile();
+        expect(store.controller).toBe(original);
+        expect(store.getSnapshot().loadedProfiles).toEqual([]);
+        expect(store.getSnapshot().content.settings.text).toBe(
+          "keep reserved-attempt draft",
+        );
+      }
+      expect(transports).toHaveLength(1);
+    } finally {
+      await store.dispose();
+    }
+  });
+  it("preserves a pending valid review and existing registry, workspace and drafts after rejected attempts", async () => {
+    const { store } = setup();
+    try {
+      await store.reviewLocalProfile(JSON.stringify(data));
+      store.loadLocalProfile();
+      const original = store.controller;
+      const loaded = store.getSnapshot().loadedProfiles;
+      store.updateContentSettings({ text: "keep pending-review draft" });
+      store.updateGeometryDraft("width", "48");
+      store.updateGeometryDraft("height", "8");
+      const geometryDraft = store.getSnapshot().geometryDraft;
+      const valid = {
+        ...data,
+        namespace: "another-local",
+        matching: { ...data.matching, name: "another banner" },
+      };
+      await store.reviewLocalProfile(JSON.stringify(valid));
+      const review = store.getSnapshot().profileReview;
+      for (const text of [
+        JSON.stringify({ ...data, namespace: "provisional" }),
+        JSON.stringify({ ...data, namespace: "protocol-candidate" }),
+        JSON.stringify({ ...data, implementation: "uninstalled" }),
+        JSON.stringify(data),
+        "{bad",
+      ]) {
+        await store.reviewLocalProfile(text);
+        expect(store.getSnapshot().error).toBeTruthy();
+        expect(store.getSnapshot().profileReview).toBe(review);
+        expect(store.controller).toBe(original);
+        expect(store.getSnapshot().loadedProfiles).toEqual(loaded);
+        expect(store.getSnapshot().geometryDraft).toEqual(geometryDraft);
+        expect(store.getSnapshot().content.settings.text).toBe(
+          "keep pending-review draft",
+        );
+      }
+      store.loadLocalProfile();
+      expect(store.getSnapshot().loadedProfiles).toEqual([data, valid]);
+      expect(store.getSnapshot().content.settings.text).toBe(
+        "keep pending-review draft",
+      );
+    } finally {
+      await store.dispose();
+    }
+  });
   it("loads atomically without connecting or writing and preserves drafts", async () => {
     const { store, transports } = setup();
     try {

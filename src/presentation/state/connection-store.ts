@@ -87,9 +87,21 @@ export class ConnectionStore {
       const registry = problems.length
         ? null
         : registryWithLocalProfile(document, previous);
+      if (problems.length && this.preparedProfiles) {
+        this.ports.noticeStore().setError(problems.join(" "));
+        this.ports.snapshotStore()._emit();
+        return;
+      }
       this.preparedProfiles = registry ? { registry, previous } : null;
       this.profileReview = { document, problems, error: null };
     } catch (error) {
+      if (this.preparedProfiles) {
+        this.ports
+          .noticeStore()
+          .setError(error instanceof Error ? error.message : String(error));
+        this.ports.snapshotStore()._emit();
+        return;
+      }
       this.preparedProfiles = null;
       this.profileReview = {
         document: null,
