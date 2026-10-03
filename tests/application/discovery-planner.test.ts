@@ -4,7 +4,7 @@ import {
   discoveryCatalog,
   nextDiscoveryStep,
 } from "../../src/application/services/discovery-planner";
-import { machineOutcome } from "../../src/application/services/discovery-outcome";
+import { machineOutcome } from "../../src/application/discovery-outcome";
 import { discoveryDriver } from "../helpers/discovery-driver";
 import { syntheticFingerprint } from "../helpers/synthetic-driver";
 import type { ExecutionResult } from "../../src/app/executor";

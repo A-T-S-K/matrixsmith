@@ -532,6 +532,13 @@ describe("test-only third-family contracts", () => {
       expect(result.identification.matched).toBe(false);
       expect(runtime.deviceTarget()?.kind).toBe("unresolved");
       expect(transport.writeAttempts).toHaveLength(1);
+      await expect(
+        runtime.probe("test-lumen", "lumen-info"),
+      ).rejects.toMatchObject({ kind: "ambiguous" });
+      expect(transport.writeAttempts).toHaveLength(1);
+      await runtime.disconnect();
+      await runtime.connect();
+      runtime.session.enableExperimentalTx();
       transport.failWriteAt = transport.writes.length;
       await expect(runtime.probe("test-lumen", "lumen-info")).rejects.toThrow(
         /Injected write failure/,

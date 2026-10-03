@@ -8,6 +8,7 @@ export interface NotificationRecord {
   readonly rawHex: string;
   readonly decoded: DecodedNotification | null;
   readonly interpretationAmbiguous?: boolean;
+  readonly competingInterpretations?: readonly DecodedNotification[];
   readonly endpoint?: GattEndpoint;
   /** Internal live context; never imported/exported as correlation authority. */
   readonly connectionGeneration?: number;
@@ -36,7 +37,14 @@ interface Waiter {
 export class ResponseTimeoutError extends Error {}
 export const RESPONSE_AMBIGUITY_MESSAGE =
   "Response is ambiguous after an earlier unresolved request. Reconnect before establishing evidence.";
-export class ResponseAmbiguityError extends Error {}
+export class ResponseAmbiguityError extends Error {
+  constructor(
+    message: string,
+    readonly record: NotificationRecord | null = null,
+  ) {
+    super(message);
+  }
+}
 export class ResponseCancelledError extends Error {}
 
 export interface ArmedResponse {
@@ -175,11 +183,17 @@ export class NotificationRouter {
         )
       )
         continue;
-      if (record.interpretationAmbiguous) {
+      if (
+        record.interpretationAmbiguous &&
+        record.competingInterpretations?.some((decoded) =>
+          waiter.matches(decoded, waiter.expectation),
+        )
+      ) {
         this.#settle(
           waiter,
           new ResponseAmbiguityError(
             "Multiple valid decoder interpretations remain; identity was not established.",
+            record,
           ),
         );
         continue;
@@ -201,7 +215,7 @@ export class NotificationRouter {
     if (!this.#waiters.delete(waiter)) return;
     clearTimeout(waiter.timer);
     if (
-      !(error instanceof ResponseAmbiguityError) &&
+      (!(error instanceof ResponseAmbiguityError) || !!error.record) &&
       waiter.afterSequence !== null &&
       sameContext(this.#context, waiter.context)
     )

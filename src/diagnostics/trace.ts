@@ -31,6 +31,7 @@ export type TraceEventType =
   | "tx.response.matched"
   | "tx.response.timeout"
   | "tx.response.ambiguous"
+  | "discovery.progress"
   | "protocol.probe.started"
   | "protocol.probe.resolved"
   | "protocol.probe.rejected"

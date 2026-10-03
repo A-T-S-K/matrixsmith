@@ -11,7 +11,11 @@ import {
 import { packetHex } from "../../core/transmission";
 import type { TransactionSource } from "../../diagnostics/transactions";
 import { transactionId } from "../../diagnostics/transactions";
-import { candidateEndpoints, duration } from "./runtime-support";
+import {
+  candidateEndpoints,
+  decodePriority,
+  duration,
+} from "./runtime-support";
 
 import type { ManualObservation } from "../../core/evidence";
 import { type ImportedEvidenceSummary } from "../../diagnostics/bundle";
@@ -163,7 +167,7 @@ export class ProtocolEvidenceService {
       hex: record.rawHex,
       ...(record.endpoint ? { endpoint: record.endpoint } : {}),
       relation:
-        result?.responseRecord === record
+        result?.responseRecord === record && !result.responseAmbiguous
           ? ("matched-response" as const)
           : record.decoded?.kind.includes("receipt") &&
               record.endpoint &&
@@ -223,6 +227,7 @@ export class ProtocolEvidenceService {
       this.trace.record("notification.raw", { byteLength: raw.length }, raw);
     const fingerprint = session.fingerprint;
     const candidates: DecodedNotification[] = [];
+    const familyInterpretations: DecodedNotification[] = [];
     if (fingerprint)
       for (const driver of this.ports.identification().getRegistry().drivers) {
         if (!driver.decodeNotification || driver.match(fingerprint).score <= 0)
@@ -232,25 +237,56 @@ export class ProtocolEvidenceService {
           fingerprint,
           source: session.source,
         });
-        if (decoded) candidates.push(decoded);
+        if (decoded) {
+          candidates.push(decoded);
+          if (
+            !decoded.envelopeError &&
+            (
+              driver.familyProbes?.({
+                fingerprint,
+                endpoints: candidateEndpoints(fingerprint),
+                source: session.source,
+              }) ?? []
+            ).some((probe) => {
+              const meaning = probe.identify(
+                { response: decoded, responseTimedOut: false },
+                {
+                  fingerprint,
+                  endpoints: candidateEndpoints(fingerprint),
+                  source: session.source,
+                },
+              );
+              return meaning.matched || !!meaning.rejection;
+            })
+          )
+            familyInterpretations.push(decoded);
+        }
       }
-    // A malformed envelope cannot outrank a valid interpretation. Contradictory
-    // valid decoders remain ambiguous, regardless of global priority or order.
-    const valid = candidates.filter((candidate) => !candidate.envelopeError);
+    // Only reviewed family interpretations compete for identity. A generic
+    // unmapped envelope decoder is not an alternative family interpretation.
+    // Preserve ordinary control decoding; no global priority may choose between
+    // contradictory reviewed identity interpretations.
     const distinct = new Map(
-      valid.map((candidate) => [JSON.stringify(candidate), candidate]),
+      familyInterpretations.map((candidate) => [
+        JSON.stringify(candidate),
+        candidate,
+      ]),
     );
     const interpretationAmbiguous = distinct.size > 1;
     const decoded = interpretationAmbiguous
       ? null
       : ([...distinct.values()][0] ??
-        (candidates.length === 1 ? candidates[0]! : null));
+        candidates.sort((a, b) => decodePriority(b) - decodePriority(a))[0] ??
+        null);
     const incoming = {
       timestamp: recordedAt ?? new Date().toISOString(),
       raw,
       rawHex: packetHex(raw),
       decoded,
       interpretationAmbiguous,
+      ...(interpretationAmbiguous
+        ? { competingInterpretations: [...distinct.values()] }
+        : {}),
       ...(endpoint ? { endpoint: { ...endpoint } } : {}),
     };
     const record =

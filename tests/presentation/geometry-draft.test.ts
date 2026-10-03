@@ -35,7 +35,7 @@ it("keeps blank/raw drafts per workspace and authorized target, retaining text b
   try {
     await store.connect();
     runtime.session.enableExperimentalTx();
-    await store.identify();
+    await store.runDiagnostic("lumen-identify");
     expect(store.getSnapshot().geometryDraft).toMatchObject({
       width: "",
       height: "",

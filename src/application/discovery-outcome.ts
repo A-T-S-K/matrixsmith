@@ -1,5 +1,5 @@
-import type { IdentificationResult } from "../../drivers/types";
-import type { ExecutionResult } from "../../app/executor";
+import type { IdentificationResult } from "../drivers/types";
+import type { ExecutionResult } from "../app/executor";
 
 export type MachineOutcomeKind =
   | "identified"

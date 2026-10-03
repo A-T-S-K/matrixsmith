@@ -1,3 +1,4 @@
+import { DiscoveryService } from "./services/discovery-service";
 import { ConnectionService } from "./services/connection-service";
 import { DiagnosticsService } from "./services/diagnostics-service";
 import { ExperimentService } from "./services/experiment-service";
@@ -13,6 +14,7 @@ import type { MatrixTransport } from "./ports/transport";
 import { TraceRecorder } from "../diagnostics/trace";
 import { DriverRegistry, builtInDrivers } from "../drivers/registry";
 export class ApplicationRuntime {
+  private readonly discoveryService: DiscoveryService;
   private readonly connection: ConnectionService;
   private readonly diagnostics: DiagnosticsService;
   private readonly experiment: ExperimentService;
@@ -111,38 +113,63 @@ export class ApplicationRuntime {
       identification: () => this.identification,
     });
 
+    this.discoveryService = new DiscoveryService({
+      connection: () => this.connection,
+      identification: () => this.identification,
+      transmission: () => this.transmission,
+      evidence: () => this.protocolEvidence,
+    });
     this.transmission.initialize();
     this.connection.initialize();
     this.connect = this.connection.connect.bind(this.connection);
     this.reconnectAuthorized = this.connection.reconnectAuthorized.bind(
       this.connection,
     );
-    this.disconnect = this.connection.disconnect.bind(this.connection);
-    this.read = this.connection.read.bind(this.connection);
+    this.disconnect = () => {
+      this.discoveryService.retire();
+      return this.connection.disconnect();
+    };
+    this.read = (...args) => {
+      this.guardDiscovery();
+      return this.connection.read(...args);
+    };
     this.isNotificationActive = this.connection.isNotificationActive.bind(
       this.connection,
     );
-    this.enableNotifications = this.connection.enableNotifications.bind(
-      this.connection,
-    );
-    this.enableDriverNotifications =
-      this.connection.enableDriverNotifications.bind(this.connection);
+    this.enableNotifications = (...args) => {
+      this.guardDiscovery();
+      return this.connection.enableNotifications(...args);
+    };
+    this.enableDriverNotifications = (...args) => {
+      this.guardDiscovery();
+      return this.connection.enableDriverNotifications(...args);
+    };
     this.geometryProposal = this.identification.geometryProposal.bind(
       this.identification,
     );
-    this.useReportedGeometry = this.diagnostics.useReportedGeometry.bind(
-      this.diagnostics,
-    );
-    this.confirmProvisionalGeometry =
-      this.diagnostics.confirmProvisionalGeometry.bind(this.diagnostics);
+    this.useReportedGeometry = (...args) => {
+      this.guardDiscovery();
+      return this.diagnostics.useReportedGeometry(...args);
+    };
+    this.confirmProvisionalGeometry = (...args) => {
+      this.guardDiscovery();
+      return this.diagnostics.confirmProvisionalGeometry(...args);
+    };
     this.diagnosticTools = this.diagnostics.diagnosticTools.bind(
       this.diagnostics,
     );
-    this.runDiagnostic = this.diagnostics.runDiagnostic.bind(this.diagnostics);
-    this.beginExperiment = this.experiment.beginExperiment.bind(
-      this.experiment,
-    );
-    this.beginAttempt = this.experiment.beginAttempt.bind(this.experiment);
+    this.runDiagnostic = (...args) => {
+      this.guardDiscovery();
+      return this.diagnostics.runDiagnostic(...args);
+    };
+    this.beginExperiment = (...args) => {
+      this.guardDiscovery();
+      return this.experiment.beginExperiment(...args);
+    };
+    this.beginAttempt = (...args) => {
+      this.guardDiscovery();
+      return this.experiment.beginAttempt(...args);
+    };
     this.settleAttempt = this.experiment.settleAttempt.bind(this.experiment);
     this.inProgressAttempts = this.experiment.inProgressAttempts.bind(
       this.experiment,
@@ -159,10 +186,10 @@ export class ApplicationRuntime {
     this.retryableExperimentIds = this.experiment.retryableExperimentIds.bind(
       this.experiment,
     );
-    this.runGuidedTestTransfer =
-      this.guidedOrchestration.runGuidedTestTransfer.bind(
-        this.guidedOrchestration,
-      );
+    this.runGuidedTestTransfer = (...args) => {
+      this.guardDiscovery();
+      return this.guidedOrchestration.runGuidedTestTransfer(...args);
+    };
     this.guidedExecutionFingerprint =
       this.guidedOrchestration.guidedExecutionFingerprint.bind(
         this.guidedOrchestration,
@@ -228,9 +255,10 @@ export class ApplicationRuntime {
     this.availableEndpoints = this.identification.availableEndpoints.bind(
       this.identification,
     );
-    this.applyFingerprint = this.identification.applyFingerprint.bind(
-      this.identification,
-    );
+    this.applyFingerprint = (...args) => {
+      this.guardDiscovery();
+      return this.identification.applyFingerprint(...args);
+    };
     this.takeDetachedInvestigation =
       this.investigationService.takeDetachedInvestigation.bind(
         this.investigationService,
@@ -290,18 +318,29 @@ export class ApplicationRuntime {
       this.reportImport,
     );
     this.exportBundle = this.reportImport.exportBundle.bind(this.reportImport);
-    this.importBundle = this.reportImport.importBundle.bind(this.reportImport);
-    this.sendPersistentContent = this.transmission.sendPersistentContent.bind(
-      this.transmission,
-    );
-    this.importExternalLog = this.reportImport.importExternalLog.bind(
-      this.reportImport,
-    );
+    this.importBundle = (...args) => {
+      this.guardDiscovery();
+      return this.reportImport.importBundle(...args);
+    };
+    this.sendPersistentContent = (...args) => {
+      this.guardDiscovery();
+      return this.transmission.sendPersistentContent(...args);
+    };
+    this.importExternalLog = (...args) => {
+      this.guardDiscovery();
+      return this.reportImport.importExternalLog(...args);
+    };
     this.plan = this.transmission.plan.bind(this.transmission);
     this.authorize = this.transmission.authorize.bind(this.transmission);
     this.evaluate = this.transmission.evaluate.bind(this.transmission);
-    this.send = this.transmission.send.bind(this.transmission);
-    this.probe = this.transmission.probe.bind(this.transmission);
+    this.send = (...args) => {
+      this.guardDiscovery();
+      return this.transmission.send(...args);
+    };
+    this.probe = (...args) => {
+      this.guardDiscovery();
+      return this.transmission.probe(...args);
+    };
   }
   readonly connect: ConnectionService["connect"];
   readonly reconnectAuthorized: ConnectionService["reconnectAuthorized"];
@@ -428,5 +467,22 @@ export class ApplicationRuntime {
   get transport() {
     return this.connection.getTransport();
   }
-  dispose = (): Promise<void> => this.connection.dispose();
+  get discovery() {
+    return this.discoveryService.snapshot();
+  }
+  get discoveryBusy() {
+    return this.discoveryService.busy;
+  }
+  startDiscovery = (): Promise<void> => this.discoveryService.start();
+  stopDiscovery = (): void => this.discoveryService.stop();
+  private guardDiscovery(): void {
+    if (this.discoveryService.busy)
+      throw new Error(
+        "Display setup owns execution. Stop and wait for the pending check to settle before another operation.",
+      );
+  }
+  dispose = (): Promise<void> => {
+    this.discoveryService.dispose();
+    return this.connection.dispose();
+  };
 }

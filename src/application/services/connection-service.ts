@@ -108,6 +108,9 @@ export class ConnectionService {
   setConnectionEpoch(value: ConnectionService["_connectionEpoch"]): void {
     this._connectionEpoch = value;
   }
+  getConnectionGeneration() {
+    return this._lifetimeGeneration;
+  }
   getConnectionEpoch() {
     return this._connectionEpoch;
   }

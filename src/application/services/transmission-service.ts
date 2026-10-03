@@ -4,7 +4,7 @@ import {
   machineOutcome,
   ProbeStageError,
   type MachineOutcomeKind,
-} from "./discovery-outcome";
+} from "../discovery-outcome";
 import { RESPONSE_AMBIGUITY_MESSAGE } from "../../app/notifications";
 import { SHARED_OPERATIONS } from "../../domain/device/assessment";
 import { TransmissionAuthorization } from "../../app/transmission-authorization";
@@ -551,7 +551,8 @@ export class TransmissionService {
             tool.probeId === selectedProbeId,
         ) ?? [];
     if (
-      authoredTools.some((tool) => !tool.available) ||
+      (authoredTools.length > 0 &&
+        authoredTools.every((tool) => !tool.available)) ||
       familyProbe?.discovery?.available === false
     )
       throw new ProbeStageError(
@@ -718,7 +719,9 @@ export class TransmissionService {
     const interpretation = result.responseAmbiguous
       ? {
           matched: false as const,
-          reason: RESPONSE_AMBIGUITY_MESSAGE,
+          reason: result.responseRecord?.interpretationAmbiguous
+            ? "Multiple valid decoder interpretations remain; identity was not established. Review the exact evidence in Protocol workbench."
+            : RESPONSE_AMBIGUITY_MESSAGE,
         }
       : familyProbe
         ? familyProbe.identify(
@@ -752,7 +755,16 @@ export class TransmissionService {
         : interpretation && "reason" in interpretation
           ? interpretation
           : { matched: false, reason: "Unmapped interpretation." };
-    const outcome = machineOutcome(result, normalized);
+    const interpretedOutcome = machineOutcome(result, normalized);
+    const outcome =
+      interpretedOutcome === "rejected" &&
+      !normalized.matched &&
+      normalized.rejection &&
+      !(familyProbe?.discovery?.distinguishes ?? [driver.id]).includes(
+        normalized.rejection.driverId,
+      )
+        ? "inconclusive"
+        : interpretedOutcome;
     const identified = outcome === "identified" && normalized.matched;
     if (identified && (options.canAdopt?.() ?? true)) {
       session.recordCorrelatedResponse(result.responseRecord);

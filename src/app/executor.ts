@@ -272,6 +272,7 @@ export class TransmissionExecutor {
           });
         } else if (outcome.error instanceof ResponseAmbiguityError) {
           responseAmbiguous = true;
+          responseRecord = outcome.error.record;
           this.trace.record("tx.response.ambiguous", {
             planId: authorized.plan.id,
             message: errorMessage(outcome.error),
