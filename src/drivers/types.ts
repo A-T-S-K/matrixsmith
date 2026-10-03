@@ -200,6 +200,8 @@ export function describeCapabilityOperation(
 export interface MatrixDriver {
   readonly id: string;
   readonly family: string;
+  /** Application-owned reviewed content implementation, never supplied by profile data. */
+  readonly contentCodecId?: string;
   readonly identificationClaimId?: import("../investigation/claims").ClaimId;
   /** Additional conservative evidence requirements for shared ordinary controls. */
   readonly operationRequirements?: Readonly<

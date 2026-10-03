@@ -23,7 +23,10 @@ export type DiagnosticContentId =
   | "graffiti-timing-probe"
   | "animation-static-raster"
   | "pixel-channel-probe"
-  | "color-white-probe";
+  | "color-white-probe"
+  | "still-bootstrap"
+  | "still-raw-channels"
+  | "still-encoder";
 
 export type { DiagnosticRegion };
 
@@ -305,7 +308,8 @@ function orientationRegions(width: number, height: number): DiagnosticRegion[] {
     2,
     Math.min(3, Math.floor(Math.min(width, height) / 4)),
   );
-  const tileWidth = Math.max(1, Math.floor(width / 4));
+  const tileWidth = 8;
+  const tileCount = Math.ceil(width / tileWidth);
   const corners: readonly {
     id: string;
     name: string;
@@ -359,27 +363,26 @@ function orientationRegions(width: number, height: number): DiagnosticRegion[] {
       ],
     },
   }));
-  for (let index = 0; index < 4; index += 1) {
+  for (let index = 0; index < tileCount; index += 1) {
     const x = index * tileWidth;
     regions.push({
       id: `tile-${index + 1}`,
       groupId: "tiles",
       shortLabel: `T${index + 1}`,
       displayLabel: `Section ${index + 1}`,
-      description:
-        "One of the four vertical sections the panel is built from. All four should be present and aligned.",
+      description: `One of ${tileCount} eight-column codec tiles. All ${tileCount} should be present and aligned.`,
       x,
       y: 0,
-      width: index === 3 ? width - x : tileWidth,
+      width: Math.min(tileWidth, width - x),
       height,
       technical: {
         notes: [
-          `Vertical section covering columns ${x + 1}–${index === 3 ? width : x + tileWidth}.`,
+          `Vertical section covering columns ${x + 1}–${Math.min(width, x + tileWidth)}.`,
         ],
       },
     });
   }
-  for (let index = 1; index < 4; index += 1) {
+  for (let index = 1; index < tileCount; index += 1) {
     const x = index * tileWidth;
     regions.push({
       id: `seam-${index}`,
@@ -682,6 +685,86 @@ const colorWhiteProbe: DiagnosticContentDefinition = {
   },
 };
 
+/** Conservative domain of the installed 16-row, eight-column codec. */
+export function stillGeometryReason(profile: {
+  width: number;
+  height: number;
+}): string | null {
+  return profile.height === 16 &&
+    Number.isInteger(profile.width) &&
+    profile.width >= 16 &&
+    profile.width <= 64 &&
+    profile.width % 8 === 0
+    ? null
+    : "Still-image verification requires height 16 and width 16–64 divisible by eight. Other strides/layouts are not reviewed; use Protocol workbench or export a report.";
+}
+
+function stillPattern(width: number, height: number): Framebuffer {
+  const frame = orientationPattern(width, height);
+  // Each tile has its own staircase height: repeated or missing tiles are
+  // distinguishable without color. The left axis and top dots are asymmetric.
+  for (let tile = 0; tile < width / 8; tile += 1)
+    for (let y = 4; y < 5 + tile; y += 1)
+      frame.setPixel(tile * 8 + 4, y, 255, 255, 255);
+  return frame;
+}
+
+function fixedStillDefinition(
+  id: "still-bootstrap" | "still-raw-channels" | "still-encoder",
+): DiagnosticContentDefinition {
+  return {
+    id,
+    label: id,
+    description: "Fixed bounded single-frame Animation experiment.",
+    parameters: [],
+    rasterStrategy: () => "animation-single-frame",
+    build(profile, parameters) {
+      const reason = stillGeometryReason(profile);
+      if (reason) throw new Error(reason);
+      if (parameters && Object.keys(parameters).length)
+        throw new Error("This fixed experiment accepts no parameters.");
+      const { width, height } = profile;
+      const frame = stillPattern(width, height);
+      if (id !== "still-raw-channels")
+        return {
+          compiled: compileAnimationStaticFrame(frame, "single", 1000),
+          preview: frame,
+          contentType: "animation",
+          frameCount: 1,
+          frameDelaysMs: [1000],
+          regions: orientationRegions(width, height),
+        };
+      const words = new Uint16Array(width * height);
+      const regions: DiagnosticRegion[] = [];
+      [0x0f00, 0x00f0, 0x000f].forEach((word, index) => {
+        const x = 1 + index * 5;
+        for (let y = 3; y < 9; y += 1)
+          for (let px = x; px < x + 3; px += 1) words[y * width + px] = word;
+        regions.push({
+          id: `raw-${index}`,
+          groupId: "raw",
+          shortLabel: String(index + 1),
+          displayLabel: `Patch ${index + 1}`,
+          description: `Patch ${index + 1}, left to right, above a black background. Preview shows intended positions only.`,
+          x,
+          y: 3,
+          width: 3,
+          height: 6,
+          technical: { rawWord: word },
+        });
+      });
+      return {
+        compiled: compileAnimationRawWords([words], [1000], width, height),
+        preview: rawWordPreview(words, width, height),
+        contentType: "animation",
+        frameCount: 1,
+        frameDelaysMs: [1000],
+        regions,
+      };
+    },
+  };
+}
+
 /** The strategy identity of a diagnostic, or null when it tests no strategy. */
 export function diagnosticRasterStrategy(
   diagnosticId: string,
@@ -700,6 +783,9 @@ export const COOLLEDUX_DIAGNOSTIC_CONTENT: readonly DiagnosticContentDefinition[
     animationStaticRaster,
     pixelChannelProbe,
     colorWhiteProbe,
+    fixedStillDefinition("still-bootstrap"),
+    fixedStillDefinition("still-raw-channels"),
+    fixedStillDefinition("still-encoder"),
   ]);
 
 export function diagnosticContent(id: string): DiagnosticContentDefinition {

@@ -63,7 +63,12 @@ export class DriverRegistry {
       return `${accepted.document.implementation}/${accepted.definitionIdentity}`;
     if (profile === iledHat31aeProfile)
       return `coolledux-reviewed-v1/${ILEDHAT_DEFINITION_IDENTITY}`;
-    // No engine hash is fabricated for injected machinery or provisional geometry.
+    const codec = this.#drivers.find(
+      (driver) => driver.id === driverId,
+    )?.contentCodecId;
+    if (codec && profile?.id.startsWith("provisional:"))
+      return `${codec}/${profile.id}`;
+    // No engine hash is fabricated for injected machinery.
     return `${driverId}/unversioned:${profile?.id ?? "family-candidate"}`;
   }
 

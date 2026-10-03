@@ -148,7 +148,13 @@ describe("bounded local profile registration", () => {
         .claimEvidence?.(forged)
         .some((e) => e.scope === "built-in-profile"),
     ).toBe(false);
-    expect(coolLedUxDriver.guidedTests?.(forged)).toEqual([]);
+    expect(
+      coolLedUxDriver.guidedTests?.(forged)?.map((test) => test.id),
+    ).toEqual([
+      "coolledux-still-bootstrap",
+      "coolledux-still-channels",
+      "coolledux-still-encoder",
+    ]); // Application-owned experiments only; no inherited iLedHat suite/evidence.
     expect(
       coolLedUxDriver.capabilities(forged).find((c) => c.id === "brightness")
         ?.validation,

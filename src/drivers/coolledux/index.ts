@@ -1,3 +1,4 @@
+import { stillGeometryReason } from "./diagnostics";
 import type { Capability } from "../../core/capabilities";
 import type { DeviceFingerprint, DeviceProfile } from "../../core/device";
 import type { MatrixOperation } from "../../core/operations";
@@ -56,6 +57,7 @@ export const coolLedUxDriver: MatrixDriver = {
     SetPower: ["protocol.coolledux"],
   },
   family: "CoolLEDUX",
+  contentCodecId: "coolledux-reviewed-v1",
   identificationClaimId: "protocol.coolledux",
   // 0x31AE is the observed iLedHat company identifier; requesting it lets the
   // browser expose that manufacturer data without narrowing the chooser.
@@ -352,7 +354,7 @@ export function coolLedUxCapabilities(
         ? "Static frame (verified one-frame Animation route)"
         : "Static frame (stored program)",
       supported: true,
-      live: exact,
+      live: exact || stillGeometryReason(profile) === null,
       ...persistent,
       ...demonstrated,
     },
@@ -370,7 +372,7 @@ export function coolLedUxCapabilities(
         ? "Rendered text (via the verified static route)"
         : "Rendered text (stored program)",
       supported: true,
-      live: exact,
+      live: exact || stillGeometryReason(profile) === null,
       ...persistent,
       ...viaSubstrate,
     },

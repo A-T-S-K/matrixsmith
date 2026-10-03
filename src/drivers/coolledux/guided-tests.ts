@@ -1,3 +1,4 @@
+import { stillTests } from "./still-tests";
 import type { DeviceProfile } from "../../core/device";
 import type {
   ObservationFieldSpec,
@@ -1709,9 +1710,8 @@ export const ILEDHAT_GUIDED_TESTS: readonly GuidedTestDefinition[] =
     normalImageSmokeTest,
   ]);
 
-/** Generic CoolLEDUX tests applicable to any profile of the family. None exist yet. */
-export const COOLLEDUX_GENERIC_GUIDED_TESTS: readonly GuidedTestDefinition[] =
-  Object.freeze([]);
+/** Generic tests resolve their questions from the explicit codec geometry. */
+export const COOLLEDUX_GENERIC_GUIDED_TESTS = stillTests;
 
 /** Declarative applicability: which profiles each suite applies to. */
 function appliesToIledHat(profile: DeviceProfile): boolean {
@@ -1723,6 +1723,6 @@ export function coolLedUxGuidedTests(
 ): readonly GuidedTestDefinition[] {
   if (profile.driverId !== "coolledux") return [];
   return appliesToIledHat(profile)
-    ? [...ILEDHAT_GUIDED_TESTS, ...COOLLEDUX_GENERIC_GUIDED_TESTS]
-    : [...COOLLEDUX_GENERIC_GUIDED_TESTS];
+    ? [...ILEDHAT_GUIDED_TESTS]
+    : COOLLEDUX_GENERIC_GUIDED_TESTS(profile);
 }

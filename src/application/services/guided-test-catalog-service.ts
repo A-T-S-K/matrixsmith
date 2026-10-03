@@ -41,7 +41,7 @@ import type { TransmissionService } from "./transmission-service";
 interface Ports {
   identification(): Pick<
     import("./identification-service").IdentificationService,
-    "assessment" | "deviceTarget"
+    "assessment" | "deviceTarget" | "familyReadiness"
   >;
   connection(): Pick<ConnectionService, "getSession">;
   protocolEvidence(): Pick<
@@ -150,13 +150,23 @@ export class GuidedTestCatalogService {
       const reason =
         session.source !== "live"
           ? "Imported and historical contexts cannot execute registered tests."
-          : test.driverId !== session.selection?.selected?.id
-            ? "This registered test belongs to another driver."
-            : !guidedExecutionClass(test)
-              ? "Unsupported or unknown test consequence; only read-only queries and persistent content are supported."
-              : guidedExecutionClass(test) === "read-only-query" && test.timer
-                ? "Read-only queries cannot use stored-program observation timing."
-                : (this.queryRestriction(test) ?? availability.reason);
+          : test.id.startsWith("coolledux-still-") &&
+              (session.selection?.selected?.id !== "coolledux" ||
+                session.selection.selected.contentCodecId !==
+                  "coolledux-reviewed-v1" ||
+                this.ports.identification().familyReadiness().basis !==
+                  "current-live" ||
+                !["provisional", "profile-resolved"].includes(
+                  this.ports.identification().deviceTarget()?.kind ?? "",
+                ))
+            ? "A current bound CoolLEDUX family identification and explicit geometry are required; profile assertions are insufficient."
+            : test.driverId !== session.selection?.selected?.id
+              ? "This registered test belongs to another driver."
+              : !guidedExecutionClass(test)
+                ? "Unsupported or unknown test consequence; only read-only queries and persistent content are supported."
+                : guidedExecutionClass(test) === "read-only-query" && test.timer
+                  ? "Read-only queries cannot use stored-program observation timing."
+                  : (this.queryRestriction(test) ?? availability.reason);
       return {
         ...availability,
         available: availability.available && reason === null,
