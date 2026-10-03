@@ -25,7 +25,10 @@ interface Ports {
     "guidedTest" | "guidedTestOperation" | "planGuidedTest" | "guidedTests"
   >;
   connection(): Pick<ConnectionService, "getSession" | "patchSession">;
-  experiment(): Pick<ExperimentService, "beginExperiment" | "settleExperiment">;
+  experiment(): Pick<
+    ExperimentService,
+    "beginExperiment" | "settleExperiment" | "settleAttempt"
+  >;
   investigation(): Pick<
     InvestigationService,
     | "setInvestigation"
@@ -143,6 +146,14 @@ export class ObservationResolutionService {
         `Invalid guided-test observations: ${validationErrors.join(" ")}`,
       );
     const interpretation = test.interpret(values);
+    if (typeof executionDetails.attemptId === "string")
+      // Timed attempts close before the subsequent coverage/layout questions.
+      // Retain the complete validated answers on the same accepted attempt;
+      // keep its original measured timeline and transfer relationships.
+      this.ports.experiment().settleAttempt(executionDetails.attemptId, {
+        validity: "valid",
+        observations: values,
+      });
     const completedAt = new Date().toISOString();
     const evidence: ClaimEvidence[] = interpretation.claimUpdates.map(
       (update) => ({

@@ -106,7 +106,11 @@ preserve the prior valid candidate and allow retry. A changed target, connection
 geometry, definition, evidence or replacement review disables stale export and
 suppresses late success. Loaded-profile export uses the same supervised action.
 Attempt validity, measured timing and transfer provenance participate in the
-private review binding as well as generation checks. The supervised export
+private review binding as well as generation checks. Generation also validates
+and reinterprets the retained observations, compares their metrics with the
+derived claims, and checks measured durations against the retained timeline.
+Changed or incomplete observations cannot reuse previously successful claims
+to describe a completed candidate. The supervised export
 validates the exact formatted profile or evidence bytes against reload bounds
 before calling file/clipboard ports; an oversized formatted export preserves
 the accepted source and reports an error.

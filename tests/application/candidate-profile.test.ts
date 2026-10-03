@@ -25,6 +25,91 @@ import { COOLLED_ENDPOINT } from "../../src/drivers/coolled/common/gatt";
 import v1 from "../../src/profiles/data/authored-ux-banner.json";
 
 describe("portable candidate configuration, never authority", () => {
+  it("retains post-timing answers on the actual accepted attempt before deriving claims", async () => {
+    const { runtime } = await setupStill();
+    try {
+      const result = await observed(
+        runtime,
+        "coolledux-still-bootstrap",
+        bootstrapValues,
+      );
+      const timedValues = bootstrapValues.filter(
+        (value) => !["coverage", "layout"].includes(value.fieldId),
+      );
+      runtime.settleAttempt(result.attempt.attemptId, {
+        validity: "valid",
+        observations: timedValues,
+        timing: {
+          ...runtime.experiments[0]!.attempts[0]!.timing!,
+          values: timedValues,
+        },
+      });
+      const timeline = runtime.experiments[0]!.attempts[0]!.timing;
+      result.record();
+      expect(runtime.experiments[0]!.attempts[0]!.observations).toEqual(
+        bootstrapValues,
+      );
+      expect(runtime.experiments[0]!.attempts[0]!.timing).toBe(timeline);
+      expect(
+        buildCandidateProfile(runtime).document.candidate.history.testIds,
+      ).toEqual(["coolledux-still-bootstrap"]);
+    } finally {
+      await runtime.dispose();
+    }
+  });
+  it("rechecks retained observations and measured hold instead of trusting previously derived claims", async () => {
+    const { runtime } = await setupStill();
+    try {
+      await verifyStill(runtime);
+      const bootstrap = runtime.experiments[0]!.attempts[0]!;
+      const assertIncomplete = () => {
+        const candidate = buildCandidateProfile(runtime).document.candidate;
+        expect(candidate.history.status).toBe("incomplete");
+        expect(candidate).not.toHaveProperty("recommendation");
+      };
+      runtime.settleAttempt(bootstrap.attemptId, {
+        validity: "valid",
+        timing: { ...bootstrap.timing!, values: [] },
+      });
+      assertIncomplete();
+      const shortened = bootstrap.observations.map((value) =>
+        value.kind === "duration" && value.fieldId === "end"
+          ? { ...value, milliseconds: 1000 }
+          : value,
+      );
+      runtime.settleAttempt(bootstrap.attemptId, {
+        validity: "valid",
+        observations: shortened,
+        timing: { ...bootstrap.timing!, values: shortened },
+      });
+      assertIncomplete();
+      runtime.settleAttempt(bootstrap.attemptId, {
+        validity: "valid",
+        observations: bootstrap.observations,
+        timing: bootstrap.timing,
+      });
+      expect(
+        buildCandidateProfile(runtime).document.candidate.history.status,
+      ).toBe("locally-verified");
+      const encoder = runtime.experiments[2]!.attempts[0]!;
+      runtime.settleAttempt(encoder.attemptId, {
+        validity: "valid",
+        observations: encoder.observations.map((value) =>
+          value.kind === "boolean" && value.fieldId === "colors"
+            ? { ...value, value: "no" }
+            : value,
+        ),
+      });
+      assertIncomplete();
+      runtime.settleAttempt(encoder.attemptId, {
+        validity: "valid",
+        observations: [],
+      });
+      assertIncomplete();
+    } finally {
+      await runtime.dispose();
+    }
+  });
   it("requires retained valid measured attempts and matching successful transfers, even when claims remain", async () => {
     const { runtime } = await setupStill();
     try {

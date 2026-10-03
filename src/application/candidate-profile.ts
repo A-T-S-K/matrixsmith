@@ -2,6 +2,7 @@ import type { ApplicationRuntime } from "./runtime";
 import { definitionDigest } from "../core/transmission";
 import { parseDiagnosticBundle } from "../diagnostics/bundle";
 import { evaluateStaticViability } from "../investigation/static-viability";
+import { validateObservations } from "../investigation/observations";
 const STILL_TEST_IDS = [
   "coolledux-still-bootstrap",
   "coolledux-still-channels",
@@ -82,7 +83,33 @@ export function buildCandidateProfile(
     const transfer = runtime.transfers.find(
       (item) => item.attemptId === attempt?.attemptId,
     );
+    if (!attempt || !STILL_TEST_IDS.some((id) => id === entry.testId))
+      return false;
+    const test = runtime.guidedTest(entry.testId!);
+    // Retained claims alone cannot describe a completed local verification if
+    // their underlying observations or measured timeline have since changed.
+    if (
+      validateObservations(test.observation, attempt.observations).length ||
+      test.validate?.(attempt.observations).length ||
+      (test.timer &&
+        attempt.observations
+          .filter((value) => value.kind === "duration")
+          .some(
+            (value) =>
+              !attempt.timing?.values.some(
+                (recorded) =>
+                  JSON.stringify(recorded) === JSON.stringify(value),
+              ),
+          ))
+    )
+      return false;
+    const update = test
+      .interpret(attempt.observations)
+      .claimUpdates.find((item) => item.claimId === entry.claimId);
     return (
+      update?.status === entry.status &&
+      JSON.stringify(update.metrics ?? null) ===
+        JSON.stringify(entry.metrics ?? null) &&
       entry.scope === "current-session" &&
       STILL_TEST_IDS.some((id) => id === entry.testId) &&
       details?.profileId === profile.id &&
