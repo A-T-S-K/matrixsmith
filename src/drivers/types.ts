@@ -32,8 +32,9 @@ export interface DriverMatch {
 
 export interface DriverContext {
   readonly profile: DeviceProfile;
-  readonly fingerprint: DeviceFingerprint;
-  readonly source: "live" | "imported" | "fake" | "replay";
+  /** Null only in an explicit transport-free compiler context. */
+  readonly fingerprint: DeviceFingerprint | null;
+  readonly source: "live" | "imported" | "fake" | "replay" | "offline";
   /**
    * The session's validated static-raster delivery strategy, when one has
    * been physically established. Drivers route ShowFrame/ShowText through it
@@ -51,7 +52,7 @@ export interface DriverContext {
 export interface DriverNotificationContext {
   readonly profile: DeviceProfile | null;
   readonly fingerprint: DeviceFingerprint;
-  readonly source: DriverContext["source"];
+  readonly source: Exclude<DriverContext["source"], "offline">;
 }
 
 export interface DecodedNotification {
@@ -86,7 +87,7 @@ export interface DriverProbe {
 export interface CandidateContext {
   readonly fingerprint: DeviceFingerprint;
   readonly endpoints: readonly GattEndpoint[];
-  readonly source: DriverContext["source"];
+  readonly source: Exclude<DriverContext["source"], "offline">;
 }
 
 export interface ProbeResult {

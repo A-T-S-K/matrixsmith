@@ -37,3 +37,32 @@ purpose and interpretation of those fields remain unknown. Timing, persistence,
 read/notify responses and acknowledgements remain unestablished. GATT write
 response mode in the planned packets is a modeling choice, not proof of protocol
 acknowledgement or successful rendering.
+
+## Contribution and acceptance boundary
+
+The explicit offline catalog injects the real DriverRegistry and invokes
+MatrixDriver.plan with source `offline` and a null fingerprint. It pins a
+reviewed codec id and reference-definition digest. Compilation constructs no
+ApplicationRuntime, transport, target binding, recorder, content compilation
+record or investigation claims. Preview and packets are planned software output;
+responseExpectation `none` means no modeled response contract, not proof that a
+badge has no response. Persistence stays unknown and semantic risk is conservatively
+persistent (modeled program replacement). Timeout is inert plan metadata, not a
+measured transfer duration; no pacing is claimed.
+
+The contribution is absent from builtInDrivers and its discovery hints/probes
+are empty. FEE0/FEE1 and names produce only weak/candidate reasons. Missing GATT
+properties remain missing evidence; observed lack of Write or partial Read/Notify
+shapes contradict the cited layout. OEM Read/Write/Notify and open write-only
+legacy shapes are separately described, never authenticated. F055 is a distinct
+open next-gen service and is not compiled here. No chipset is inferred.
+
+Every plan is dry-run-only even if the driver is invoked in a live context.
+SafetyPolicy independently rejects that intent with a fully prepared plan,
+experimental permission and an exact persistent confirmation. Ordinary runtime
+send additionally requires a physical match, operation readiness and target-bound
+identity; source-only citations cannot satisfy those gates. Future live work
+requires reviewed hardware acceptance, endpoint/write-mode/timing/response and
+persistence investigation, codec-specific static-frame requirements, and explicit
+registry promotion. Shared CoolLEDUX static-strategy requirements were not relaxed.
+Bundle V3 and existing live contribution registrations remain unchanged.

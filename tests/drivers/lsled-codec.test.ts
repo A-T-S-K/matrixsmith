@@ -63,7 +63,7 @@ describe("source-scoped legacy codec", () => {
     expect(() =>
       encode({
         length: 1e12,
-        get 0() {
+        get 0(): number {
           throw Error("must not read");
         },
       }),
