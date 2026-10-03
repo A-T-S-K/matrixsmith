@@ -134,3 +134,15 @@ and originating connection/device metadata on the experimental provisional profi
 Manual entry stores `geometrySource: "user-confirmed"` and only that path populates
 `manuallyConfirmedGeometry`. Neither path establishes physical or capability claims.
 A conflicting response remains inspectable without replacing reviewed geometry.
+
+## Offline independent-family proof
+
+The [LSLED legacy reference](lsled-offline.md) shows a second family through the
+same MatrixDriver and injected DriverRegistry seams. `registry-core.ts` contains
+the matching/registration implementation without live codec imports;
+`registry.ts` retains live built-ins and their existing reviewed identities.
+`compileOfflineFrame` accepts only an explicit registered offline reference,
+uses `source: "offline"` with a null fingerprint, and requires driver-authored
+dry-run-only intent. Its small result is independent of Bundle V3 and
+ContentCompilationRecord. A reference cannot resolve a physical profile, and
+software layout tests do not replace deliberate hardware acceptance.

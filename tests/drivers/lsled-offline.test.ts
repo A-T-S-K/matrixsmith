@@ -95,6 +95,16 @@ describe("LSLED independent offline contribution", () => {
     );
     expect(result.reference.sourceBasis).toHaveLength(3);
     expect(result.plan.execution).toBe("dry-run-only");
+    expect(
+      lsledLegacyDriver.plan(
+        { type: "ShowFrame", frame: result.preview },
+        {
+          profile: offlineReference.profile,
+          fingerprint: fingerprint(),
+          source: "live",
+        },
+      ).execution,
+    ).toBe("dry-run-only");
     expect(result.plan).not.toHaveProperty("targetBinding");
     expect(result.plan).not.toHaveProperty("contentCompilation");
     expect(result.plan.responseExpectation).toEqual({ type: "none" });
@@ -232,10 +242,12 @@ describe("LSLED independent offline contribution", () => {
     const subscribe = vi.spyOn(transport, "subscribe");
     const write = vi.spyOn(transport, "write");
     const prior = JSON.stringify(runtime.session);
+    const priorEvents = runtime.trace.events.length;
     const priorTransactions = runtime.transactions.length;
     const priorCompilations = runtime.contentCompilations.length;
     const result = compileOfflineExample("checkerboard");
     expect(JSON.stringify(runtime.session)).toBe(prior);
+    expect(runtime.trace.events).toHaveLength(priorEvents);
     expect(runtime.transactions).toHaveLength(priorTransactions);
     expect(runtime.contentCompilations).toHaveLength(priorCompilations);
     expect(read).not.toHaveBeenCalled();
@@ -245,6 +257,19 @@ describe("LSLED independent offline contribution", () => {
     expect(read).not.toHaveBeenCalled();
     expect(subscribe).not.toHaveBeenCalled();
     expect(write).not.toHaveBeenCalled();
+    const binding = {
+      connectionId: transport.connectionId!,
+      fingerprintKey: "connected-test",
+      browserDeviceId: null,
+    };
+    const prepared = prepareTransmission(result.plan, binding);
+    await expect(
+      runtime.sendPersistentContent(prepared, { confirmedConsequence: true }),
+    ).rejects.toThrow();
+    expect(subscribe).not.toHaveBeenCalled();
+    expect(write).not.toHaveBeenCalled();
+    expect(runtime.transactions).toHaveLength(priorTransactions);
+    expect(runtime.contentCompilations).toHaveLength(priorCompilations);
     expect(transport.writes).toEqual([]);
     await runtime.disconnect();
   });

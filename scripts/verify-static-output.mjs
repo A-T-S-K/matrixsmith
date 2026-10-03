@@ -24,8 +24,8 @@ const required = [
 ];
 const failures = [];
 const INITIAL_ROUTE_JS_GZIP_LIMIT = 90 * 1024;
-// Provisional bounded profiles/advisory slice allowance; see docs/asset-budgets.md.
-const TOTAL_JS_GZIP_LIMIT = 220 * 1024;
+// Provisional independent offline-family allowance; see docs/asset-budgets.md.
+const TOTAL_JS_GZIP_LIMIT = 230 * 1024;
 for (const file of required)
   if (!existsSync(join(root, file)))
     failures.push(`Missing required static file: ${file}`);

@@ -1,7 +1,7 @@
 import type { DeviceProfile } from "../core/device";
 import type { MatrixOperation } from "../core/operations";
 import { definitionDigest, type TransmissionPlan } from "../core/transmission";
-import type { DriverRegistry } from "../drivers/registry";
+import type { DriverRegistry } from "../drivers/registry-core";
 import { Framebuffer } from "../render/framebuffer";
 export interface OfflineReferenceDefinition {
   readonly implementation: string;

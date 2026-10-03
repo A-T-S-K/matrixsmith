@@ -12,7 +12,11 @@ const appRoot = root;
 
 // Presentation mode uses the real framebuffer preview without constructing a
 // transport, loading a workspace, or consulting persisted device state.
-if (new URLSearchParams(location.search).get("demo") === "1") {
+if (new URLSearchParams(location.search).get("offline") === "lsled") {
+  void import("./ui/pages/OfflineLegacy").then(({ OfflineLegacy }) =>
+    render(<OfflineLegacy />, appRoot),
+  );
+} else if (new URLSearchParams(location.search).get("demo") === "1") {
   void import("./ui/pages/Demo").then(({ Demo }) => render(<Demo />, appRoot));
 } else {
   const updates =

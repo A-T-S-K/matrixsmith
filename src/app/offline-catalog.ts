@@ -1,4 +1,4 @@
-import { DriverRegistry } from "../drivers/registry";
+import { DriverRegistry } from "../drivers/registry-core";
 import { lsledLegacyDriver } from "../drivers/lsled";
 import {
   LSLED_CODEC_ID,

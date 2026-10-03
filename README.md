@@ -65,3 +65,7 @@ Review free-form notes and raw protocol content before sharing diagnostics; auto
 ## Distribution status
 
 This repository has no project `LICENSE`. MatrixSmith is described as source-available; no open-source license has been selected for it. [Third-party notices](THIRD_PARTY_NOTICES.md) preserve the notices for distributed runtime dependencies. Independently derived protocol implementations have separate provenance in `research/`.
+
+The [LSLED legacy offline reference](docs/lsled-offline.md) is reachable from Home
+without a device. It compiles one 44×11 monochrome bank and exposes a logical
+preview and exact planned packets; it does not establish live badge support.

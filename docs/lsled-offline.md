@@ -20,7 +20,7 @@ coordinate pairs map to six explicitly written 11-byte groups, with a literal
 header and padding. Tests compare complete bytes and every individual pixel.
 This is not a claim that the whole Flutter encoder was executed. No upstream
 code, fonts, glyph fixtures, vendor assets or manuals are redistributed. The app
-LICENSE at that revision is Apache-2.0; these independently authored vectors
+LICENSE at that revision and the firmware LICENSE.md are Apache-2.0; these independently authored vectors
 reuse layout facts only. See THIRD_PARTY_NOTICES.md.
 
 Conflicts are preserved: the app's getTime uses month+1 while the notes say month;
@@ -66,3 +66,17 @@ requires reviewed hardware acceptance, endpoint/write-mode/timing/response and
 persistence investigation, codec-specific static-frame requirements, and explicit
 registry promotion. Shared CoolLEDUX static-strategy requirements were not relaxed.
 Bundle V3 and existing live contribution registrations remain unchanged.
+
+## Using the inspection surface
+
+From Home select **Open offline LSLED preview**, or use `?offline=lsled`. This
+standalone lazy entry constructs no application runtime or hardware adapter.
+Choose Blank, Asymmetric markers or Checkerboard. The logical preview and
+single-packet inspector show planned bytes; packet indexes are zero-based, with
+byte offsets and exact service/characteristic endpoints. Explicit copy actions
+use the existing browser file adapter; all-packet copy emits one exact hex line
+per packet in order. Changing example or packet clears copy status and suppresses
+late completion; leaving the page discards its state. Copy and source-detail
+failures have accessible retry actions. Citations load only when details open.
+No Send or Connect action is present. Source detail is separated from the main
+preview to keep the small workflow useful on phone and desktop.

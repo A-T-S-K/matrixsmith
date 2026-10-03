@@ -33,3 +33,21 @@ lazy (13,346 bytes gzip in that candidate build), below its unchanged 90 KiB
 ceiling. Profile schemas are separate JSON assets included in offline caching;
 V3 schema, static/CSP/origin scanning and knowledge budget remain unchanged.
 Final exact costs are reported in chat; no Android performance inference is made.
+
+The independent LSLED offline-family slice provisionally raises the total ceiling
+from 220 to 230 KiB (235,520 bytes). A Vite measurement of the exact starting
+commit `8799007` with the installed Node 24.21.0/npm 11.19.0 measured 222,075 bytes
+gzip total and 13,373 bytes initial JavaScript. This was an isolated /tmp archive
+build with existing dependencies, not pinned-toolchain validation (the archive's
+schema generator path comparison was stale, so baseline measurement used Vite
+directly). The LSLED build measured 228,612 bytes total and 13,535 bytes initial,
+6,537 and 162 bytes growth respectively. The new page/compiler asset is about
+4.9 KiB gzip, with shared pure registry/framebuffer/preview dependencies. The
+registry core is separated from live driver composition to avoid importing the
+CoolLED codec graph into the offline preview. Existing live registry identity
+behavior remains tested. No new image, font, vendor or example asset is fetched;
+examples are authored bounded code. Source detail uses the existing on-demand
+knowledge JSON (194,051 raw / 30,487 gzip bytes, unchanged) and lazy resolver
+chunk (about 7.2 KiB gzip). Initial 90 KiB, knowledge 256 KiB, CSP, static and
+origin checks remain enforced. This is an asset allowance, with no Android
+performance claim.
