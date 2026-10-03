@@ -143,3 +143,14 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+### LSLED legacy reference facts
+
+The independent LSLED codec and authored sparse bitmap vectors refer to FOSSASIA
+badgemagic-firmware BadgeBLE.md / README.md at
+b2137f083bc24e212fe6281b53b26c1d511cd9b0 and badgemagic-app converters /
+data_to_bytearray_converter / corresponding tests at
+69377e7e97458e541d8bebd58793ad20833dfeb9 (app LICENSE: Apache-2.0).
+No upstream implementation, font, artwork or manual is redistributed. Layout
+facts and explicitly authored coordinate vectors are used for a narrow software
+conformance proof. Source links, conflicts and scope are in docs/lsled-offline.md.
