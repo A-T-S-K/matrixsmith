@@ -1,11 +1,26 @@
+import { normalizeVisualObservationProvenance } from "./visual-observation-privacy";
+
 /** Redact identifying free text without changing protocol enums or model IDs. */
 export function redactIdentifyingText<T>(
   value: T,
   identities: readonly string[],
 ): T {
-  const sensitive = [...new Set(identities.filter(Boolean))].sort(
-    (a, b) => b.length - a.length,
-  );
+  const bindings: string[] = [];
+  function collect(input: unknown): void {
+    if (Array.isArray(input)) input.forEach(collect);
+    else if (input && typeof input === "object") {
+      const record = normalizeVisualObservationProvenance(
+        input as Record<string, unknown>,
+      );
+      if (typeof record.physicalDeviceKey === "string")
+        bindings.push(record.physicalDeviceKey);
+      Object.values(record).forEach(collect);
+    }
+  }
+  collect(value);
+  const sensitive = [
+    ...new Set([...identities, ...bindings].filter(Boolean)),
+  ].sort((a, b) => b.length - a.length);
   const textKeys = new Set([
     "notes",
     "summary",
@@ -38,9 +53,12 @@ export function redactIdentifyingText<T>(
       return textKeys.has(key) ? redact(input) : input;
     if (Array.isArray(input)) return input.map((item) => visit(item, key));
     if (input && typeof input === "object") {
-      const record = input as Record<string, unknown>;
+      const record = normalizeVisualObservationProvenance(
+        input as Record<string, unknown>,
+      );
       const result: Record<string, unknown> = {};
       for (const [name, entry] of Object.entries(record)) {
+        if (name === "physicalDeviceKey" && key === "details") continue;
         if (name === "browserDeviceId" || name === "geometryBrowserDeviceId")
           continue;
         if (

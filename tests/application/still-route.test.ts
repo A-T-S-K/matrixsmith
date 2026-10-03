@@ -9,9 +9,21 @@ import info from "../fixtures/iledhat/coolledux-device-info-cc.json";
 import { COOLLED_ENDPOINT } from "../../src/drivers/coolled/common/gatt";
 import type { ObservationValue } from "../../src/investigation/observations";
 import { Framebuffer } from "../../src/render/framebuffer";
-async function setup(width = 32, height = 16, codec = true) {
+import {
+  createShareableBundle,
+  parseDiagnosticBundle,
+  serializeDiagnosticBundle,
+} from "../../src/diagnostics/bundle";
+import {
+  DEFAULT_REPORT_OPTIONS,
+  generateMarkdownReport,
+  reportDataFromBundle,
+} from "../../src/diagnostics/report";
+import { projectReportPrivacy } from "../../src/diagnostics/report-privacy";
+async function setup(width = 32, height = 16, codec = true, deviceId?: string) {
   const fingerprint = {
     ...knownIledHatFingerprint(),
+    ...(deviceId ? { browserDeviceId: deviceId } : {}),
     name: "Unfamiliar display",
     manufacturerDataHex: undefined,
     rawAdvertisementHex: undefined,
@@ -109,6 +121,129 @@ async function observed(
 }
 
 describe("unfamiliar static route authority", () => {
+  it("protects completed visual provenance in shareable exports and default reports while archives retain it without restoring authority", async () => {
+    const sentinel = "still-private-device-sentinel-9842";
+    const { runtime } = await setup(32, 16, true, sentinel);
+    const imported = new ApplicationRuntime(new FakeTransport());
+    try {
+      const result = await observed(
+        runtime,
+        "coolledux-still-bootstrap",
+        bootstrapValues,
+      );
+      result.record();
+      const evidence = runtime.investigation!.claimEvidence.filter(
+        (entry) => entry.testId === "coolledux-still-bootstrap",
+      );
+      expect(evidence.length).toBeGreaterThan(0);
+      for (const entry of evidence)
+        expect(entry.details).toMatchObject({
+          physicalDeviceKey: sentinel,
+          profileId: runtime.session.profile!.id,
+          width: 32,
+          height: 16,
+          attemptId: result.attempt.attemptId,
+          transactionIds: result.transfer.transactionIds.join(","),
+          finalWriteAcceptedAt: result.transfer.finalWriteAcceptedAt,
+        });
+      const before = JSON.stringify(runtime.investigation);
+      const archiveJson = runtime.exportBundle("full-local-archive");
+      const shareableJson = runtime.exportBundle("shareable");
+      expect(archiveJson).toContain(sentinel);
+      expect(shareableJson).not.toContain(sentinel);
+      const archive = parseDiagnosticBundle(archiveJson);
+      const shareable = parseDiagnosticBundle(shareableJson);
+      expect(
+        archive
+          .investigation!.claimEvidence.filter(
+            (entry) => entry.testId === "coolledux-still-bootstrap",
+          )
+          .map((entry) => entry.details),
+      ).toEqual(evidence.map((entry) => entry.details));
+      const sharedEvidence = shareable.investigation!.claimEvidence.filter(
+        (entry) => entry.testId === "coolledux-still-bootstrap",
+      );
+      expect(sharedEvidence).toHaveLength(evidence.length);
+      sharedEvidence.forEach((entry, index) => {
+        const { physicalDeviceKey: _binding, ...relationships } =
+          evidence[index]!.details!;
+        expect(entry.details).toEqual(relationships);
+        expect(entry.details!.definitionIdentity).toBeTruthy();
+        expect(entry.transactionIds).toEqual(result.transfer.transactionIds);
+        expect(entry.metrics).toEqual(evidence[index]!.metrics);
+      });
+      expect(shareable.investigation!.completedTests[0]!.observations).toEqual(
+        bootstrapValues,
+      );
+      expect(shareable.investigation!.completedTests[0]!.attempts).toEqual(
+        archive.investigation!.completedTests[0]!.attempts,
+      );
+      for (const report of [
+        runtime.testReportMarkdown("coolledux-still-bootstrap"),
+        runtime.investigationReportMarkdown(),
+        runtime.forensicReportMarkdown(),
+        generateMarkdownReport(reportDataFromBundle(archive), {
+          ...DEFAULT_REPORT_OPTIONS,
+          includeRawTrace: true,
+        }),
+      ])
+        expect(report).not.toContain(sentinel);
+      expect(JSON.stringify(runtime.investigation)).toBe(before);
+
+      // Previously generated provenance must be protected even when the original
+      // device binding no longer appears in the bundle's current fingerprint.
+      const legacy = structuredClone(archive);
+      const legacySentinel = "historical-still-device-sentinel-5137";
+      for (const entry of legacy.investigation!.claimEvidence) {
+        if (entry.testId !== "coolledux-still-bootstrap") continue;
+        const details = entry.details as Record<
+          string,
+          string | number | boolean
+        >;
+        delete details.physicalDeviceKey;
+        details.target = legacySentinel;
+      }
+      const legacyBefore = serializeDiagnosticBundle(legacy);
+      const legacyShareable = serializeDiagnosticBundle(
+        createShareableBundle(legacy),
+      );
+      expect(legacyShareable).not.toContain(legacySentinel);
+      expect(JSON.stringify(projectReportPrivacy(legacy))).not.toContain(
+        legacySentinel,
+      );
+      expect(
+        generateMarkdownReport(reportDataFromBundle(legacy)),
+      ).not.toContain(legacySentinel);
+      expect(serializeDiagnosticBundle(legacy)).toBe(legacyBefore);
+      expect(projectReportPrivacy(legacy, true)).toBe(legacy);
+      for (const json of [
+        archiveJson,
+        shareableJson,
+        legacyBefore,
+        legacyShareable,
+      ]) {
+        expect(parseDiagnosticBundle(json).investigation).not.toBeNull();
+        imported.importBundle(json);
+        expect(
+          imported.investigation!.claimEvidence.every(
+            (entry) => entry.scope !== "current-session",
+          ),
+        ).toBe(true);
+        expect(imported.staticViability().selected).toBeNull();
+        expect(imported.session.experimentalTxEnabled).toBe(false);
+        expect(imported.session.confirmedPlanDigest).toBeNull();
+        expect(imported.guidedTests().every((entry) => !entry.available)).toBe(
+          true,
+        );
+        expect(
+          imported.assessment().capabilities["static-frame"].availability,
+        ).toBe("blocked");
+      }
+    } finally {
+      await runtime.dispose();
+      await imported.dispose();
+    }
+  });
   it("starts with no inherited upload evidence, and sends only a reviewed bootstrap without acquiring physical claims", async () => {
     const { runtime } = await setup();
     try {

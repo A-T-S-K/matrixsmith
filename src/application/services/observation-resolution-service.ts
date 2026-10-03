@@ -123,7 +123,8 @@ export class ObservationResolutionService {
           "The measured timeline must belong to the accepted diagnostic attempt.",
         );
       executionDetails = {
-        target: transfer.fingerprint.physicalDeviceKey ?? "fingerprint-shape",
+        physicalDeviceKey:
+          transfer.fingerprint.physicalDeviceKey ?? "fingerprint-shape",
         profileId: session.profile!.id,
         width: session.profile!.width,
         height: session.profile!.height,

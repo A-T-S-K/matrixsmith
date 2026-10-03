@@ -5,6 +5,51 @@ import { ScriptedCoolLedUxDevice } from "../helpers/scripted-device";
 import { knownIledHatFingerprint } from "../helpers/fixtures";
 import { createPresentationStore } from "../helpers/presentation-fixture";
 import { projectReportPrivacy } from "../../src/diagnostics/report-privacy";
+import { redactIdentifyingText } from "../../src/diagnostics/shareable-text";
+
+it("scopes legacy visual targets and protects standalone provenance and explanatory repeats", () => {
+  const binding = "standalone-private-visual-binding";
+  const input = {
+    claimEvidence: [
+      {
+        claimId: "stored-program.upload",
+        testId: "coolledux-still-bootstrap",
+        details: { target: binding, attemptId: "attempt:1" },
+        summary: `Observed on ${binding}`,
+      },
+      {
+        claimId: "stored-program.upload",
+        testId: "coolledux-still-encoder",
+        details: { physicalDeviceKey: binding, attemptId: "attempt:2" },
+      },
+      {
+        claimId: "other",
+        testId: "unrelated-test",
+        details: { target: "semantic-target" },
+      },
+    ],
+    operation: { target: "semantic-target" },
+    trace: [{ metadata: { fingerprint: `device:${binding}|diagnostic` } }],
+  };
+  const before = JSON.stringify(input);
+  for (const projection of [
+    projectReportPrivacy(input),
+    redactIdentifyingText(input, []),
+  ]) {
+    expect(projection.claimEvidence[0]!.details).toEqual({
+      attemptId: "attempt:1",
+    });
+    expect(projection.claimEvidence[1]!.details).toEqual({
+      attemptId: "attempt:2",
+    });
+    expect(projection.claimEvidence[0]!.summary).not.toContain(binding);
+    expect(projection.claimEvidence[2]!.details.target).toBe("semantic-target");
+    expect(projection.operation.target).toBe("semantic-target");
+  }
+  expect(JSON.stringify(projectReportPrivacy(input))).not.toContain(binding);
+  expect(projectReportPrivacy(input, true)).toBe(input);
+  expect(JSON.stringify(input)).toBe(before);
+});
 
 const identities = [
   "SYNTHETIC-DEVICE-WAVE-THREE",

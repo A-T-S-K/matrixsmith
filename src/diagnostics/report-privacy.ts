@@ -1,3 +1,5 @@
+import { normalizeVisualObservationProvenance } from "./visual-observation-privacy";
+
 export interface ReportPrivacyContext {
   readonly deviceName: string | null;
   readonly deviceBinding: { readonly fingerprintKey: string } | null;
@@ -44,6 +46,8 @@ const textKeys = new Set([
   "whatMatrixSmithDoes",
   "whyRelevant",
   "geometryRationale",
+  // Transfer trace metadata repeats the physical binding in a composite key.
+  "fingerprint",
 ]);
 
 /** Collect known identities before projecting, including their explanatory repeats. */
@@ -64,7 +68,9 @@ export function projectReportPrivacy<T>(
       for (const entry of value) collect(entry, context);
       return;
     }
-    for (const [key, entry] of Object.entries(value)) {
+    for (const [key, entry] of Object.entries(
+      normalizeVisualObservationProvenance(value as Record<string, unknown>),
+    )) {
       const advertisement =
         context.includes("advertisement") ||
         context.includes("manufacturerData") ||
@@ -107,8 +113,11 @@ export function projectReportPrivacy<T>(
     if (Array.isArray(value))
       return value.map((entry) => visit(entry, key, context));
     const result: Record<string, unknown> = {};
-    for (const [name, entry] of Object.entries(value)) {
+    for (const [name, entry] of Object.entries(
+      normalizeVisualObservationProvenance(value as Record<string, unknown>),
+    )) {
       if (identifyingKeys.has(name) || name === "advertisementEvidence") {
+        if (name === "physicalDeviceKey" && key === "details") continue;
         if (name === "physicalDeviceKey") result[name] = null;
         else if (
           name === "fingerprintKey" ||
