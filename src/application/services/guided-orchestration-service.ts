@@ -60,6 +60,11 @@ interface Ports {
   experiment(): Pick<ExperimentService, "settleAttempt">;
 }
 export class GuidedOrchestrationService {
+  // Ephemeral authority: never serialized or restored from reports/history.
+  private readonly acceptedAttemptDigests = new Map<string, string>();
+  acceptedAttemptDigest(attemptId: string): string | null {
+    return this.acceptedAttemptDigests.get(attemptId) ?? null;
+  }
   constructor(private readonly ports: Ports) {}
   async runGuidedTestTransfer(
     testId: string,
@@ -243,6 +248,8 @@ export class GuidedOrchestrationService {
         .getTransactions()
         .slice(transactionIndex)
         .map(({ id }) => id);
+      if ("digest" in plan && typeof plan.digest === "string")
+        this.acceptedAttemptDigests.set(options.attemptId, plan.digest);
       this._recordTransfer(
         {
           transferId,

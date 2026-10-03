@@ -1,3 +1,4 @@
+import { stillTests } from "./still-tests";
 import type { CorePlan } from "../../investigation/core-plan";
 import type { DeviceProfile } from "../../core/device";
 import {
@@ -144,5 +145,21 @@ export const ILEDHAT_CORE_PLAN: CorePlan = {
 };
 
 export function coolLedUxCorePlan(profile: DeviceProfile): CorePlan | null {
-  return isReviewedIledHat(profile) ? ILEDHAT_CORE_PLAN : null;
+  if (isReviewedIledHat(profile)) return ILEDHAT_CORE_PLAN;
+  const tests = stillTests(profile);
+  return tests.length
+    ? {
+        id: "coolledux-still-goal",
+        profileId: profile.id,
+        title: "Verify one still-image route",
+        steps: tests.map((test, index) => ({
+          id: test.id,
+          ordinal: index + 1,
+          title: test.title,
+          purpose: test.about.question,
+          testIds: [test.id],
+          satisfiedBy: test.targetClaims,
+        })),
+      }
+    : null;
 }

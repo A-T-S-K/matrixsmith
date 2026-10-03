@@ -16,15 +16,24 @@ import type { ExperimentService } from "./experiment-service";
 import type { InvestigationService } from "./investigation-service";
 import type { ProtocolEvidenceService } from "./protocol-evidence-service";
 interface Ports {
+  guidedOrchestration(): Pick<
+    import("./guided-orchestration-service").GuidedOrchestrationService,
+    "acceptedAttemptDigest"
+  >;
   guidedTestCatalog(): Pick<
     GuidedTestCatalogService,
-    "guidedTest" | "guidedTestOperation"
+    "guidedTest" | "guidedTestOperation" | "planGuidedTest" | "guidedTests"
   >;
   connection(): Pick<ConnectionService, "getSession" | "patchSession">;
   experiment(): Pick<ExperimentService, "beginExperiment" | "settleExperiment">;
   investigation(): Pick<
     InvestigationService,
-    "setInvestigation" | "ensureInvestigation" | "allClaimEvidence"
+    | "setInvestigation"
+    | "ensureInvestigation"
+    | "allClaimEvidence"
+    | "orchestration"
+    | "panelProgram"
+    | "getInvestigation"
   >;
   protocolEvidence(): Pick<ProtocolEvidenceService, "getTrace">;
 }
@@ -51,6 +60,79 @@ export class ObservationResolutionService {
       throw new Error(
         "Guided test observations require a live physical device session.",
       );
+    let executionDetails: Record<string, string | number | boolean> = {};
+    if (testId.startsWith("coolledux-still-")) {
+      const availability = this.ports
+        .guidedTestCatalog()
+        .guidedTests()
+        .find(({ test }) => test.id === testId);
+      const plan = this.ports.guidedTestCatalog().planGuidedTest(testId);
+      const owner = this.ports.investigation();
+      const transfer = [...owner.orchestration.transfers]
+        .reverse()
+        .find(
+          (entry) =>
+            entry.fingerprint.testId === testId &&
+            entry.transactionIds.length > 0 &&
+            entry.transactionIds.every((id) => transactionIds.includes(id)),
+        );
+      const attempt = owner.orchestration.experiments
+        .flatMap((run) => run.attempts)
+        .find((entry) => entry.attemptId === transfer?.attemptId);
+      const panel = owner.panelProgram();
+      if (
+        !availability?.available ||
+        !transfer ||
+        transfer.failureReason ||
+        !transfer.finalWriteAcceptedAt ||
+        attempt?.validity !== "valid" ||
+        owner.getInvestigation()?.status !== "active" ||
+        !owner.orchestration.experiments.some(
+          (run) =>
+            run.status === "in-progress" &&
+            run.attempts.some((entry) => entry.attemptId === attempt.attemptId),
+        ) ||
+        !("digest" in plan) ||
+        this.ports
+          .guidedOrchestration()
+          .acceptedAttemptDigest(attempt.attemptId) !== plan.digest ||
+        panel.certainty !== "known-active" ||
+        panel.fingerprint?.key !== transfer.fingerprint.key ||
+        transfer.fingerprint.profileId !== session.profile?.id ||
+        transfer.fingerprint.programCrc32 !== plan.metadata.crc32
+      )
+        throw new Error(
+          "This observation has no valid current-target diagnostic attempt; explicitly review and retry.",
+        );
+      if (
+        test.timer &&
+        (!attempt.timing ||
+          attempt.timing.validity !== "valid" ||
+          attempt.timing.t0 !== transfer.finalWriteAcceptedAt ||
+          values
+            .filter((value) => value.kind === "duration")
+            .some(
+              (value) =>
+                !attempt.timing!.values.some(
+                  (recorded) =>
+                    JSON.stringify(recorded) === JSON.stringify(value),
+                ),
+            ))
+      )
+        throw new Error(
+          "The measured timeline must belong to the accepted diagnostic attempt.",
+        );
+      executionDetails = {
+        target: transfer.fingerprint.physicalDeviceKey ?? "fingerprint-shape",
+        profileId: session.profile!.id,
+        width: session.profile!.width,
+        height: session.profile!.height,
+        definitionIdentity: String(plan.metadata.definitionIdentity),
+        attemptId: attempt.attemptId,
+        transactionIds: transfer.transactionIds.join(","),
+        finalWriteAcceptedAt: transfer.finalWriteAcceptedAt,
+      };
+    }
     const validationErrors = [
       ...validateObservations(test.observation, values),
       ...(test.validate?.(values) ?? []),
@@ -72,7 +154,7 @@ export class ObservationResolutionService {
         testId,
         transactionIds,
         ...(update.metrics ? { metrics: update.metrics } : {}),
-        ...(update.details ? { details: update.details } : {}),
+        details: { ...update.details, ...executionDetails },
       }),
     );
     const resolvedOperation = this.ports

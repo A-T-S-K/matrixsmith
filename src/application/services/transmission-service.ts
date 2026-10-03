@@ -209,9 +209,42 @@ export class TransmissionService {
     return decision;
   }
   evaluate(plan: TransmissionPlan): PolicyDecision {
+    const contentCapabilities = {
+      ShowFrame: "static-frame",
+      ShowText: "text",
+      ShowAnimation: "animation",
+      ShowScrollingText: "animation",
+      ShowGif: "gif",
+    } as const;
     const capabilityId =
-      SHARED_OPERATIONS[plan.operation.type as keyof typeof SHARED_OPERATIONS];
+      SHARED_OPERATIONS[
+        plan.operation.type as keyof typeof SHARED_OPERATIONS
+      ] ??
+      contentCapabilities[
+        plan.operation.type as keyof typeof contentCapabilities
+      ];
     const readinessReasons: string[] = [];
+    if (
+      plan.operation.type === "ShowDiagnostic" &&
+      plan.operation.diagnosticId.startsWith("still-")
+    ) {
+      const operation = plan.operation;
+      const availability = this.ports
+        .guidedTestCatalog()
+        .guidedTests()
+        .find(
+          ({ test }) =>
+            test.operation.type === "ShowDiagnostic" &&
+            test.operation.diagnosticId === operation.diagnosticId,
+        );
+      if (!availability?.available)
+        readinessReasons.push(
+          availability?.reason ??
+            "This fixed experiment is not registered for the current target.",
+        );
+      if (operation.parameters && Object.keys(operation.parameters).length)
+        readinessReasons.push("This fixed experiment accepts no parameters.");
+    }
     if (capabilityId) {
       const assessment = this.ports.identification().assessment();
       const capability = assessment.capabilities[capabilityId];

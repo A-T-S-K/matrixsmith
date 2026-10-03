@@ -90,6 +90,7 @@ export class ApplicationRuntime {
       protocolEvidence: () => this.protocolEvidence,
     });
     this.observationResolution = new ObservationResolutionService({
+      guidedOrchestration: () => this.guidedOrchestration,
       guidedTestCatalog: () => this.guidedTestCatalog,
       connection: () => this.connection,
       experiment: () => this.experiment,
