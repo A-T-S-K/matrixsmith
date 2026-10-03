@@ -1,8 +1,4 @@
 import { normalizeUuid, type DeviceFingerprint } from "../core/device";
-import {
-  COOLLED_IO_UUID,
-  COOLLED_SERVICE_UUID,
-} from "../drivers/coolled/common/gatt";
 import { ILEDHAT_DOCUMENT, ILEDHAT_PROFILE_ID } from "./iledhat-31ae-32x16";
 
 /**
@@ -72,8 +68,8 @@ function companyPrefix(companyId: number): string {
 export const ILEDHAT_SIGNATURE: KnownProfileSignature = Object.freeze({
   profileId: ILEDHAT_PROFILE_ID,
   name: ILEDHAT_DOCUMENT.matching.name,
-  serviceUuid: COOLLED_SERVICE_UUID,
-  characteristicUuid: COOLLED_IO_UUID,
+  serviceUuid: ILEDHAT_DOCUMENT.matching.serviceUuid,
+  characteristicUuid: ILEDHAT_DOCUMENT.matching.characteristicUuid,
   companyId: ILEDHAT_DOCUMENT.contradictions.companyId,
   ...ILEDHAT_DOCUMENT.dimensions,
   driverId: "coolledux",

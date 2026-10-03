@@ -38,7 +38,7 @@ export async function startApplication(
     (import.meta.env.DEV && simulation === "experimental"
       ? (await import("./dev/experimental-registry")).experimentalRegistry()
       : undefined);
-  const createLiveWorkspace = () => {
+  const createLiveWorkspace = (acceptedRegistry = registry) => {
     const trace = new TraceRecorder();
     const transport = synthetic
       ? synthetic.createTransport()
@@ -50,7 +50,11 @@ export async function startApplication(
             simulation === "unknown",
           )
         : new WebBluetoothTransport(trace);
-    const controller = new ApplicationRuntime(transport, trace, registry);
+    const controller = new ApplicationRuntime(
+      transport,
+      trace,
+      acceptedRegistry,
+    );
     trace.record("app.started", {
       webBluetoothSupported: "bluetooth" in navigator,
     });

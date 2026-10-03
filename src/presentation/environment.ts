@@ -7,7 +7,9 @@ import type { TransferWakeLock } from "../app/wake-lock";
 import type { HashRouter } from "./app/routes";
 
 export interface PresentationEnvironment {
-  createLiveWorkspace(): {
+  createLiveWorkspace(
+    registry?: import("../drivers/registry").DriverRegistry,
+  ): {
     controller: ApplicationRuntime;
     transport: MatrixTransport;
   };

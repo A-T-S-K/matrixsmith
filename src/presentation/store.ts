@@ -197,6 +197,12 @@ export class PresentationStore {
     this.setTransactionSearch = this.reportStore.setTransactionSearch.bind(
       this.reportStore,
     );
+    this.reviewLocalProfile = this.connectionStore.reviewLocalProfile.bind(
+      this.connectionStore,
+    );
+    this.loadLocalProfile = this.connectionStore.loadLocalProfile.bind(
+      this.connectionStore,
+    );
     this.connect = this.connectionStore.connect.bind(this.connectionStore);
     this.disconnect = this.connectionStore.disconnect.bind(
       this.connectionStore,
@@ -398,6 +404,8 @@ export class PresentationStore {
   readonly setReportOptions: ReportStore["setReportOptions"];
   readonly setTransactionFilter: ReportStore["setTransactionFilter"];
   readonly setTransactionSearch: ReportStore["setTransactionSearch"];
+  readonly reviewLocalProfile: ConnectionStore["reviewLocalProfile"];
+  readonly loadLocalProfile: ConnectionStore["loadLocalProfile"];
   readonly connect: ConnectionStore["connect"];
   readonly reconnectAndReviewDraft: ContentSendStore["reconnectAndReviewDraft"];
   readonly disconnect: ConnectionStore["disconnect"];

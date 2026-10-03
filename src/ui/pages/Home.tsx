@@ -2,6 +2,7 @@ import { readBoundedText } from "../../application/file-input";
 import type { JSX } from "preact";
 import { useState } from "preact/hooks";
 import { UnavailableAction } from "../components/UnavailableAction";
+import { ProfileReview } from "../components/ProfileReview";
 import { FileButton } from "../components/FileButton";
 import { parseServiceHints } from "../../presentation/service-hints";
 import type {
@@ -12,6 +13,9 @@ import type {
 
 /** The intentionally small contract used by both the cold Home shell and the full store. */
 export interface HomeSnapshot {
+  readonly profileReview?: AppSnapshot["profileReview"];
+  readonly loadedProfiles?: AppSnapshot["loadedProfiles"];
+  readonly profileLoadReason?: string | null;
   readonly source: AppSnapshot["source"];
   readonly liveConnected: boolean;
   readonly device: Pick<NonNullable<AppSnapshot["device"]>, "name"> | null;
@@ -34,6 +38,8 @@ export interface HomeStore {
   ): void | Promise<void>;
   setView(view: WorkspaceView): void;
   disconnect(): void | Promise<void>;
+  reviewLocalProfile?(text: string): void | Promise<void>;
+  loadLocalProfile?(): void;
   importBundle(json: string): void | Promise<void>;
   importExternalCapture(content: string): void | Promise<void>;
   returnToLiveWorkspace(): void;
@@ -175,6 +181,29 @@ export function Home({
           </UnavailableAction>
         </article>
         <article class="task-card">
+          <span class="task-icon">▤</span>
+          <h2>Local support profile</h2>
+          <p>
+            Review a JSON definition for an installed protocol implementation
+            before connecting.
+          </p>
+          <FileButton
+            disabled={Boolean(snapshot.busy)}
+            accept=".json,application/json"
+            onFile={async (file) => {
+              if (file.size > 16384)
+                throw new Error("Profile exceeds the 16 KiB input limit.");
+              await store.reviewLocalProfile?.(await file.text());
+            }}
+          >
+            Choose local profile →
+          </FileButton>
+          <p class="fineprint">
+            Loading is local to this browser session. It establishes no physical
+            support or send permission.
+          </p>
+        </article>
+        <article class="task-card">
           <span class="task-icon">⇧</span>
           <h2>Open diagnostic report</h2>
           <p>Review a portable MatrixSmith JSON bundle entirely offline.</p>
@@ -208,6 +237,7 @@ export function Home({
           </FileButton>
         </article>
       </section>
+      <ProfileReview snapshot={snapshot} store={store} />
       {snapshot.liveWorkspaceAvailable && (
         <section class="authorized">
           <h2>

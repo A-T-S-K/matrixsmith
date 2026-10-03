@@ -16,6 +16,9 @@ const SHELL_FILES = [
   "./icon-512.png",
   "./icon-maskable-512.png",
   "./bundle-v3.schema.json",
+  "./profile-v1.schema.json",
+  "./knowledge-v1.schema.json",
+  "./knowledge-v1.json",
   "./third-party-notices.txt",
 ];
 

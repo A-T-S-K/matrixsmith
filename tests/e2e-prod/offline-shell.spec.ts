@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { expect, test } from "@playwright/test";
 
 test("built production shell navigates and reloads offline", async ({
@@ -36,6 +37,19 @@ test("built production shell navigates and reloads offline", async ({
     );
   });
   expect(cached.every(({ cached }) => cached)).toBe(true);
+  expect(
+    await page.evaluate(async () =>
+      Promise.all(
+        [
+          "knowledge-v1.json",
+          "knowledge-v1.schema.json",
+          "profile-v1.schema.json",
+        ].map(async (path) =>
+          Boolean(await caches.match(new URL(path, location.href))),
+        ),
+      ),
+    ),
+  ).toEqual([true, true, true]);
   // Reload online first: the installed worker must serve a shell fetched
   // through the host's /index.html redirect without a navigation error.
   await page.reload({ waitUntil: "domcontentloaded" });
@@ -48,6 +62,24 @@ test("built production shell navigates and reloads offline", async ({
   await expect(
     page.getByRole("heading", { name: /Make the display/i }),
   ).toBeVisible();
+  const profile = readFileSync(
+    new URL("../../src/profiles/data/authored-ux-banner.json", import.meta.url),
+  );
+  await page
+    .locator('input[type="file"][accept=".json,application/json"]')
+    .setInputFiles({
+      name: "banner.profile.json",
+      mimeType: "application/json",
+      buffer: profile,
+    });
+  await expect(
+    page.getByRole("heading", { name: "Local profile review", exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Load reviewed profile" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Loaded local profiles" }),
+  ).toBeVisible();
+  expect(failures).toEqual([]);
   await page.goto("/#/device/investigate", { waitUntil: "domcontentloaded" });
   await expect(page.locator("#app")).not.toBeEmpty();
 });

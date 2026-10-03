@@ -63,7 +63,21 @@ export interface DriverCandidateView {
   readonly canIdentify: boolean;
 }
 
+export interface LocalProfileReview {
+  readonly document: import("../../profiles/document").ProfileDocument | null;
+  readonly problems: readonly string[];
+  readonly error: string | null;
+}
+
 export interface AppSnapshot {
+  readonly profileReview: LocalProfileReview | null;
+  readonly loadedProfiles: readonly import("../../profiles/document").ProfileDocument[];
+  readonly profileLoadReason: string | null;
+  readonly advisoryInput: {
+    readonly owner: object;
+    readonly fingerprint: import("../../core/device").DeviceFingerprint;
+    readonly actions: readonly string[];
+  } | null;
   readonly page: "home" | "workspace";
   readonly view: WorkspaceView;
   readonly workbenchSection: import("../app/routes").WorkbenchSection;

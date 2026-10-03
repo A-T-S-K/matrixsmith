@@ -52,7 +52,7 @@ export function acceptLocalProfile(input: ProfileDocument): AcceptedProfile {
       driverId: "coolledux",
       rejectedDrivers: {},
     },
-    definitionIdentity: definitionDigest(document),
+    definitionIdentity: definitionDigest({ document, profile }),
   });
 }
 
@@ -71,6 +71,18 @@ export function withLocalProfiles(
     );
   return Object.freeze({
     ...driver,
+    discoveryHints: () => {
+      const hints = driver.discoveryHints();
+      return {
+        ...hints,
+        optionalManufacturerData: [
+          ...new Set([
+            ...(hints.optionalManufacturerData ?? []),
+            ...entries.map((entry) => entry.signature.companyId),
+          ]),
+        ],
+      };
+    },
     profiles: () =>
       Object.freeze([
         ...driver.profiles(),

@@ -37,3 +37,18 @@ snapshots are deeply frozen. Plans receive the accepted document digest and
 explicit adapter reference in application-owned provenance protected by the
 existing transmission digest. Unversioned injected machinery is explicitly
 unversioned; no engine hash is invented.
+
+Home provides one local-file entry and a focused review showing identity,
+compatibility, matching, contradictions, geometry, parameters, provenance and
+limitations before loading. A malformed or incompatible file preserves the
+previous registry/workspace. The prepared immutable registry is published only
+when a fresh runtime can be constructed. Active or retained connections block
+loading; disconnect first. Drafts stay with their existing UI owners. Replacing
+the runtime drops current evidence, confirmations and prepared work. Exported
+local profiles can be reviewed and loaded in a fresh browser session. There is
+no durable installation storage or automatic restoration across restarts.
+
+Accepted definition identity includes the document and resolved profile/template
+snapshot. Application preparation writes it into digest-covered provenance;
+a definition mismatch rejects stale prepared work. This identifies accepted
+software definitions, not newly established hardware support.

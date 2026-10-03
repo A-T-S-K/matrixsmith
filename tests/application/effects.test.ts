@@ -8,6 +8,7 @@ function port(): ApplicationEffectPort {
   return {
     connect: vi.fn(async () => undefined),
     reconnectAuthorized: vi.fn(async () => undefined),
+    reviewLocalProfile: vi.fn(async () => undefined),
     importBundle: vi.fn(),
     importExternalCapture: vi.fn(),
     resumeStoredInvestigation: vi.fn(),

@@ -244,6 +244,50 @@ export class WorkspaceStore {
       );
     this.ports.snapshotStore()._emit();
   }
+  profileRegistry() {
+    return (this.live ?? this.active).controller.registry;
+  }
+  profileLoadReason(): string | null {
+    return (
+      this.transitionReason() ??
+      (this.live && !["idle", "error"].includes(this.live.transport.state)
+        ? "Disconnect the live display before loading profiles. Drafts will be preserved; a later Connect starts a fresh session."
+        : null)
+    );
+  }
+  loadProfileRegistry(
+    registry: import("../../drivers/registry").DriverRegistry,
+  ): void {
+    const reason = this.profileLoadReason();
+    if (reason) throw new Error(reason);
+    // Complete construction before publication. Failed construction changes nothing.
+    const replacement = this.makeWorkspace(
+      this.environment.createLiveWorkspace(registry),
+    );
+    if (
+      replacement.controller.registry !== registry ||
+      replacement.transport.state !== "idle"
+    ) {
+      void this.retire(replacement);
+      throw new Error(
+        "The workspace factory did not prepare the accepted definitions in a disconnected runtime.",
+      );
+    }
+    const previous = this.live;
+    const wasActive = this.active === previous;
+    const ui = wasActive ? this.ports.captureUi() : previous?.ui;
+    replacement.ui = ui ?? null;
+    this.live = replacement;
+    this.watch(replacement);
+    if (wasActive) this.activate(replacement);
+    if (previous) void this.retire(previous);
+    this.ports
+      .noticeStore()
+      .setInfo(
+        "Profile loaded for this browser session. Connect explicitly when ready; no connection or transmission occurred.",
+      );
+    this.ports.snapshotStore()._emit();
+  }
   prepareLiveWorkspace() {
     if (this.disposed) throw new Error("This application has been closed.");
     if (!this.live) {

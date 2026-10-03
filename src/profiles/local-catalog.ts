@@ -1,4 +1,5 @@
-import { builtInDrivers, DriverRegistry } from "../drivers/registry";
+import { KNOWN_PROFILE_SIGNATURES } from "./known-profiles";
+import { DriverRegistry } from "../drivers/registry";
 import { acceptLocalProfile, withLocalProfiles } from "./registration";
 import { profileCompatibility, type ProfileDocument } from "./document";
 
@@ -7,6 +8,10 @@ export function reviewLocalProfile(
   registry: DriverRegistry,
 ): readonly string[] {
   const problems = [...profileCompatibility(document)];
+  if (!registry.drivers.some((driver) => driver.id === "coolledux"))
+    problems.push(
+      "The compatible CoolLEDUX implementation is not registered in this workspace.",
+    );
   if (
     registry.acceptedProfiles.some(
       (entry) =>
@@ -23,7 +28,15 @@ export function reviewLocalProfile(
   if (profiles.some(({ id }) => id === `${document.namespace}:${document.id}`))
     problems.push("Duplicate profile identity.");
   if (
-    profiles.some(({ name }) => name.toLowerCase() === document.matching.name)
+    profiles.some(
+      ({ name }) => name.toLowerCase() === document.matching.name,
+    ) ||
+    registry.acceptedProfiles.some(
+      (entry) => entry.document.matching.name === document.matching.name,
+    ) ||
+    KNOWN_PROFILE_SIGNATURES.some(
+      (signature) => signature.name === document.matching.name,
+    )
   )
     problems.push(
       "Matching name collides with an existing profile; ambiguous registration is rejected.",
@@ -37,10 +50,13 @@ export function registryWithLocalProfile(
 ): DriverRegistry {
   const problems = reviewLocalProfile(document, registry);
   if (problems.length) throw new Error(problems.join(" "));
-  const entries = [...registry.acceptedProfiles, acceptLocalProfile(document)];
+  const accepted = acceptLocalProfile(document);
+  const entries = [...registry.acceptedProfiles, accepted];
   return new DriverRegistry(
-    builtInDrivers.map((driver) =>
-      driver.id === "coolledux" ? withLocalProfiles(driver, entries) : driver,
+    registry.drivers.map((driver) =>
+      driver.id === "coolledux"
+        ? withLocalProfiles(driver, [accepted])
+        : driver,
     ),
     entries,
   );

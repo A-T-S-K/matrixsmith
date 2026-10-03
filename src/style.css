@@ -2994,3 +2994,15 @@ main {
 .packet p {
   overflow-wrap: anywhere;
 }
+
+/* Citation hashes and identifiers must wrap inside the existing context column. */
+.knowledge-advisory {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.knowledge-advisory a {
+  color: var(--accent);
+}
+.knowledge-advisory input {
+  max-width: 100%;
+}

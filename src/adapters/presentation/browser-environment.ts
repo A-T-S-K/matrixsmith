@@ -14,12 +14,12 @@ export function createBrowserEnvironment(): PresentationEnvironment {
   const navigatorLike = typeof navigator === "undefined" ? {} : navigator;
   return {
     fileActivity,
-    createLiveWorkspace() {
+    createLiveWorkspace(registry) {
       const trace = new TraceRecorder();
       const transport = new WebBluetoothTransport(trace);
       return {
         transport,
-        controller: new ApplicationRuntime(transport, trace),
+        controller: new ApplicationRuntime(transport, trace, registry),
       };
     },
     createOfflineWorkspace(fingerprint) {

@@ -7,6 +7,7 @@ export interface ApplicationEffectPort {
     optionalServices?: BluetoothServiceUUID[],
   ): Promise<void>;
   reconnectAuthorized(deviceId: string): Promise<void>;
+  reviewLocalProfile(content: string): Promise<void>;
   importBundle(content: string): void;
   importExternalCapture(content: string): void;
   resumeStoredInvestigation(): void;
@@ -26,6 +27,9 @@ export async function runApplicationEffect(
       return;
     case "reconnect":
       await port.reconnectAuthorized(command.deviceId);
+      return;
+    case "review-profile":
+      await port.reviewLocalProfile(command.content);
       return;
     case "import-bundle":
       port.importBundle(command.content);

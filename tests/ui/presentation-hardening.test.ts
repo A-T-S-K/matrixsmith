@@ -19,7 +19,6 @@ async function setup() {
   const transport = new FakeTransport(knownIledHatFingerprint());
   const runtime = new ApplicationRuntime(transport);
   await runtime.connect();
-  Object.assign(runtime.session, { profile: { ...runtime.session.profile! } });
   const data = new Map<string, string>();
   const storage = {
     getItem: vi.fn((key: string) => data.get(key) ?? null),
@@ -289,7 +288,9 @@ it.each(["profile", "geometry", "workspace", "dispose"])(
         profile: { ...s.runtime.session.profile! },
       });
     if (kind === "geometry")
-      Object.assign(s.runtime.session.profile!, { width: 16 });
+      Object.assign(s.runtime.session, {
+        profile: { ...s.runtime.session.profile!, width: 16 },
+      });
     if (kind === "workspace")
       current = new ApplicationRuntime(new FakeTransport());
     if (kind === "dispose") editor.dispose();

@@ -10,6 +10,11 @@ import type { AcceptedProfile } from "../profiles/registration";
 import { coolLedXDriver } from "./coolledx";
 import { coolLedUxDriver } from "./coolledux";
 
+const ILEDHAT_DEFINITION_IDENTITY = definitionDigest({
+  document: ILEDHAT_DOCUMENT,
+  profile: iledHat31aeProfile,
+});
+
 export const builtInDrivers: readonly MatrixDriver[] = Object.freeze([
   coolLedXDriver,
   coolLedUxDriver,
@@ -57,7 +62,7 @@ export class DriverRegistry {
     if (accepted)
       return `${accepted.document.implementation}/${accepted.definitionIdentity}`;
     if (profile === iledHat31aeProfile)
-      return `coolledux-reviewed-v1/${definitionDigest(ILEDHAT_DOCUMENT)}`;
+      return `coolledux-reviewed-v1/${ILEDHAT_DEFINITION_IDENTITY}`;
     // No engine hash is fabricated for injected machinery or provisional geometry.
     return `${driverId}/unversioned:${profile?.id ?? "family-candidate"}`;
   }

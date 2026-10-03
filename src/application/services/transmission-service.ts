@@ -231,6 +231,29 @@ export class TransmissionService {
   }
   private evaluatePolicy(plan: TransmissionPlan): PolicyDecision {
     const session = this.ports.connection().getSession();
+    if (plan.metadata.definitionIdentity !== undefined) {
+      const profile =
+        session.selection?.selected?.id === plan.driverId
+          ? session.profile
+          : session.fingerprint
+            ? (this.ports
+                .identification()
+                .getRegistry()
+                .drivers.find((driver) => driver.id === plan.driverId)
+                ?.resolveProfile(session.fingerprint) ?? null)
+            : null;
+      const currentIdentity = this.ports
+        .identification()
+        .getRegistry()
+        .definitionIdentity(plan.driverId, profile);
+      if (plan.metadata.definitionIdentity !== currentIdentity)
+        return {
+          allowed: false,
+          reasons: [
+            "The accepted profile definition changed; prepare the operation again.",
+          ],
+        };
+    }
     const bestMatch =
       session.selection?.matches.find(
         ({ driverId }) => driverId === plan.driverId,

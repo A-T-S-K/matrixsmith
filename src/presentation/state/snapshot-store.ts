@@ -54,7 +54,12 @@ interface Ports {
   noticeStore(): Pick<NoticeStore, "getBusy" | "getError" | "getInfo">;
   connectionStore(): Pick<
     ConnectionStore,
-    "getPreviouslyAuthorized" | "getLastImport" | "getGeometryDraft"
+    | "getPreviouslyAuthorized"
+    | "getProfileReview"
+    | "getLoadedProfiles"
+    | "getProfileLoadReason"
+    | "getLastImport"
+    | "getGeometryDraft"
   >;
   contentSendStore(): Pick<
     ContentSendStore,
@@ -184,6 +189,28 @@ export class SnapshotStore {
       .getController()
       .assessment(liveConnected);
     this._snapshot = Object.freeze({
+      profileReview: this.ports.connectionStore().getProfileReview(),
+      loadedProfiles: this.ports.connectionStore().getLoadedProfiles(),
+      profileLoadReason: this.ports.connectionStore().getProfileLoadReason(),
+      advisoryInput: fingerprint
+        ? {
+            owner: this.ports.workspaceStore().getController(),
+            fingerprint,
+            actions: this.ports
+              .workspaceStore()
+              .getController()
+              .registry.drivers.flatMap(
+                (driver) =>
+                  driver
+                    .familyProbes?.({
+                      fingerprint,
+                      endpoints: [],
+                      source: session.source,
+                    })
+                    .map((probe) => `${driver.id}:${probe.id}`) ?? [],
+              ),
+          }
+        : null,
       page: this.ports.navigationStore().getPage(),
       view: this.ports.navigationStore().getView(),
       workbenchSection: this.ports.navigationStore().getWorkbenchSection(),

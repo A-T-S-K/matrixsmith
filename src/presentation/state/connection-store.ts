@@ -28,6 +28,9 @@ interface Ports {
     | "activateConnectedLive"
     | "transitionReason"
     | "returnToLiveWorkspace"
+    | "profileRegistry"
+    | "profileLoadReason"
+    | "loadProfileRegistry"
   >;
   navigationStore(): Pick<
     NavigationStore,
@@ -45,6 +48,77 @@ export class ConnectionStore {
       "authorizedDevices"
     >,
   ) {}
+  private profileReview: import("./types").LocalProfileReview | null = null;
+  private preparedProfiles: {
+    registry: import("../../drivers/registry").DriverRegistry;
+    previous: import("../../drivers/registry").DriverRegistry;
+  } | null = null;
+  private profileAttempt = 0;
+  getProfileReview() {
+    return this.profileReview;
+  }
+  getLoadedProfiles() {
+    return this.ports
+      .workspaceStore()
+      .profileRegistry()
+      .acceptedProfiles.map((entry) => entry.document);
+  }
+  getProfileLoadReason() {
+    return this.ports.workspaceStore().profileLoadReason();
+  }
+  async reviewLocalProfile(text: string): Promise<void> {
+    const attempt = ++this.profileAttempt;
+    const previous = this.ports.workspaceStore().profileRegistry();
+    const [
+      { parseProfileDocument },
+      { reviewLocalProfile, registryWithLocalProfile },
+    ] = await Promise.all([
+      import("../../profiles/document"),
+      import("../../profiles/local-catalog"),
+    ]);
+    if (
+      attempt !== this.profileAttempt ||
+      previous !== this.ports.workspaceStore().profileRegistry()
+    )
+      return;
+    try {
+      const document = parseProfileDocument(text);
+      const problems = reviewLocalProfile(document, previous);
+      const registry = problems.length
+        ? null
+        : registryWithLocalProfile(document, previous);
+      this.preparedProfiles = registry ? { registry, previous } : null;
+      this.profileReview = { document, problems, error: null };
+    } catch (error) {
+      this.preparedProfiles = null;
+      this.profileReview = {
+        document: null,
+        problems: [],
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+    this.ports.snapshotStore()._emit();
+  }
+  loadLocalProfile(): void {
+    try {
+      const prepared = this.preparedProfiles;
+      if (
+        !prepared ||
+        prepared.previous !== this.ports.workspaceStore().profileRegistry()
+      )
+        throw new Error(
+          "Review a compatible profile for the current workspace before loading.",
+        );
+      this.ports.workspaceStore().loadProfileRegistry(prepared.registry);
+      this.preparedProfiles = null;
+      this.profileReview = null;
+    } catch (error) {
+      this.ports
+        .noticeStore()
+        .setError(error instanceof Error ? error.message : String(error));
+    }
+    this.ports.snapshotStore()._emit();
+  }
   private geometryDraft = {
     targetKey: "",
     width: "",

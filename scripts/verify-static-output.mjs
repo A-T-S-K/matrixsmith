@@ -1,5 +1,7 @@
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
+import validateKnowledge from "../src/knowledge/generated/knowledge-validator.js";
+import { validateKnowledgeReferences } from "../src/knowledge/validation.ts";
 import { gzipSync } from "node:zlib";
 
 const root = resolve(process.argv[2] ?? "dist");
@@ -15,10 +17,14 @@ const required = [
   "icon-512.png",
   "icon-maskable-512.png",
   "bundle-v3.schema.json",
+  "profile-v1.schema.json",
+  "knowledge-v1.schema.json",
+  "knowledge-v1.json",
 ];
 const failures = [];
 const INITIAL_ROUTE_JS_GZIP_LIMIT = 90 * 1024;
-const TOTAL_JS_GZIP_LIMIT = 180 * 1024;
+// Provisional bounded profiles/advisory slice allowance; see docs/asset-budgets.md.
+const TOTAL_JS_GZIP_LIMIT = 210 * 1024;
 for (const file of required)
   if (!existsSync(join(root, file)))
     failures.push(`Missing required static file: ${file}`);
@@ -87,7 +93,23 @@ if (existsSync(root)) {
       failures.push(
         `Development simulator leaked into ${relative(root, file)}`,
       );
-    const withoutMarkupNamespaces = source
+    let checkedSource = source;
+    if (relative(root, file) === "knowledge-v1.json") {
+      try {
+        if (Buffer.byteLength(source) > 256 * 1024)
+          throw new Error("Knowledge data exceeds byte limit.");
+        const corpus = JSON.parse(source);
+        if (!validateKnowledge(corpus))
+          throw new Error("Invalid knowledge schema.");
+        validateKnowledgeReferences(corpus);
+        // The sole data-citation exception. All other strings remain origin-scanned.
+        for (const citation of corpus.sources) citation.url = null;
+        checkedSource = JSON.stringify(corpus);
+      } catch (error) {
+        failures.push(`Invalid provenance data: ${String(error)}`);
+      }
+    }
+    const withoutMarkupNamespaces = checkedSource
       .replaceAll(
         /https?:\/\/www\.w3\.org\/(?:1999\/xhtml|2000\/svg|1998\/Math\/MathML)/g,
         "",

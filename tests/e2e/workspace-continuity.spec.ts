@@ -6,7 +6,8 @@ test("workbench sections follow URLs and browser history", async ({ page }) => {
   await page
     .getByRole("button", { name: "Connect a display", exact: true })
     .click();
-  await page.getByRole("button", { name: /Protocol workbench/ }).click();
+  await page.getByRole("button", { name: "Device actions" }).click();
+  await page.getByRole("button", { name: "Developer tools" }).click();
   await expect(page).toHaveURL(/#\/device\/develop\/transactions$/);
   const sections = page.getByRole("navigation", {
     name: "Protocol workbench sections",
@@ -30,7 +31,8 @@ test("workbench sections follow URLs and browser history", async ({ page }) => {
     .getByRole("button", { name: /Investigate$/ })
     .first()
     .click();
-  await page.getByRole("button", { name: /Protocol workbench/ }).click();
+  await page.getByRole("button", { name: "Device actions" }).click();
+  await page.getByRole("button", { name: "Developer tools" }).click();
   await expect(page).toHaveURL(/#\/device\/develop\/raw$/);
   await page.screenshot({ path: "/private/tmp/workbench-navigation.png" });
 });
@@ -78,7 +80,8 @@ async function openOfflineOnly(page: import("@playwright/test").Page) {
 }
 
 async function section(page: import("@playwright/test").Page, name: string) {
-  await page.getByRole("button", { name: /Protocol workbench/ }).click();
+  await page.getByRole("button", { name: "Device actions" }).click();
+  await page.getByRole("button", { name: "Developer tools" }).click();
   await page
     .getByRole("navigation", { name: "Protocol workbench sections" })
     .getByRole("button", { name, exact: true })

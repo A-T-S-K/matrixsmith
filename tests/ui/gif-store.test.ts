@@ -158,7 +158,7 @@ it.each(["profile", "disposal"])(
     await s.store.dispose();
   },
 );
-it("blocks retained geometry mismatch at send without planning", async () => {
+it("definition/geometry replacement withdraws physical trust before planning", async () => {
   const { store, runtime } = await setup();
   await store.loadGif(file(), "valid");
   Object.assign(runtime.session, {
@@ -168,7 +168,7 @@ it("blocks retained geometry mismatch at send without planning", async () => {
   store.requestSendGif();
   expect(plan).not.toHaveBeenCalled();
   expect(store.getSnapshot().sendAttempt?.failure?.message).toMatch(
-    /another display size/,
+    /No trusted verification/,
   );
   await store.dispose();
 });

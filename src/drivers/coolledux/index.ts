@@ -303,7 +303,7 @@ export function coolLedUxCapabilities(
       live: true,
       risk: "read-only",
       persistence: "none",
-      evidenceConfidence: "observed",
+      evidenceConfidence: exact ? "observed" : "inferred",
       validation: exact ? "verified" : "experimental",
       evidenceRefs: exact
         ? ["iledhat-coolledux-probe", "coolledux-ble@4f5656d"]

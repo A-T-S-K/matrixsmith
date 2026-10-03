@@ -259,7 +259,9 @@ it.each(
     owner.requestSendText();
     if (context === "confirmation")
       expect(owner.getPendingSend()).not.toBeNull();
-    else await vi.waitFor(() => expect(nextComplete).toBeTypeOf("function"));
+    else if (context !== "target")
+      await vi.waitFor(() => expect(nextComplete).toBeTypeOf("function"));
+    else expect(owner.getSendAttempt()?.phase).toBe("failed");
     const pending = owner.getPendingSend();
     const latest = owner.getSendAttempt();
     oldProgress?.({
@@ -278,6 +280,10 @@ it.each(
       expect(close).toHaveBeenCalledOnce();
       expect(wakeLock.acquire).toHaveBeenCalledOnce();
       expect(wakeLock.release).toHaveBeenCalledOnce();
+    } else if (context === "target") {
+      // Replacing a reviewed definition with a copy withdraws physical trust.
+      expect(owner.getSendAttempt()?.phase).toBe("failed");
+      expect(nextComplete).toBeUndefined();
     } else {
       expect(owner.getSendProgress()?.completedPackets).toBe(2);
       expect(wakeLock.release).not.toHaveBeenCalled();

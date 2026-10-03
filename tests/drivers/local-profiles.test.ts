@@ -1,3 +1,4 @@
+import { syntheticDriver } from "../helpers/synthetic-driver";
 import { describe, expect, it } from "vitest";
 import data from "../../src/profiles/data/authored-ux-banner.json";
 import {
@@ -25,6 +26,8 @@ describe("bounded local profile registration", () => {
     for (const text of [
       "{",
       " ".repeat(16385),
+      JSON.stringify({ ...data, label: "x".repeat(2049) }),
+      JSON.stringify(Array.from({ length: 514 }, () => "x")),
       "[".repeat(9) + "0" + "]".repeat(9),
     ])
       expect(() => parseProfileDocument(text)).toThrow();
@@ -48,10 +51,19 @@ describe("bounded local profile registration", () => {
       accepted = acceptLocalProfile(input);
     expect(Object.isFrozen(accepted.profile.quirks?.channelMap)).toBe(true);
     expect(accepted.document).not.toBe(input);
+    expect(() =>
+      Object.assign(accepted.document.dimensions, { width: 8 }),
+    ).toThrow();
     expect(
       acceptLocalProfile(parse(accepted.document)).definitionIdentity,
     ).toBe(accepted.definitionIdentity);
     expect(coolLedUxDriver.guidedTests?.(accepted.profile)).toEqual([]);
+    expect(
+      coolLedUxDriver
+        .capabilities(accepted.profile)
+        .find((capability) => capability.id === "device-info")
+        ?.evidenceConfidence,
+    ).toBe("inferred");
     expect(
       coolLedUxDriver
         .claimEvidence?.(accepted.profile)
@@ -60,6 +72,12 @@ describe("bounded local profile registration", () => {
   });
   it("rejects duplicates atomically and preserves the original registry", () => {
     const registry = new DriverRegistry(builtInDrivers);
+    expect(() =>
+      registryWithLocalProfile(
+        parse(data),
+        new DriverRegistry([syntheticDriver]),
+      ),
+    ).toThrow("not registered");
     expect(
       () => new DriverRegistry([coolLedUxDriver, coolLedUxDriver]),
     ).toThrow("Duplicate");
@@ -74,6 +92,33 @@ describe("bounded local profile registration", () => {
         registry,
       ),
     ).toThrow("not installed");
+    expect(() =>
+      registryWithLocalProfile(
+        parse({ ...data, id: "duplicate-matcher", label: "Different label" }),
+        next,
+      ),
+    ).toThrow("collides");
+    expect(() =>
+      registryWithLocalProfile(
+        parse({
+          ...data,
+          id: "forged-builtin",
+          matching: { ...data.matching, name: "iledhat" },
+        }),
+        registry,
+      ),
+    ).toThrow("collides");
+    const injected = registryWithLocalProfile(
+      parse({
+        ...data,
+        contradictions: { ...data.contradictions, companyId: 65535 },
+      }),
+      new DriverRegistry([...builtInDrivers, syntheticDriver]),
+    );
+    expect(injected.drivers.map((driver) => driver.id)).toContain(
+      syntheticDriver.id,
+    );
+    expect(injected.discoveryHints().optionalManufacturerData).toContain(65535);
     expect(Object.isFrozen(next.drivers)).toBe(true);
   });
   it("copied built-in identity cannot inherit assessment, tests or plan assurance", () => {

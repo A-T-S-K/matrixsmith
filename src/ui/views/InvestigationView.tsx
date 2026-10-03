@@ -23,6 +23,7 @@ import {
   TestCatalogue,
   CompletedTests,
 } from "../features/investigation/CatalogueSections";
+import { AdvisoryKnowledge } from "../components/AdvisoryKnowledge";
 import { DeveloperTools } from "../features/investigation/DeveloperTools";
 
 /** The guided investigation workspace. */
@@ -42,6 +43,7 @@ export function InvestigationView({
           separate live session.
         </p>
         <GeometryOutcome snapshot={snapshot} store={store} />
+        <AdvisoryKnowledge snapshot={snapshot} store={store} />
         <WhatWeKnow snapshot={snapshot} />
         <CompletedTests snapshot={snapshot} store={store} />
         <SupportMap snapshot={snapshot} />
@@ -81,6 +83,7 @@ export function InvestigationView({
         <CoreProgress snapshot={snapshot} />
       </div>
       <div class="investigation-context">
+        <AdvisoryKnowledge snapshot={snapshot} store={store} />
         <WhatWeKnow snapshot={snapshot} />
         <RecentResult snapshot={snapshot} store={store} />
         <PreviousInvestigation snapshot={snapshot} store={store} />

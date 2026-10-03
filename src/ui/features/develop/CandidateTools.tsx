@@ -3,6 +3,7 @@ import type {
   AppSnapshot,
   PresentationStore,
 } from "../../../presentation/store";
+import { AdvisoryKnowledge } from "../../components/AdvisoryKnowledge";
 import { StatusBadge } from "../../components/StatusBadge";
 import { UnavailableAction } from "../../components/UnavailableAction";
 export function CandidateSection({
@@ -21,6 +22,7 @@ export function CandidateSection({
           secondary.
         </p>
       </div>
+      <AdvisoryKnowledge snapshot={snapshot} store={store} />
       <div class="candidate-grid">
         {snapshot.candidates.map((candidate) => (
           <article key={candidate.id} class="candidate-card">

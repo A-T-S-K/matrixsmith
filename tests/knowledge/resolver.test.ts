@@ -85,6 +85,26 @@ describe("advisory knowledge", () => {
     });
     expect(contradicted.families[0]!.contradictions.length).toBeGreaterThan(0);
     expect(contradicted.families).toHaveLength(2);
+    const sharedFa = resolveKnowledge(corpus, {
+      ...emptyFingerprint("web-bluetooth"),
+      services: [
+        {
+          ...original.services[0]!,
+          uuid: "000000fa-0000-1000-8000-00805f9b34fb",
+          characteristics: ["fa02", "fa03"].map((uuid) => ({
+            ...original.services[0]!.characteristics[0]!,
+            uuid,
+          })),
+        },
+      ],
+    });
+    expect(sharedFa.families.map((family) => family.id)).toEqual([
+      "bk-png",
+      "idotmatrix-length16",
+    ]);
+    expect(sharedFa.families[0]!.unknowns).toContain(
+      "Source does not establish a service UUID.",
+    );
     const inaccessible = resolveKnowledge(corpus, {
       ...emptyFingerprint("web-bluetooth"),
       advertisedServices: ["fff0"],

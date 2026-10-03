@@ -59,6 +59,8 @@ export function BootstrapHome({
       load("Opening display…", { kind: "connect", mode, optionalServices }),
     setView: () => undefined,
     disconnect: () => undefined,
+    reviewLocalProfile: (content) =>
+      load("Reviewing profile…", { kind: "review-profile", content }),
     importBundle: (content) =>
       load("Opening report…", { kind: "import-bundle", content }),
     importExternalCapture: (content) =>
