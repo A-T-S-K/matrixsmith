@@ -60,6 +60,10 @@ export class ConnectionStore {
     null;
   private candidateGeneration = 0;
   private candidateError: string | null = null;
+  private candidateBinding: string | null = null;
+  private bindingReader:
+    | typeof import("../../application/candidate-profile").candidateReviewBinding
+    | null = null;
   getCandidateReview() {
     const owner = this.ports.workspaceStore().getController();
     return this.candidate
@@ -68,7 +72,7 @@ export class ConnectionStore {
           observedMatchingName: this.candidate.observedMatchingName,
           stale:
             owner !== this.candidateOwner ||
-            this.candidate.context !== this.currentCandidateContext(),
+            this.candidateBinding !== this.bindingReader?.(owner),
           error: this.candidateError,
         }
       : null;
@@ -89,8 +93,11 @@ export class ConnectionStore {
     const evidence = owner.investigation?.claimEvidence;
     const attempts = JSON.stringify([owner.experiments, owner.transfers]);
     try {
-      const { buildCandidateProfile, candidateContext } =
-        await import("../../application/candidate-profile");
+      const {
+        buildCandidateProfile,
+        candidateContext,
+        candidateReviewBinding,
+      } = await import("../../application/candidate-profile");
       if (
         owner.session.profile !== profile ||
         owner.session.fingerprint !== fingerprint ||
@@ -113,6 +120,8 @@ export class ConnectionStore {
         return;
       this.candidate = candidate;
       this.candidateOwner = owner;
+      this.bindingReader = candidateReviewBinding;
+      this.candidateBinding = candidateReviewBinding(owner);
       this.candidateError = null;
       this.ports.noticeStore().setError(null, "candidate");
     } catch (error) {
@@ -141,7 +150,11 @@ export class ConnectionStore {
         candidate !== this.candidate
       )
         return;
-      if (!candidate || this.getCandidateReview()?.stale)
+      if (
+        !candidate ||
+        this.getCandidateReview()?.stale ||
+        candidate.context !== this.currentCandidateContext()
+      )
         throw new Error(
           "Display context changed. Create and review the candidate again.",
         );
@@ -176,7 +189,11 @@ export class ConnectionStore {
   }
   async exportCandidateProfile(copy = false, evidence = false): Promise<void> {
     const candidate = this.candidate;
-    if (!candidate || this.getCandidateReview()?.stale) {
+    if (
+      !candidate ||
+      this.getCandidateReview()?.stale ||
+      candidate.context !== this.currentCandidateContext()
+    ) {
       this.candidateError =
         "Display context changed. Create and review the candidate again.";
       this.ports.snapshotStore()._emit();
@@ -196,7 +213,8 @@ export class ConnectionStore {
       () =>
         candidate === this.candidate &&
         generation === this.candidateGeneration &&
-        !this.getCandidateReview()?.stale,
+        !this.getCandidateReview()?.stale &&
+        candidate.context === this.currentCandidateContext(),
       evidence ? "bundle" : "profile",
     );
   }

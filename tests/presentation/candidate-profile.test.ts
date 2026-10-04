@@ -6,6 +6,7 @@ import { ApplicationRuntime } from "../../src/application/runtime";
 import { FakeTransport } from "../../src/transport/fake";
 import type { FilesPort } from "../../src/application/ports/files";
 import v1 from "../../src/profiles/data/authored-ux-banner.json";
+import * as candidateModule from "../../src/application/candidate-profile";
 
 async function setup(files: FilesPort) {
   const { runtime, transport } = await setupStill();
@@ -23,6 +24,37 @@ async function setup(files: FilesPort) {
   return { store, runtime };
 }
 describe("supervised candidate/profile export", () => {
+  it("does not hash full histories on trace publication, still detects nested edits and hashes before export", async () => {
+    const files = {
+      copyText: vi.fn().mockResolvedValue(true),
+      download: vi.fn(),
+    };
+    const { store, runtime } = await setup(files);
+    const digest = vi.spyOn(candidateModule, "candidateContext");
+    try {
+      await verifyStill(runtime);
+      await store.createCandidateProfile();
+      digest.mockClear();
+      for (let i = 0; i < 10; i++)
+        runtime.trace.record("app.started", { fixture: i });
+      expect(store.getSnapshot().candidateReview!.stale).toBe(false);
+      expect(digest).not.toHaveBeenCalled();
+      await store.exportCandidateProfile();
+      expect(digest).toHaveBeenCalled();
+      expect(files.download).toHaveBeenCalledTimes(1);
+      // Deliberate in-place corruption must be noticed even without new array identity.
+      Object.assign(runtime.experiments[0]!.attempts[0]!, {
+        validity: "invalid",
+      });
+      runtime.trace.record("app.started", { fixture: "nested mutation" });
+      expect(store.getSnapshot().candidateReview!.stale).toBe(true);
+      await store.exportCandidateProfile();
+      expect(files.download).toHaveBeenCalledTimes(1);
+    } finally {
+      digest.mockRestore();
+      await store.dispose();
+    }
+  });
   it("rejects an export whose formatted bytes exceed reload bounds without altering the loaded source", async () => {
     const files = {
       copyText: vi.fn().mockResolvedValue(true),

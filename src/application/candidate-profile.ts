@@ -14,9 +14,9 @@ import {
 } from "../profiles/document";
 
 /** Private review binding. Never serialized into a reusable document. */
-export function candidateContext(runtime: ApplicationRuntime): string {
+function candidateContextInputs(runtime: ApplicationRuntime) {
   const { session, transport } = runtime;
-  return definitionDigest({
+  return {
     connection: transport.connectionId,
     state: transport.state,
     fingerprint: session.fingerprint,
@@ -31,7 +31,15 @@ export function candidateContext(runtime: ApplicationRuntime): string {
     evidence: runtime.investigation?.claimEvidence,
     attempts: runtime.experiments,
     transfers: runtime.transfers,
-  });
+  };
+}
+export function candidateContext(runtime: ApplicationRuntime): string {
+  return definitionDigest(candidateContextInputs(runtime));
+}
+/** Private display comparison; still inspects nested content on every publication.
+ * Export and revision retain the authoritative fresh digest check. */
+export function candidateReviewBinding(runtime: ApplicationRuntime): string {
+  return JSON.stringify(candidateContextInputs(runtime));
 }
 
 export interface CandidateArtifact {
