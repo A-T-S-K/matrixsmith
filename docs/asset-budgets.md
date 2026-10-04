@@ -84,3 +84,20 @@ assets plus the existing shell, icons and validated reference/schema JSON are
 cached by the normal Home installation. Build identity hashes maintained source,
 public assets and notices. Production tests verify every manifest asset is cached
 before offline navigation to either reference, including source detail and reload.
+
+The registered characteristic-read slice provisionally raises the total JavaScript
+ceiling from 230 to 240 KiB (245,760 bytes). An isolated Vite build of the exact
+starting commit `bf368f6` with installed Node 24.21.0/npm 11.19.0 measures 233,867
+bytes gzip total and 13,718 initial. The first read build measures 237,483 total
+and 14,080 initial: growth of 3,616 and 362 bytes. Lazy JavaScript is 223,403
+versus 220,149 bytes; the application static dependency graph is 174,981 versus
+171,534 bytes (graphs overlap initial assets). The 90 KiB initial limit remains.
+The new chooser adapter invokes the browser synchronously before lazy application
+loading; no eager application prefetch is required. Pure sourced GATT constants
+keep codec/application machinery out of Home. The manifest has 30 assets versus
+29; JavaScript/CSS measure 949,969 raw / 246,708 gzip bytes versus 939,746 /
+243,049 in this first read build. Knowledge remains 195,970 raw / 30,946 gzip
+bytes. No new image/font/vendor asset or external executable dependency is added.
+Final exact measurements are reported in chat. Node 24.20.0 was not available;
+these desktop asset measurements make no Android performance claim. Static,
+CSP, origin, schema and initial-budget checks remain mandatory.

@@ -171,8 +171,10 @@ export function Home({
             />
           </label>
           <p class="fineprint">
-            These UUIDs tell the browser which services MatrixSmith may inspect
-            after you select the device. Services not requested here can stay
+            The documented micro:bit LED service permission is included
+            automatically. Its availability depends on firmware; it may be
+            disabled. These additional UUIDs tell the browser which other
+            services MatrixSmith may inspect. Services not requested can stay
             hidden.
           </p>
           <UnavailableAction

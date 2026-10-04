@@ -80,6 +80,45 @@ export function DiscoveryInterview({
       ) : null}
       {interview && (
         <>
+          {interview.status !== "retired" &&
+            interview.attempts
+              .filter((attempt) => attempt.readValue)
+              .map((attempt) => (
+                <figure class="readback-preview" key={attempt.stepId}>
+                  <figcaption>
+                    Supplied LED Matrix State · 5×5 source interpretation
+                  </figcaption>
+                  <pre
+                    role="img"
+                    aria-label="Five rows of decoded binary LED Matrix State, source interpretation only"
+                  >
+                    {Array.from({ length: 5 }, (_, y) =>
+                      attempt
+                        .readValue!.pixels.slice(y * 5, y * 5 + 5)
+                        .map((pixel) => (pixel ? "●" : "·"))
+                        .join(" "),
+                    ).join("\n")}
+                  </pre>
+                  <p>
+                    Received{" "}
+                    <time dateTime={attempt.readValue!.timestamp}>
+                      {attempt.readValue!.timestamp}
+                    </time>{" "}
+                    · source: live GATT read.
+                  </p>
+                  <p>
+                    Physical appearance unconfirmed. Hardware identity, board
+                    generation, firmware security, physical geometry and
+                    rendering, and power-cycle persistence remain unknown.
+                    Frame, text and control sending remain blocked.
+                  </p>
+                  <p>
+                    Runtime scope: inspected Lancaster microbit-dal
+                    318c6abbb3d952d3f49a595a726486230e82fb5b and DAL v2.1.1
+                    documentation. Other firmware applicability remains unknown.
+                  </p>
+                </figure>
+              ))}
           <ul>
             {interview.attempts.map((attempt) => (
               <li key={attempt.stepId}>
@@ -102,6 +141,15 @@ export function DiscoveryInterview({
                   sequence {attempt.responseSequence ?? "none"} · original
                   connection {attempt.connectionId} · sources{" "}
                   {attempt.sources.join(", ") || "none"}
+                  {attempt.readValue && (
+                    <p>
+                      Decoder: {attempt.readValue.interpretation} · received
+                      bytes: {attempt.readValue.hex}
+                    </p>
+                  )}
+                  {attempt.failureStage && (
+                    <p>Failure stage: {attempt.failureStage}</p>
+                  )}
                 </li>
               ))}
             </ul>
@@ -125,6 +173,13 @@ export function DiscoveryInterview({
               ))}
             </ul>
           </details>
+          {(running ||
+            interview.terminal === "interrupted" ||
+            interview.terminal === "access") && (
+            <button class="secondary" onClick={() => void store.disconnect()}>
+              Disconnect and review access
+            </button>
+          )}
           {!running && (
             <div class="next-action-cta">
               <button
@@ -141,7 +196,11 @@ export function DiscoveryInterview({
                 interview.terminal !== "configuration" && (
                   <button
                     class="secondary"
-                    disabled={!snapshot.liveConnected || snapshot.busy !== null}
+                    disabled={
+                      !snapshot.liveConnected ||
+                      snapshot.busy !== null ||
+                      interview.pendingRead
+                    }
                     onClick={() => void store.identify()}
                   >
                     Start a new setup

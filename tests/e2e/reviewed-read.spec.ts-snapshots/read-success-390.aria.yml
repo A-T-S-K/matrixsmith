@@ -1,0 +1,24 @@
+- region "Set up this display":
+    - paragraph: DISPLAY SETUP
+    - heading "Set up this display" [level=2]
+    - paragraph: This stage reads and identifies the display. It does not replace displayed content or verify everyday use.
+    - status:
+        - paragraph: LED matrix service value received and decoded under the inspected reference.
+        - paragraph: 1 check completed.
+    - figure "Supplied LED Matrix State · 5×5 source interpretation":
+        - text: ""
+        - img "Five rows of decoded binary LED Matrix State, source interpretation only": ● · · · · · · · · ● · ● · · · · · ● · · ● · · ● ·
+        - paragraph:
+            - text: Received
+            - time: /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z/
+            - text: "· source: live GATT read."
+        - paragraph: Physical appearance unconfirmed. Hardware identity, board generation, firmware security, physical geometry and rendering, and power-cycle persistence remain unknown. Frame, text and control sending remain blocked.
+        - paragraph: "Runtime scope: inspected Lancaster microbit-dal 318c6abbb3d952d3f49a595a726486230e82fb5b and DAL v2.1.1 documentation. Other firmware applicability remains unknown."
+    - list:
+        - listitem:
+            - strong: service-observed
+            - text: ": LED matrix service value received and decoded under the inspected reference."
+    - group: Sources and exact technical evidence
+    - button "Open Protocol workbench"
+    - button "Open report"
+    - button "Start a new setup"
