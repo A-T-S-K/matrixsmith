@@ -31,6 +31,12 @@ export const offlineCatalog = freezeDefinition([
     load: async (): Promise<OfflineEntry> =>
       (await import("./offline-entries/lsled")).lsledEntry,
   },
+  {
+    id: "merkury",
+    label: "Merkury MI-LNL62-999W 16×16 RGB",
+    load: async (): Promise<OfflineEntry> =>
+      (await import("./offline-entries/merkury")).merkuryEntry,
+  },
 ]);
 export function findOfflineEntry(id: string) {
   if (!/^[a-z][a-z0-9-]{0,31}$/.test(id)) return undefined;

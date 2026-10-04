@@ -51,7 +51,7 @@ for (const width of [390, 1280]) {
       .selectOption("asymmetric");
     await expect(
       page.getByRole("img", {
-        name: "asymmetric logical monochrome pixels, 5 columns and 5 rows",
+        name: "asymmetric logical pixels, 5 columns and 5 rows",
       }),
     ).toBeVisible();
     await expect(page.locator("canvas")).toHaveAttribute("width", "5");

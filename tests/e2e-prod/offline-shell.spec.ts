@@ -136,7 +136,7 @@ test("built production shell navigates and reloads offline", async ({
   await expect(page.locator("#app")).not.toBeEmpty();
 });
 
-test("normal installation precaches both offline references before either is opened", async ({
+test("normal installation precaches all three offline references before any is opened", async ({
   page,
   context,
 }) => {
@@ -188,6 +188,34 @@ test("normal installation precaches both offline references before either is ope
   await expect(
     page.getByRole("img", { name: /5 columns and 5 rows/ }),
   ).toBeVisible();
+  await page
+    .getByRole("combobox", { name: "Implementation" })
+    .selectOption("merkury");
+  await page
+    .getByRole("combobox", { name: "Example", exact: true })
+    .selectOption("asymmetric");
+  await expect(
+    page.getByRole("img", { name: /16 columns and 16 rows/ }),
+  ).toBeVisible();
+  await expect(page.getByLabel("Exact planned packet 0")).toContainText(
+    "BC 0F 01 FF 00 00",
+  );
+  await page
+    .getByText("Reference, sources and firmware limitations", { exact: true })
+    .click();
+  await expect(
+    page.getByRole("link", { name: "merkury-draw-file", exact: true }),
+  ).toBeVisible();
+  await page.reload();
+  await expect(
+    page.getByRole("img", { name: /16 columns and 16 rows/ }),
+  ).toBeVisible();
+  await page
+    .getByRole("combobox", { name: "Packet index", exact: true })
+    .selectOption("7");
+  await expect(page.getByLabel("Exact planned packet 7")).toContainText(
+    "BC 0F 08",
+  );
   await page.goto("/?offline=lsled");
   await expect(page.getByLabel("Exact planned packet 0")).toContainText(
     "77 61 6E 67",

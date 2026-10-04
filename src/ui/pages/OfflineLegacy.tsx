@@ -157,8 +157,8 @@ export function OfflineLegacy({
       <p class="eyebrow">OFFLINE COMPILATION</p>
       <h1>Offline protocol explorer</h1>
       <p>
-        Compile an authored monochrome example without a device. This logical
-        preview does not prove physical rendering or accepted device support.
+        Compile an authored pixel example without a device. This logical preview
+        does not prove physical rendering or accepted device support.
       </p>
       <label>
         Implementation{" "}
@@ -219,7 +219,7 @@ export function OfflineLegacy({
                 <FramePreview
                   frame={result.preview}
                   scale={Math.min(24, Math.floor(352 / entry.geometry.width))}
-                  label={`${example} logical monochrome pixels, ${entry.geometry.width} columns and ${entry.geometry.height} rows`}
+                  label={`${example} logical pixels, ${entry.geometry.width} columns and ${entry.geometry.height} rows`}
                 />
                 <p>{entry.previewDescription}</p>
               </section>

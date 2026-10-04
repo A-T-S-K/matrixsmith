@@ -1,9 +1,9 @@
 # Source-scoped protocol guidance
 
-Knowledge revision `2026-10-03.2` strengthens the existing curated facts without
+Knowledge revision `2026-10-03.3` strengthens the existing curated facts without
 changing the corpus schema, resolver or executable registry. Coverage remains
-66 research records, 21 sheets, 44 families, 109 assertions, 147 citation records
-and 21 retained conflicts. Curated GATT suggestions increase from five to nine.
+66 research records, 21 sheets, 44 families, 109 assertions, 151 citation records
+and 22 retained conflicts. Curated GATT suggestions increase from five to nine.
 All unresolved and adjacent classification records remain available to search.
 This index supplies candidate explanations; it does not authenticate hardware,
 select a driver, grant permission or establish physical support.
@@ -109,8 +109,11 @@ no property dump, notification receipt or durability contract. It delays twenty
 milliseconds between blocks; its refresh loop actually sleeps ten seconds between
 repetitions despite comments describing rapid refresh. Those source facts are not
 measured transfer behavior or proof of reliable retention. Browser anecdotes do
-not establish browser support. A future offline reference must preserve unknown
-response/persistence semantics and require separate review before live promotion.
+not establish browser support. The maintained [Merkury offline reference](merkury-offline.md) models only
+the eight frame blocks and preserves unknown response/persistence semantics.
+Its source aliases retain original lineage; the additional pinned HTML record
+is from the same repository. The draw_picture.py docstring format conflict is
+retained explicitly. Separate review is required before any live promotion.
 
 ## Evidence and redistribution
 

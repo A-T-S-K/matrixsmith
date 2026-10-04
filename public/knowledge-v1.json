@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "revision": "2026-10-03.2",
+  "revision": "2026-10-03.3",
   "redistribution": "Paraphrased public facts and attribution only; no upstream code, manuals, vendor assets or private capture identifiers. Source license metadata is advisory and requires review before reuse. No project license selected.",
   "aliases": [
     {
@@ -2549,9 +2549,13 @@
         {
           "sourceId": "file-offe-mi-led-display-protocol-txt",
           "locator": "full picture and individual pixel command notes"
+        },
+        {
+          "sourceId": "merkury-show-image",
+          "locator": "lines 119–136: eight 100-byte RGB blocks, indices 1–8, 5 ms sleep"
         }
       ],
-      "conflicts": []
+      "conflicts": ["merkury-rgb-docstring-format"]
     },
     {
       "id": "merkury-bc55-pixels",
@@ -5526,6 +5530,54 @@
       "retrieved": "2026-10-03",
       "status": "Enablement documentation inspected; firmware/security compatibility not established",
       "derivedFrom": []
+    },
+    {
+      "id": "merkury-draw-file",
+      "url": "https://github.com/offe/mi-led-display/blob/97a1be8b4edefc7eccdd2f3943997b4416d44771/draw_file.py",
+      "revision": "97a1be8b4edefc7eccdd2f3943997b4416d44771",
+      "sha256": "c7e043ab37f7734752b9cbb10f42f7d91324ffaff3b87d0bc8dc2bf93dad4133",
+      "origin": "offe/mi-led-display",
+      "license": "MIT",
+      "attribution": "offe/mi-led-display",
+      "retrieved": "2026-10-03",
+      "status": "Offline reference citation alias of the retained pinned original; same source lineage, not independent corroboration.",
+      "derivedFrom": ["file-offe-mi-led-display-draw_file-py"]
+    },
+    {
+      "id": "merkury-draw-picture",
+      "url": "https://github.com/offe/mi-led-display/blob/97a1be8b4edefc7eccdd2f3943997b4416d44771/draw_picture.py",
+      "revision": "97a1be8b4edefc7eccdd2f3943997b4416d44771",
+      "sha256": "8ac0e4d79616131a5932ae23ebb235ec6b98d50fcddd84ff515b253bdb5d9b22",
+      "origin": "offe/mi-led-display",
+      "license": "MIT",
+      "attribution": "offe/mi-led-display",
+      "retrieved": "2026-10-02",
+      "status": "Offline reference citation alias of the retained pinned original; same source lineage, not independent corroboration.",
+      "derivedFrom": ["file-offe-mi-led-display-draw_picture-py"]
+    },
+    {
+      "id": "merkury-readme",
+      "url": "https://github.com/offe/mi-led-display/blob/97a1be8b4edefc7eccdd2f3943997b4416d44771/README.md",
+      "revision": "97a1be8b4edefc7eccdd2f3943997b4416d44771",
+      "sha256": "819f80d6b0ac2a11580a4b86f3d82c290479ac9468b36072d784b54bd4da6162",
+      "origin": "offe/mi-led-display",
+      "license": "MIT",
+      "attribution": "offe/mi-led-display",
+      "retrieved": "2026-10-02",
+      "status": "Offline reference citation alias of the retained pinned original; same source lineage, not independent corroboration.",
+      "derivedFrom": ["src-offe-mi-led-display"]
+    },
+    {
+      "id": "merkury-show-image",
+      "url": "https://github.com/offe/mi-led-display/blob/97a1be8b4edefc7eccdd2f3943997b4416d44771/show_image.html",
+      "origin": "offe/mi-led-display",
+      "derivedFrom": [],
+      "attribution": "Copyright (c) 2025 Oscar Lindberg",
+      "revision": "97a1be8b4edefc7eccdd2f3943997b4416d44771",
+      "sha256": "827d0bb234ba651b242a92bbace366f7f11ff42d9a125d9c61269a896ce4cffa",
+      "license": "MIT",
+      "retrieved": "2026-10-03",
+      "status": "Pinned original file inspected and SHA-256 verified; source behavior only, no physical acceptance."
     }
   ],
   "conflicts": [
@@ -5660,6 +5712,15 @@
       "sources": [
         "seed-divoom:README.md",
         "seed-divoom:divoom_protocol/commands.py"
+      ]
+    },
+    {
+      "id": "merkury-rgb-docstring-format",
+      "text": "draw_picture.py docstring describes 113-byte blocks, a 16-byte header and zero-based indices. Executed draw_picture.py, draw_file.py and show_image.html agree on 100-byte blocks, three-byte headers and indices 1–8. The offline codec follows executed code; physical acceptance remains unverified.",
+      "sources": [
+        "merkury-draw-picture",
+        "merkury-draw-file",
+        "merkury-show-image"
       ]
     }
   ]

@@ -26,7 +26,16 @@ describe("advisory knowledge", () => {
     expect(corpus.families.some((f) => f.resolution === "unresolved")).toBe(
       true,
     );
-    expect(corpus.conflicts).toHaveLength(21);
+    expect(corpus.conflicts).toHaveLength(22);
+    expect(
+      corpus.conflicts.find(
+        (conflict) => conflict.id === "merkury-rgb-docstring-format",
+      )?.sources,
+    ).toEqual([
+      "merkury-draw-picture",
+      "merkury-draw-file",
+      "merkury-show-image",
+    ]);
   });
   it("rejects duplicates, dangling references, alias conflicts and lineage cycles", () => {
     for (const change of [

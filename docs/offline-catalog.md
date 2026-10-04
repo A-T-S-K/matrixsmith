@@ -9,7 +9,7 @@ Application-owned immutable entries supply identity, geometry, examples, exact
 pixel policy, delivery descriptions, unresolved behavior and validated source
 IDs. Each entry closes over a pure DriverRegistry and reviewed reference.
 The catalog listing imports neither implementations nor knowledge validators.
-Adding micro:bit required one entry/loader, driver and reference, with no second
+Adding micro:bit and Merkury required entries/loaders, drivers and references, with no second
 page or protocol-specific bootstrap/inspector branch. This is deliberately not a
 plugin framework, data interpreter or service locator.
 
@@ -24,10 +24,13 @@ participate. Labels are presentation only.
 
 LSLED retains its 64-byte header, 66-byte group-major bitmap, 14 padding bytes
 and nine 16-byte packets. micro:bit uses one direct five-byte characteristic
-value with no borrowed program/CRC/compression metadata. Both implementations
+value with no borrowed program/CRC/compression metadata. Merkury uses eight
+100-byte RGB blocks for exact 16×16 input, with source-scoped timing and a
+placeholder write mode. Setup, finalization and refresh are omitted; it is a
+block-transfer proof with no physical acceptance claim. All three implementations
 remain outside default live drivers, discovery, probes and notifications.
 Central policy independently rejects dry-run intent, even with unlock and
-confirmation. Neither reference is accepted shipping hardware support.
+confirmation. No reference is accepted shipping hardware support.
 
 The single inspector owns async generations for entry load, citations and copy.
 Entry switching immediately clears incompatible packet selection, result,
@@ -40,10 +43,11 @@ controls use the supervised existing browser adapter. No hardware action exists.
 Maintained source/reference files and the knowledge JSON contribute to build
 identity. Vite's existing asset manifest deliberately includes all new lazy
 chunks in service-worker precaching. The production journey installs from Home,
-opens neither entry online, disables networking, then navigates both references,
-loads micro:bit citations and reloads the selected reference. CSP, external
+opens no entry online, disables networking, then navigates all three references,
+loads micro:bit and Merkury citations and reloads the selected reference. CSP, external
 origin scans and validated source-only citation navigation remain unchanged.
 
 See [LSLED source scope](lsled-offline.md) and
-[micro:bit source scope](microbit-offline.md). Pairing, firmware installation,
+[micro:bit source scope](microbit-offline.md) and
+[Merkury source scope](merkury-offline.md). Pairing, firmware installation,
 readback editing, text, brightness, animation and live support remain deferred.

@@ -114,7 +114,7 @@ const server = createServer((request, response) => {
     response.writeHead(404).end();
   }
 });
-server.listen(4174, "127.0.0.1");
+server.listen(Number(process.env.MATRIXSMITH_TEST_PORT ?? 4174), "127.0.0.1");
 const close = () =>
   server.close(() => {
     rmSync(temporary, { recursive: true, force: true });

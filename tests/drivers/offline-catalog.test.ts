@@ -10,10 +10,17 @@ import {
   offlineRegistry,
 } from "../../src/app/offline-entries/lsled";
 import { Framebuffer } from "../../src/render/framebuffer";
+import knowledge from "../../public/knowledge-v1.json";
+import { builtInDrivers } from "../../src/drivers/registry";
 
 describe("application-owned offline catalog", () => {
   it("loads literal immutable entries and rejects arbitrary paths and labels", async () => {
     expect(Object.isFrozen(offlineCatalog)).toBe(true);
+    expect(offlineCatalog.map((entry) => entry.id)).toEqual([
+      "microbit",
+      "lsled",
+      "merkury",
+    ]);
     const entry = await loadOfflineEntry("lsled");
     expect(Object.isFrozen(entry)).toBe(true);
     expect(entry.reference).toBe(offlineReference);
@@ -25,6 +32,19 @@ describe("application-owned offline catalog", () => {
         width: loaded.reference.profile.width,
         height: loaded.reference.profile.height,
       });
+      expect(
+        builtInDrivers.some(
+          (driver) => driver.id === loaded.reference.profile.driverId,
+        ),
+      ).toBe(false);
+      for (const basis of loaded.reference.sourceBasis) {
+        const [id, revision] = basis.split("@");
+        const source = knowledge.sources.find((source) => source.id === id);
+        expect(source, `Missing source ${id}`).toBeDefined();
+        expect(loaded.sourceIds).toContain(id);
+        if (/^[a-f0-9]{40}$/.test(revision!))
+          expect(source!.revision).toBe(revision);
+      }
       expect(findOfflineEntry(descriptor.label)).toBeUndefined();
       await expect(loadOfflineEntry(descriptor.label)).rejects.toThrow(
         /Unknown offline reference/,

@@ -74,15 +74,18 @@ zero transport/evidence changes and central policy rejection despite exact
 matching, experimental permission and digest confirmation.
 
 The authored `merkuryEntry` implements the existing OfflineEntry contract.
-Integration requires a literal `merkury` catalog descriptor importing
-`./offline-entries/merkury` and returning `merkuryEntry`. Keep the reference
-out of builtInDrivers, physical registries and discovery composition. No shared
+The literal `merkury` catalog descriptor imports
+`./offline-entries/merkury` and returns `merkuryEntry`. The reference remains
+outside builtInDrivers, physical registries and discovery composition. No shared
 API, profile version or capability-requirements migration is needed.
 
-The orchestrator owns catalog wiring, knowledge source IDs, public citations,
-third-party notices, static budgets, production browser/offline checks and
-final full verification. Notice proposal: identify offe/mi-led-display at the
-pinned revision; record MIT and copyright 2025 Oscar Lindberg, link its LICENSE,
-and clarify that encoder/vectors were independently authored with no upstream
-code or artwork copied. Include upstream MIT text if notice policy requires it;
-no choice of MatrixSmith license is implied.
+The generic explorer uses authored RGB examples and the same packet/citation
+controls as the monochrome entries. Citation aliases preserve the original
+source lineage; show_image.html is pinned and hashed as an additional file
+from that same repository. The retained docstring conflict is connected to
+the curated framing assertion. Third-party notices record the upstream MIT
+terms without selecting a MatrixSmith license. Browser tests check exact
+boundary packets, canvas colors, copying, source limitations and accessibility.
+The production installation test caches all assets before the first opening
+and checks offline selection, citations and reload. These are software checks
+only; hardware and Android qualification remain outstanding.
