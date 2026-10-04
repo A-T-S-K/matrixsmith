@@ -227,6 +227,52 @@ export function parseDiagnosticBundle(json: string): DiagnosticBundle {
   if (!result.success) throw new BundleValidationError(result.errors);
   return result.data;
 }
+/** Opaque, process-local permission to read validated historical input only. */
+declare const preparedImportBrand: unique symbol;
+export interface PreparedDiagnosticBundleImport {
+  readonly [preparedImportBrand]: true;
+}
+
+// Identity, not a caller-visible marker, authenticates the handoff. The WeakMap
+// keeps data alive only while its token is retained. Tokens may be reused across
+// runtimes; consumers must own mutable runtime state rather than edit this data.
+const preparedImports = new WeakMap<object, DiagnosticBundle>();
+
+/** Parse/validate/sanitize once, then freeze the privately owned JSON graph.
+ * Ordinary parser results remain mutable. No arbitrary-object stamping API exists.
+ */
+export function prepareDiagnosticBundleImport(
+  json: string,
+): PreparedDiagnosticBundleImport {
+  const bundle = parseDiagnosticBundle(json);
+  freezeOwned(bundle);
+  const token = Object.freeze(
+    Object.create(null),
+  ) as PreparedDiagnosticBundleImport;
+  preparedImports.set(token, bundle);
+  return token;
+}
+
+/** Authenticate before any effects. Returned data is deeply frozen, including
+ * the fingerprint passed to workspace factories. Copies/serialized tokens and
+ * tokens from other module instances are incompatible. This grants no live authority.
+ */
+export function readPreparedDiagnosticBundle(
+  prepared: PreparedDiagnosticBundleImport,
+): DiagnosticBundle {
+  const bundle = preparedImports.get(prepared);
+  if (!bundle)
+    throw new Error("Invalid prepared diagnostic import capability.");
+  return bundle;
+}
+
+function freezeOwned(value: unknown): void {
+  if (value === null || typeof value !== "object" || Object.isFrozen(value))
+    return;
+  for (const child of Object.values(value)) freezeOwned(child);
+  Object.freeze(value);
+}
+
 export function notificationPacketsFromBundle(
   bundle: DiagnosticBundle,
 ): readonly Uint8Array[] {
