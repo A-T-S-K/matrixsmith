@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "revision": "2026-10-02.1",
+  "revision": "2026-10-03.2",
   "redistribution": "Paraphrased public facts and attribution only; no upstream code, manuals, vendor assets or private capture identifiers. Source license metadata is advisory and requires review before reuse. No project license selected.",
   "aliases": [
     {
@@ -26,6 +26,30 @@
     {
       "from": "bk-light",
       "to": "bk-png"
+    },
+    {
+      "from": "lsled",
+      "to": "lsled-legacy"
+    },
+    {
+      "from": "badge magic legacy",
+      "to": "lsled-legacy"
+    },
+    {
+      "from": "badge magic next-gen",
+      "to": "badgemagic-nextgen"
+    },
+    {
+      "from": "micro:bit",
+      "to": "microbit-led"
+    },
+    {
+      "from": "merkury",
+      "to": "merkury-bc55"
+    },
+    {
+      "from": "mi-lnl62-999w",
+      "to": "merkury-bc55"
     }
   ],
   "families": [
@@ -81,11 +105,19 @@
       "sheetId": "badgemagic-nextgen",
       "resolution": "documented-line",
       "unknowns": [
-        "legacyOEMcompatibility beyonddocumented path",
-        "actualnegotiatedMTU/writefragmentation",
-        "allconfigurationerrorsemantics"
+        "F055 is the open next-gen profile; it does not establish OEM legacy compatibility.",
+        "Negotiated MTU and fragmentation are not established by the documented 512-byte message limit.",
+        "F056 Read is pending in the pinned notes; notify error codes do not prove rendering or durability.",
+        "Names and services do not authenticate a CH582M hardware batch."
       ],
-      "match": null
+      "match": {
+        "serviceUuid": "0000f055-0000-1000-8000-00805f9b34fb",
+        "characteristicUuids": [
+          "0000f057-0000-1000-8000-00805f9b34fb",
+          "0000f056-0000-1000-8000-00805f9b34fb"
+        ],
+        "assertionId": "badgemagic-nextgen-gatt"
+      }
     },
     {
       "id": "bk-png",
@@ -143,10 +175,10 @@
       "sheetId": "coolledux-advanced",
       "resolution": "documented-line",
       "unknowns": [
-        "exactcontroller/chip",
-        "universalmodelcoverage",
-        "powercycledurability",
-        "newhardwarevalidation"
+        "FFF0/FFF1 is shared by CoolLEDUX and classic CoolLEDX; endpoint discovery cannot select a driver.",
+        "Query/response applicability depends on firmware; current properties and notify access must be inspected.",
+        "Chip, exact model coverage and power-cycle durability remain unknown.",
+        "Historical/imported source evidence does not authorize a current-session operation."
       ],
       "match": {
         "serviceUuid": "0000fff0-0000-1000-8000-00805f9b34fb",
@@ -160,10 +192,10 @@
       "sheetId": "coolledx-simple",
       "resolution": "documented-line",
       "unknowns": [
-        "exactcontroller/chip",
-        "universalmodelcoverage",
-        "powercycledurability",
-        "newhardwarevalidation"
+        "FFF0/FFF1 is shared by CoolLEDUX and classic CoolLEDX; endpoint discovery cannot select a driver.",
+        "Query/response applicability depends on firmware; current properties and notify access must be inspected.",
+        "Chip, exact model coverage and power-cycle durability remain unknown.",
+        "Historical/imported source evidence does not authorize a current-session operation."
       ],
       "match": {
         "serviceUuid": "0000fff0-0000-1000-8000-00805f9b34fb",
@@ -385,12 +417,16 @@
       "sheetId": "lsled-legacy",
       "resolution": "documented-line",
       "unknowns": [
-        "OEM notify semantics",
-        "perbatch GATT differences",
-        "timing/ACKcorrelation",
-        "exactOEMmanufacturer"
+        "FEE0/FEE1 does not distinguish OEM firmware from open legacy firmware.",
+        "OEM Read/Notify payload semantics and acknowledgement correlation are unknown.",
+        "Missing properties may reflect incomplete access; the cited open legacy shape is write-only.",
+        "Hardware batch, timing and power-cycle persistence require separate evidence."
       ],
-      "match": null
+      "match": {
+        "serviceUuid": "0000fee0-0000-1000-8000-00805f9b34fb",
+        "characteristicUuids": ["0000fee1-0000-1000-8000-00805f9b34fb"],
+        "assertionId": "lsled-legacy-gatt"
+      }
     },
     {
       "id": "lsled-like-unresolved",
@@ -414,15 +450,17 @@
       "sheetId": "merkury-bc55",
       "resolution": "documented-line",
       "unknowns": [
-        "app/package",
-        "SoC",
-        "GATTproperties",
-        "ACKs",
-        "persistence",
-        "individualpixelQQchecksummeaning",
-        "browserreliability"
+        "FFD0/FFD1 is source-scoped to the MI-LNL62-999W reverse-engineering implementation; it is not authenticated model identity.",
+        "GATT properties, write response mode, negotiated MTU and fragmentation are not established.",
+        "No notification receipt, protocol acknowledgement or persistence contract is established.",
+        "Refresh code and browser-client anecdotes do not establish reliable display retention or browser support.",
+        "App/package identity and the individual pixel-command QQ field remain unresolved."
       ],
-      "match": null
+      "match": {
+        "serviceUuid": "0000ffd0-0000-1000-8000-00805f9b34fb",
+        "characteristicUuids": ["0000ffd1-0000-1000-8000-00805f9b34fb"],
+        "assertionId": "merkury-bc55-gatt"
+      }
     },
     {
       "id": "microbit-led",
@@ -430,13 +468,21 @@
       "sheetId": "microbit-led",
       "resolution": "documented-line",
       "unknowns": [
-        "V2specificruntimebinding",
-        "security/pairingconfiguration",
-        "textlengthlimits",
-        "persistenceofprogrammeddisplay",
-        "notifyproperties"
+        "The LED service is optional and disabled by default; absent access does not identify a board or contradict the family.",
+        "Pinned DAL behavior does not establish V2, CODAL or every MakeCode firmware build.",
+        "Configured security, pairing and browser permission can prevent access; service UUIDs do not establish security compatibility.",
+        "Display state is not a stored program; persistence, timing and physical rendering remain unverified.",
+        "The pinned text buffer limit is 20 bytes; text limits in other firmware remain unknown."
       ],
-      "match": null
+      "match": {
+        "serviceUuid": "e95dd91d-251d-470a-a062-fa1922dfa9a8",
+        "characteristicUuids": [
+          "e95d7b77-251d-470a-a062-fa1922dfa9a8",
+          "e95d93ee-251d-470a-a062-fa1922dfa9a8",
+          "e95d0d2d-251d-470a-a062-fa1922dfa9a8"
+        ],
+        "assertionId": "microbit-led-gatt"
+      }
     },
     {
       "id": "pix-unresolved",
@@ -655,7 +701,7 @@
       "scope": "led-matrix",
       "families": ["lsled-legacy"],
       "aliases": [],
-      "notes": "Chip batch is project-reported hardware distinction; radio role of MM32L062PF not established.",
+      "notes": "Project-reported hardware batch only; FEE0/FEE1 and a device name do not identify the chip, its radio role or installed firmware. OEM versus open legacy properties require current inspection.",
       "unknowns": [
         "universal firmware applicability",
         "power-cycle persistence",
@@ -678,7 +724,7 @@
       "scope": "led-matrix",
       "families": ["lsled-legacy"],
       "aliases": [],
-      "notes": "Chip batch is project-reported hardware distinction; radio role of MM32L062PF not established.",
+      "notes": "Project-reported hardware batch only; FEE0/FEE1 and a device name do not identify the chip, its radio role or installed firmware. OEM versus open legacy properties require current inspection.",
       "unknowns": [
         "universal firmware applicability",
         "power-cycle persistence",
@@ -701,7 +747,7 @@
       "scope": "led-matrix",
       "families": ["lsled-legacy"],
       "aliases": [],
-      "notes": "Chip batch is project-reported hardware distinction; radio role of MM32L062PF not established.",
+      "notes": "Project-reported hardware batch only; FEE0/FEE1 and a device name do not identify the chip, its radio role or installed firmware. OEM versus open legacy properties require current inspection.",
       "unknowns": [
         "universal firmware applicability",
         "power-cycle persistence",
@@ -724,7 +770,7 @@
       "scope": "led-matrix",
       "families": ["lsled-legacy", "badgemagic-nextgen"],
       "aliases": [],
-      "notes": "",
+      "notes": "Open CH582M firmware documents both FEE0/FEE1 legacy and distinct F055 next-gen profiles. Presence of one service does not establish the other is inspectable or that a device has this firmware.",
       "unknowns": [
         "universal firmware applicability",
         "power-cycle persistence",
@@ -1109,8 +1155,8 @@
       "label": "Merkury Innovations MI-LNL62-999W",
       "scope": "led-matrix",
       "families": ["merkury-bc55"],
-      "aliases": [],
-      "notes": "",
+      "aliases": ["mi-lnl62-999w", "mi matrix display", "merkury"],
+      "notes": "Source-scoped 16×16 RGB block implementation from reverse-engineering notes; FFD0/FFD1, branding and browser anecdotes do not authenticate a model or establish receipt/persistence behavior.",
       "unknowns": [
         "universal firmware applicability",
         "power-cycle persistence",
@@ -1628,8 +1674,8 @@
       "label": "BBC micro:bit v1",
       "scope": "led-matrix",
       "families": ["microbit-led"],
-      "aliases": [],
-      "notes": "LED service disabled by default; application must enable it. Runtime firmware/version matters.",
+      "aliases": ["micro:bit", "microbit led service", "micro:bit-v1"],
+      "notes": "Optional LED service disabled by default. Pinned DAL 2.1.1 matrix Read/Write contract is source-scoped; board generation, firmware and security compatibility cannot be inferred from name or service.",
       "unknowns": [
         "universal firmware applicability",
         "power-cycle persistence",
@@ -1651,8 +1697,8 @@
       "label": "BBC micro:bit v2",
       "scope": "led-matrix",
       "families": ["microbit-led"],
-      "aliases": [],
-      "notes": "LED service disabled by default; application must enable it. Runtime firmware/version matters.",
+      "aliases": ["micro:bit", "microbit led service", "micro:bit-v2"],
+      "notes": "Optional LED service disabled by default. Pinned DAL 2.1.1 matrix Read/Write contract is source-scoped; board generation, firmware and security compatibility cannot be inferred from name or service.",
       "unknowns": [
         "universal firmware applicability",
         "power-cycle persistence",
@@ -2053,13 +2099,13 @@
       "id": "lsled-legacy-gatt",
       "familyId": "lsled-legacy",
       "field": "gatt",
-      "text": "OEM LSLED uses service FEE0 and characteristic FEE1 with Read/Write/Notify; open legacy FEE1 is write-only.",
+      "text": "Pinned maintainer notes describe OEM LSLED FEE0/FEE1 as Read/Write/Notify, with Read/Notify semantics unknown. Open firmware retains FEE0/FEE1 but legacy FEE1 is write-only; its name can change. These are reverse-engineering/project notes, not an OEM specification.",
       "basis": "implemented",
       "scope": "44×11 badge hardware batches; OEM vs open firmware distinguished",
       "evidence": [
         {
           "sourceId": "file-fossasia-badgemagic-firmware-BadgeBLE-md",
-          "locator": "lines5–25"
+          "locator": "lines 5–29: OEM and open firmware connection information"
         }
       ],
       "conflicts": []
@@ -2068,13 +2114,13 @@
       "id": "lsled-legacy-framing",
       "familyId": "lsled-legacy",
       "field": "framing",
-      "text": "A 64-byte header starts with wang and two NUL bytes. Eight bitmap sizes are big-endian 16-bit counts.",
+      "text": "The legacy header is 64 bytes beginning with wang and two NUL bytes. Eight big-endian 16-bit size fields count 8×11 pixel groups, not payload bytes; bitmap data begins at offset 40h.",
       "basis": "implemented",
       "scope": "44×11 badge hardware batches; OEM vs open firmware distinguished",
       "evidence": [
         {
           "sourceId": "file-fossasia-badgemagic-firmware-BadgeBLE-md",
-          "locator": "lines31–47"
+          "locator": "lines 31–47: legacy offset table"
         }
       ],
       "conflicts": []
@@ -2098,13 +2144,13 @@
       "id": "lsled-legacy-chunking",
       "familyId": "lsled-legacy",
       "field": "chunking",
-      "text": "Send sequential 16-byte values and zero-pad the last. Timestamp semantics are unclear.",
+      "text": "The notes prescribe sequential 16-byte values with final zero padding only when needed. Timestamp purpose is unclear; this does not establish timing, write response mode, acknowledgements or durability.",
       "basis": "implemented",
       "scope": "44×11 badge hardware batches; OEM vs open firmware distinguished",
       "evidence": [
         {
           "sourceId": "file-fossasia-badgemagic-firmware-BadgeBLE-md",
-          "locator": "lines43–54"
+          "locator": "lines 43–54: timestamp and sequential packet layout"
         }
       ],
       "conflicts": []
@@ -2143,13 +2189,13 @@
       "id": "badgemagic-nextgen-gatt",
       "familyId": "badgemagic-nextgen",
       "field": "gatt",
-      "text": "Service F055, write characteristic F057, notification characteristic F056; read is pending.",
+      "text": "The open firmware next-gen profile is distinct: F055 service, F057 Write controls/configuration, F056 Notify error codes. F056 Read is listed as pending. This is a project-maintained contract, not OEM LSLED behavior.",
       "basis": "implemented",
       "scope": "OpenCH582M firmware only",
       "evidence": [
         {
           "sourceId": "file-fossasia-badgemagic-firmware-BadgeBLE-md",
-          "locator": "lines72–84"
+          "locator": "lines 72–106: endpoints, pending Read and returned error codes"
         }
       ],
       "conflicts": []
@@ -2473,13 +2519,17 @@
       "id": "merkury-bc55-gatt",
       "familyId": "merkury-bc55",
       "field": "gatt",
-      "text": "The image implementation names service FFD0 and characteristic FFD1.",
+      "text": "Pinned MI-LNL62-999W image code names FFD0 service and FFD1 characteristic. It writes FFD1 without an explicit response argument and supplies no GATT property dump or notification receipt contract; response mode and persistence remain unknown.",
       "basis": "implemented",
       "scope": "MI-LNL62-999W16×16implementation",
       "evidence": [
         {
           "sourceId": "file-offe-mi-led-display-draw_file-py",
-          "locator": "lines7–9"
+          "locator": "lines 7–9: UUIDs; lines 63–80: writes"
+        },
+        {
+          "sourceId": "src-offe-mi-led-display",
+          "locator": "README: model and reverse-engineering scope"
         }
       ],
       "conflicts": []
@@ -2488,13 +2538,17 @@
       "id": "merkury-bc55-framing",
       "familyId": "merkury-bc55",
       "field": "framing",
-      "text": "Commands use BC and 55 delimiters. The full-image builder adds no checksum; the pixel command has a position-related QQ field.",
+      "text": "The reverse-engineering notes use BC and 55 delimiters. Full-picture code builds 100-byte values: BC 0F, block index 1–8, 96 RGB bytes, 55, with no checksum added. The separate pixel-command QQ field is not explained by that builder.",
       "basis": "implemented",
       "scope": "MI-LNL62-999W16×16implementation",
       "evidence": [
         {
+          "sourceId": "file-offe-mi-led-display-draw_file-py",
+          "locator": "lines 44–61: full-picture command builder"
+        },
+        {
           "sourceId": "file-offe-mi-led-display-protocol-txt",
-          "locator": "lines2–20"
+          "locator": "full picture and individual pixel command notes"
         }
       ],
       "conflicts": []
@@ -2518,13 +2572,13 @@
       "id": "merkury-bc55-pacing",
       "familyId": "merkury-bc55",
       "field": "pacing",
-      "text": "The code delays 20 ms between blocks and includes a continuous refresh path.",
+      "text": "Pinned code sleeps 20 ms between image blocks. Its refresh loop sends image-mode setup and repeats blocks with a 10-second sleep, despite comments describing rapid refresh. This is implementation behavior, not measured timing, reliable retention or power-cycle durability.",
       "basis": "implemented",
       "scope": "MI-LNL62-999W16×16implementation",
       "evidence": [
         {
           "sourceId": "file-offe-mi-led-display-draw_file-py",
-          "locator": "lines63–85"
+          "locator": "lines 63–101: block pacing, refresh setup and loop"
         }
       ],
       "conflicts": []
@@ -2863,13 +2917,13 @@
       "id": "microbit-led-gatt",
       "familyId": "microbit-led",
       "field": "gatt",
-      "text": "Service E95DD91D-251D-470A-A062-FA1922DFA9A8; matrix E95D7B77…, text E95D93EE…, delay E95D0D2D…, with the same suffix.",
-      "basis": "specified",
-      "scope": "DALdocumentation;V1/V2runtimeapplicabilityrequiresfirmwarecheck",
+      "text": "Optional LED service E95DD91D-251D-470A-A062-FA1922DFA9A8 contains matrix E95D7B77…, text E95D93EE… and delay E95D0D2D… with the same suffix. Pinned DAL constructs matrix/delay Read+Write and text Write, without Notify; each requires configured security.",
+      "basis": "implemented",
+      "scope": "microbit-dal 318c6ab / DAL 2.1.1; other runtime builds unverified",
       "evidence": [
         {
-          "sourceId": "microbit-led",
-          "locator": "UUIDconstants"
+          "sourceId": "microbit-dal-led-cpp",
+          "locator": "lines 41–68: properties and configured security; lines 141–155: UUID arrays"
         }
       ],
       "conflicts": []
@@ -2878,13 +2932,17 @@
       "id": "microbit-led-pixels",
       "familyId": "microbit-led",
       "field": "pixels",
-      "text": "Five row bytes represent the 5×5 display. Bit 4 is leftmost and bit 0 rightmost; each bit is on/off.",
-      "basis": "specified",
-      "scope": "DALdocumentation;V1/V2runtimeapplicabilityrequiresfirmwarecheck",
+      "text": "Five binary row bytes describe 5×5 pixels, top row first, bit 4 leftmost and bit 0 rightmost. Pinned DAL matrix reads rebuild all five rows from current nonzero display pixels; writes accept 1–5 rows and inspect only bits 4–0.",
+      "basis": "implemented",
+      "scope": "Pinned DAL matrix callback; full five-row reference encoding",
       "evidence": [
         {
+          "sourceId": "microbit-dal-led-cpp",
+          "locator": "lines 88–95: partial row writes; lines 121–137: current display read callback"
+        },
+        {
           "sourceId": "microbit-led",
-          "locator": "matrixstate"
+          "locator": "matrix state orientation and bit mapping"
         }
       ],
       "conflicts": []
@@ -2893,13 +2951,17 @@
       "id": "microbit-led-commands",
       "familyId": "microbit-led",
       "field": "commands",
-      "text": "Read/write the bitmap, write UTF-8 text and set a scrolling delay in milliseconds through separate characteristics.",
-      "basis": "specified",
-      "scope": "DALdocumentation;V1/V2runtimeapplicabilityrequiresfirmwarecheck",
+      "text": "Matrix writes stop animation before updating pixels. Text Write starts asynchronous UTF-8 scrolling with a pinned 20-byte buffer limit; delay uses a uint16 buffer. These source paths do not establish persistence, physical acceptance or other firmware limits.",
+      "basis": "implemented",
+      "scope": "Pinned DAL callback behavior only",
       "evidence": [
         {
-          "sourceId": "microbit-led",
-          "locator": "introduction / text / examples"
+          "sourceId": "microbit-dal-led-cpp",
+          "locator": "lines 84–115: write callbacks; lines 50–56: delay buffer"
+        },
+        {
+          "sourceId": "microbit-dal-led-header",
+          "locator": "lines 33–35: maximum scroll-text buffer; lines 77–79: typed characteristic buffers"
         }
       ],
       "conflicts": []
@@ -2908,13 +2970,17 @@
       "id": "microbit-led-init",
       "familyId": "microbit-led",
       "field": "init",
-      "text": "The service is disabled by default. Firmware must instantiate MicroBitLEDService; BLE services consume runtime memory.",
+      "text": "DAL documentation disables this service by default; firmware must instantiate MicroBitLEDService. Service inclusion and configured security govern access; a name or UUID cannot identify chip, board generation or applicable firmware.",
       "basis": "specified",
-      "scope": "DALdocumentation;V1/V2runtimeapplicabilityrequiresfirmwarecheck",
+      "scope": "DAL documentation and pinned implementation; V1/V2 runtime applicability requires firmware check",
       "evidence": [
         {
           "sourceId": "microbit-led",
-          "locator": "EnablingtheService"
+          "locator": "Enabling the Service"
+        },
+        {
+          "sourceId": "microbit-dal-led-cpp",
+          "locator": "lines 41–68: constructor and security requirements"
         }
       ],
       "conflicts": []
@@ -3328,13 +3394,13 @@
       "id": "coolledux-advanced-transport",
       "familyId": "coolledux-advanced",
       "field": "transport",
-      "text": "FFF0/FFF1 and upstream writes without response with 60 ms pacing.",
+      "text": "Upstream documents FFF0/FFF1, writes without response and 60 ms pacing. Its device-info query uses opcode 1F; the author reports a 30-byte echoed response with power and brightness at bytes 1–2. The current reviewed query can investigate that prefix; geometry and remaining fields stay unestablished.",
       "basis": "implemented",
       "scope": "Upstream 64×16 reference sign",
       "evidence": [
         {
           "sourceId": "seed-ux:PROTOCOL.md",
-          "locator": "priorseedcoverage"
+          "locator": "lines 48–61: transport; lines 217–218 and 266–277: device-info query and scoped response"
         }
       ],
       "conflicts": []
@@ -3613,13 +3679,17 @@
       "id": "seed:ux.gatt",
       "familyId": "coolledux-advanced",
       "field": "gatt",
-      "text": "FFF0 service and FFF1 write/notify endpoints occur on the upstream CoolLEDUX reference sign. Actual properties require discovery; the shared endpoint alone is insufficient identity.",
+      "text": "FFF0/FFF1 is used by the upstream CoolLEDUX reference sign and is shared with classic CoolLEDX. Actual write/notify properties require discovery; neither endpoint nor name establishes family, chip or model identity.",
       "basis": "implemented",
       "scope": "upstream 64×16 test sign; unrelated specimen facts not inherited",
       "evidence": [
         {
           "sourceId": "seed-ux:PROTOCOL.md",
-          "locator": "{\"line\": 54}"
+          "locator": "lines 48–61: transport table"
+        },
+        {
+          "sourceId": "seed-ux:coolledux/ble.py",
+          "locator": "lines 46–47: endpoint constants"
         }
       ],
       "conflicts": []
@@ -3628,13 +3698,13 @@
       "id": "seed:x.gatt",
       "familyId": "coolledx-simple",
       "field": "gatt",
-      "text": "FFF0 service and FFF1 write/notify endpoints are used by classic CoolLEDX implementations. Actual properties require discovery; the shared endpoint alone is insufficient identity.",
+      "text": "Classic Python CoolLEDX uses FFF1 for writes and subscribes there for notifications; CoolLEDUX uses the same FFF0/FFF1 pair. Shared identifiers are candidate evidence only, with current properties and firmware applicability unverified.",
       "basis": "implemented",
       "scope": "classic licensed source implementations; exact model coverage not independently established",
       "evidence": [
         {
           "sourceId": "seed-x-python:src/coolledx/client.py",
-          "locator": "{\"line\": 33}"
+          "locator": "line 33: FFF1; lines 166–168: notify; lines 334–346: write_raw"
         }
       ],
       "conflicts": []
@@ -4085,8 +4155,8 @@
       "origin": "fossasia/badgemagic-firmware",
       "license": "Apache-2.0",
       "attribution": "fossasia/badgemagic-firmware",
-      "retrieved": "2026-10-02",
-      "status": "retrieved pinned file",
+      "retrieved": "2026-10-03",
+      "status": "Pinned original file re-inspected; SHA-256 verified; paraphrased advisory facts only, no upstream asset redistribution or physical acceptance.",
       "derivedFrom": []
     },
     {
@@ -4145,8 +4215,8 @@
       "origin": "offe/mi-led-display",
       "license": "MIT",
       "attribution": "offe/mi-led-display",
-      "retrieved": "2026-10-02",
-      "status": "retrieved pinned file",
+      "retrieved": "2026-10-03",
+      "status": "Pinned original file re-inspected; SHA-256 verified; paraphrased advisory facts only, no upstream asset redistribution or physical acceptance.",
       "derivedFrom": []
     },
     {
@@ -4409,8 +4479,8 @@
       "origin": "offe/mi-led-display",
       "license": "MIT",
       "attribution": "offe/mi-led-display",
-      "retrieved": "2026-10-02",
-      "status": "retrieved pinned file",
+      "retrieved": "2026-10-03",
+      "status": "Pinned original file re-inspected; SHA-256 verified; paraphrased advisory facts only, no upstream asset redistribution or physical acceptance.",
       "derivedFrom": []
     },
     {
@@ -4421,8 +4491,8 @@
       "origin": "CharlesLennon/coolledux-ble",
       "license": "MIT",
       "attribution": "CharlesLennon; upstream license notice",
-      "retrieved": "2026-10-02",
-      "status": "imported pinned seed index; not re-inspected in this survey",
+      "retrieved": "2026-10-03",
+      "status": "Pinned original file re-inspected; SHA-256 verified; paraphrased advisory facts only, no upstream asset redistribution or physical acceptance.",
       "derivedFrom": []
     },
     {
@@ -4445,8 +4515,8 @@
       "origin": "CharlesLennon/coolledux-ble",
       "license": "MIT",
       "attribution": "CharlesLennon; upstream license notice",
-      "retrieved": "2026-10-02",
-      "status": "imported pinned seed index; not re-inspected in this survey",
+      "retrieved": "2026-10-03",
+      "status": "Pinned original file re-inspected; SHA-256 verified; paraphrased advisory facts only, no upstream asset redistribution or physical acceptance.",
       "derivedFrom": []
     },
     {
@@ -4457,8 +4527,8 @@
       "origin": "UpDryTwist/coolledx-driver",
       "license": "MIT",
       "attribution": "Greg Tatham / UpDryTwist",
-      "retrieved": "2026-10-02",
-      "status": "imported pinned seed index; not re-inspected in this survey",
+      "retrieved": "2026-10-03",
+      "status": "Pinned original file re-inspected; SHA-256 verified; paraphrased advisory facts only, no upstream asset redistribution or physical acceptance.",
       "derivedFrom": []
     },
     {
@@ -5430,7 +5500,7 @@
       "license": "MIT",
       "attribution": "Copyright (c) 2016 British Broadcasting Corporation; provided by Lancaster University by arrangement with the BBC.",
       "retrieved": "2026-10-03",
-      "status": "Pinned source inspected; offline reference only, physical support unverified",
+      "status": "Pinned original file re-inspected; SHA-256 verified; paraphrased advisory facts only, no upstream asset redistribution or physical acceptance.",
       "derivedFrom": []
     },
     {
@@ -5442,7 +5512,7 @@
       "license": "MIT",
       "attribution": "Copyright (c) 2016 British Broadcasting Corporation; provided by Lancaster University by arrangement with the BBC.",
       "retrieved": "2026-10-03",
-      "status": "Pinned source inspected; offline reference only, physical support unverified",
+      "status": "Pinned original file re-inspected; SHA-256 verified; paraphrased advisory facts only, no upstream asset redistribution or physical acceptance.",
       "derivedFrom": []
     },
     {
