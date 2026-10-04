@@ -107,6 +107,43 @@ export class TraceRecorder {
   }
 
   importSerialized(events: readonly Record<string, unknown>[]): void {
+    // Batch only potential overflow; below the cap the sequential path is cheap.
+    // Only plain data can be inspected without intermediate user callbacks.
+    // Subscriptions (including those on retained workspaces), accessors and
+    // custom iterables keep the sequential append/trim/notify contract below.
+    if (
+      this.#listeners.size === 0 &&
+      this.#events.length + events.length > INPUT_LIMITS.traceEvents &&
+      isDataArray(events) &&
+      events.every(isDataRecord) &&
+      this.#listeners.size === 0
+    ) {
+      const accepted = events.filter(
+        (value) =>
+          typeof value.timestamp === "string" &&
+          typeof value.type === "string" &&
+          isMetadata(value.metadata),
+      );
+      const retained = accepted.slice(-INPUT_LIMITS.traceEvents);
+      const removed = Math.max(
+        0,
+        this.#events.length + accepted.length - INPUT_LIMITS.traceEvents,
+      );
+      this.#events.splice(0, removed);
+      for (const value of retained) {
+        const rawBytes =
+          typeof value.rawHex === "string" ? fromHex(value.rawHex) : undefined;
+        this.#events.push({
+          timestamp: value.timestamp as string,
+          type: value.type as TraceEventType,
+          metadata: { ...(value.metadata as TraceEvent["metadata"]) },
+          ...(rawBytes ? { rawBytes } : {}),
+        });
+      }
+      // Revision remains the number of accepted mutations, even for evictions.
+      this._revision += accepted.length;
+      return;
+    }
     for (const value of events) {
       if (
         typeof value.timestamp !== "string" ||
@@ -119,7 +156,7 @@ export class TraceRecorder {
       const event: TraceEvent = {
         timestamp: value.timestamp,
         type: value.type as TraceEventType,
-        metadata: value.metadata,
+        metadata: { ...value.metadata },
         ...(rawBytes ? { rawBytes } : {}),
       };
       this.#events.push(event);
@@ -159,5 +196,38 @@ function isMetadata(value: unknown): value is TraceEvent["metadata"] {
       (item) =>
         item === null || ["string", "number", "boolean"].includes(typeof item),
     )
+  );
+}
+
+/** JSON-shaped data only: accessor inputs must retain streaming visibility. */
+function hasDataProperties(value: object): boolean {
+  return Object.values(Object.getOwnPropertyDescriptors(value)).every(
+    (descriptor) => "value" in descriptor,
+  );
+}
+
+function isDataArray(value: readonly Record<string, unknown>[]): boolean {
+  return (
+    Object.getPrototypeOf(value) === Array.prototype &&
+    Reflect.ownKeys(value).length === value.length + 1 &&
+    !Object.hasOwn(value, Symbol.iterator) &&
+    hasDataProperties(value) &&
+    Array.from({ length: value.length }, (_, i) => i).every((i) =>
+      Object.hasOwn(value, i),
+    )
+  );
+}
+
+function isDataRecord(value: Record<string, unknown>): boolean {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    Object.getPrototypeOf(value) === Object.prototype &&
+    hasDataProperties(value) &&
+    (typeof value.metadata !== "object" ||
+      value.metadata === null ||
+      ((Object.getPrototypeOf(value.metadata) === Object.prototype ||
+        Array.isArray(value.metadata)) &&
+        hasDataProperties(value.metadata)))
   );
 }

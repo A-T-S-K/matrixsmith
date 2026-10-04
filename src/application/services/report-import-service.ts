@@ -302,13 +302,9 @@ export class ReportImportService {
     this.ports
       .protocolEvidence()
       .getTrace()
-      .importSerialized(
-        bundle.trace.map((event) => ({
-          ...event,
-          // Validated trace metadata contains only scalar JSON values.
-          metadata: { ...(event.metadata as Record<string, unknown>) },
-        })),
-      );
+      // The recorder owns retained metadata and decoded bytes. Do not allocate
+      // editable copies for valid records that bulk retention will discard.
+      .importSerialized(bundle.trace);
     const captures = bundle.trace.filter(
       (event) =>
         event.type === "notification.raw" && typeof event.rawHex === "string",
