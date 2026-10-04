@@ -101,3 +101,32 @@ bytes. No new image/font/vendor asset or external executable dependency is added
 Final exact measurements are reported in chat. Node 24.20.0 was not available;
 these desktop asset measurements make no Android performance claim. Static,
 CSP, origin, schema and initial-budget checks remain mandatory.
+
+The Merkury/advisory/read-ownership integration keeps the existing 240 KiB total
+JavaScript and 90 KiB initial ceilings; no budget revision was needed. The exact
+starting commit `9fca44cf62b142eea0385017f42bee6f1c1fbe5b` measured 237,779
+bytes total JavaScript gzip and 14,063 initial. The combined source measures
+240,814 total and 14,114 initial: growth of 3,035 and 51 bytes. Measurements
+include the service worker in total JavaScript, use gzipSync per file, and use
+the same static-import/modulepreload traversal as the enforced initial gate.
+Installed Node 24.21.0/npm 11.19.0 was used; Node 24.20.0 was unavailable.
+
+The Merkury entry chunk is 5,946 raw / 2,767 gzip bytes. Its complete explorer
+graph, including initial and shared inspector/compiler/preview dependencies,
+is 59,524 raw / 24,426 gzip bytes across nine files; graph totals overlap other
+references and cannot be added. The manifest grows from 30 to 31 application
+assets, measuring 950,187 raw / 247,298 gzip bytes across JavaScript and CSS.
+The deliberately installed shell plus manifest assets total 1,214,438 raw /
+295,417 per-file gzip bytes across 45 files, excluding the service-worker
+script itself. These are artifact estimates, not browser transfer sizes or
+measured cache storage. Lazy execution does not avoid installation download.
+
+Knowledge revision 2026-10-03.3 measures 207,380 raw / 34,091 gzip bytes, versus
+195,970 / 30,946 at the baseline. Its 256 KiB ceiling and standalone validators
+remain unchanged. No image, font, vendor document, upstream code or artwork
+asset was added. CSP, source-only citation exception, same-origin loading and
+static/origin scanning remain enforced. Candidate review avoids full history
+hashes on unrelated publications while retaining nested-content comparisons
+and fresh authoritative checks before revision/export; see
+[read/performance qualification](read-performance-qualification.md). These
+desktop measurements make no Android performance claim.
