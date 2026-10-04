@@ -215,3 +215,47 @@ it("reuses immutable provisional history with independently editable runtime col
   expect(subscribe).not.toHaveBeenCalled();
   expect(transport.state).toBe("connected");
 });
+
+it("retains complete bounded exports and independently owned bytes across repeated prepared adoption", async () => {
+  const { runtime: source } = await setupStill();
+  runtimes.push(source);
+  await verifyStill(source);
+  const report = JSON.parse(source.exportBundle());
+  report.trace = Array.from({ length: 50000 }, (_, index) => ({
+    timestamp: "2026-10-03T12:00:00.000Z",
+    type: "gatt.read",
+    metadata: { index },
+    rawHex: "00ABFF",
+  }));
+  const token = prepareDiagnosticBundleImport(JSON.stringify(report));
+  const frozen = readPreparedDiagnosticBundle(token);
+  const a = consumer(),
+    b = consumer();
+  a.r.adoptPreparedBundle(token);
+  b.r.adoptPreparedBundle(token);
+  const event = a.r.trace.events.find((e) => e.metadata.index === 49999)!;
+  const other = b.r.trace.events.find((e) => e.metadata.index === 49999)!;
+  Object.assign(event.metadata, { edited: true });
+  event.rawBytes![0] = 99;
+  expect(other.metadata).not.toHaveProperty("edited");
+  expect(other.rawBytes![0]).toBe(0);
+  expect(frozen.trace[49999]!.metadata).toEqual({ index: 49999 });
+  expect(frozen.trace[49999]!.rawHex).toBe("00ABFF");
+  a.r.adoptPreparedBundle(token);
+  const exported = JSON.parse(a.r.exportBundle());
+  expect(exported.trace).toHaveLength(50000);
+  expect(
+    exported.trace
+      .filter((e: { type: string }) => e.type === "gatt.read")
+      .at(-1),
+  ).toMatchObject({ metadata: { index: 49999 }, rawHex: "00ABFF" });
+  expect(
+    exported.trace.some(
+      (e: { metadata: Record<string, unknown> }) => e.metadata.edited,
+    ),
+  ).toBe(false);
+  expect(a.r.session.source).toBe("imported");
+  expect(a.r.session.experimentalTxEnabled).toBe(false);
+  expect(a.r.session.confirmedPlanDigest).toBeNull();
+  expect(a.r.panelProgram().certainty).toBe("unknown");
+});

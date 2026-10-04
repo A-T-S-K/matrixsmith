@@ -58,9 +58,9 @@ historical input, never current-session, built-in or live authority.
 The workspace factory receives the frozen fingerprint. Adoption clones only the
 editable runtime fingerprint/profile, observations, transactions, diagnostic runs,
 compilations, imported-evidence summaries and investigation. Trace events own new
-metadata objects; validated metadata values are scalar JSON, so a shallow copy
-is sufficient. Runtime-owned collections can be edited without changing the
-prepared graph or another consumer. Manual observations now survive import and
+metadata objects in the recorder; validated metadata values are scalar JSON,
+so a shallow copy is sufficient. Runtime-owned collections can be edited without
+changing the prepared graph or another consumer. Manual observations now survive import and
 re-export; the previous path omitted their population.
 
 Preparation fails before factory creation. Factory/adoption failure preserves the
@@ -165,14 +165,152 @@ unchanged. The baseline archive uses fallback build identity; hash/reference and
 identity differences are included in these descriptive asset totals. Static,
 CSP, origin and asset-budget checks pass.
 
+## Bounded bulk trace import (2026-10-03)
+
+Baseline `ebbcb1fd002adeb660a0bc9ee48a9b81601331ac` reproduced the separate
+saturated direct-import cost. File import still constructs a fresh replacement
+runtime, adopts before attaching workspace listeners, then publishes snapshots.
+It does not repeatedly append to the active capped runtime. Retained workspaces
+keep their trace subscriptions even when their presentation is elsewhere.
+
+### Contract and implementation boundary
+
+`events` remains the same chronological append-order live array, with the latest
+50,000 accepted events retained. Imports do not sort timestamps or deduplicate
+identical timestamps/types. Surviving event objects keep their identities. The
+revision increases once per accepted record, including accepted records evicted
+within the same import; empty/invalid-only imports do not change it. Direct
+recorder acceptance still checks string timestamp/type and scalar metadata;
+Bundle V3 validation remains the stricter authenticated application boundary.
+Invalid serialized records are skipped. Invalid/odd hex omits bytes from an
+otherwise accepted record; empty hex retains an empty byte buffer. No malformed
+value is silently repaired. Imported metadata is now shallow-copied by the
+recorder on both paths; report adoption no longer copies every incoming record
+before retention. Decoded byte buffers and scalar metadata are independently
+owned by each consuming runtime, including reuse of one frozen prepared source.
+`record` retains its existing metadata behavior and copies supplied byte buffers.
+
+Only potentially overflowing imports with no trace listeners and a dense plain
+array of plain data records use batching. Descriptor inspection excludes
+accessor-bearing records/metadata, custom array methods and custom iterables.
+The path filters using the existing acceptance rules, counts valid records rather
+than input length,
+trims the existing array once, and constructs/decodes only the retained valid
+tail. It preserves older retained object identities and never replaces the live
+array. Below-cap imports retain the inexpensive sequential path, avoiding the
+preflight cost when there are no shifts to eliminate. There is no caller-controlled
+trust switch, new storage representation or change to prepared authentication.
+
+Subscribed and accessor/custom-iterable paths retain append, revision increment,
+trim, then notification per event. Listeners run in Set iteration order, including
+addition/removal during iteration. Reentrant record/import calls run within that
+iteration. Listener exceptions propagate immediately after the current event is
+committed, skip subsequent listeners/records, and preserve partial progress.
+Accessor input failures also preserve prior accepted progress. Regressions cover
+these boundaries, actual production-cap overflow with interspersed invalid input,
+raw/metadata fidelity, retained identity, bounded decoding and one compaction.
+
+Raw review still keys events by object identity. Bulk retention invalidates its
+raw projection once on the next publication; unrelated publications do not
+rebuild it. An older page keeps its original slot IDs and removed-slot explanation,
+without substituting another event. Show latest explicitly resets the window.
+Prepared-adoption tests retain bounded export completeness, independent bytes and
+metadata, historical scope, unknown panel certainty and absent send authority.
+The Chromium journey imports a 50,000-event valid report, selects the oldest
+raw page, imports 100 events through its subscribed recorder, checks eviction
+explanations and keyboard focus, then checks latest bytes, focus, complete capped
+full-local export, unchanged trace omission in shareable exports and axe
+accessibility. No visual baselines were updated.
+
+### Desktop measurements
+
+The environment matches the previous section: Apple M1 Max, macOS Darwin 25.5.0
+arm64, installed Node 24.21.0/npm 11.19.0. Pinned Node 24.20.0 is not installed;
+no dependencies changed. The maintained `setupStill`/`verifyStill` helpers were
+rerun with the fixed Date and sequential UUID method above. The resulting
+10,000-event fixture was byte-identical to the prior fixture: 3,088,497 bytes,
+SHA-256 `71a5aaa9f619c063adb2d0af38d6213fab75c073c911b79dc73a56295d5968da`.
+It is synthetic software evidence with 200-character fixture metadata, not a
+physical capture. Raw decoding and malformed bytes are separately covered by
+production-cap contract tests.
+
+Each path uses three warmups and twenty sequential measured samples. Durations
+use `performance.now()`, upper median (sorted index 10) and upper empirical p95
+(index 19, the maximum). A zero-delay timer queued immediately before the
+operation measures queued-event delay. Fresh direct/adoption paths include runtime
+construction/disposal. Workspace samples replace the same store's offline runtime;
+saturated direct/adoption reuse a runtime populated by six prepared adoptions.
+Recorder-only samples start with five batches at the actual cap. The subscribed
+sample imports 100 events with a listener running the actual `TransactionReview`
+raw projection against all 50,000 retained events. It is a deliberately demanding
+observed path, not a claim about every application's listener cost.
+
+Baseline affected modules were loaded from a read-only Git archive into the same
+Vitest environment. Timing runs had no concurrent browser/build/test jobs. An
+initial overlapping exploratory run was excluded. The final overflow-only path
+was remeasured after removing below-cap preflight. Fixtures, source archives,
+sampling code, full duration distributions, queue summaries and logs remain in
+`/tmp/matrixsmith-trace-slice/`. No wall-time CI assertion was introduced.
+
+All values are median / p95 milliseconds:
+
+| Path                                       | Before duration    | After duration    | Before queued delay | After queued delay |
+| ------------------------------------------ | ------------------ | ----------------- | ------------------- | ------------------ |
+| Preparation only                           | 26.377 / 31.178    | 25.653 / 30.178   | 27.201 / 31.280     | 26.513 / 30.246    |
+| Fresh direct string import                 | 31.243 / 60.466    | 28.864 / 29.943   | 31.289 / 60.728     | 29.464 / 30.035    |
+| Fresh prepared adoption                    | 2.795 / 10.284     | 2.045 / 2.319     | 3.004 / 10.319      | 2.083 / 4.102      |
+| Fresh workspace file import                | 36.439 / 52.303    | 30.373 / 43.574   | 36.466 / 54.645     | 30.913 / 48.285    |
+| Saturated direct string import             | 550.175 / 874.899  | 39.450 / 40.726   | 550.205 / 875.061   | 39.715 / 40.753    |
+| Saturated prepared adoption                | 457.634 / 546.537  | 13.577 / 15.860   | 457.657 / 546.568   | 13.609 / 15.886    |
+| Saturated recorder, no listeners           | 483.718 / 1148.543 | 11.871 / 17.922   | 483.765 / 1148.591  | 12.023 / 21.640    |
+| Subscribed raw projection, 100 events      | 782.114 / 1046.188 | 680.423 / 715.229 | 782.336 / 1046.459  | 680.463 / 715.522  |
+| 100 getters / unchanged review projections | 0.625 / 1.157      | 0.558 / 0.682     | 0.890 / 7.163       | 1.679 / 1.815      |
+
+Preparation remains separate from population: prepared adoption authenticates and
+populates without repeating validation. Each unobserved 10,000-event batch still
+advances revision by 10,000; saturated retention changes from 10,000 shifts to
+one splice. A maintained work-count regression checks zero shifts, one splice
+and exactly 50,000 decodes for an overflowing batch of 50,101 valid raw events
+interspersed with invalid records. Evicted incoming events allocate no decoded
+buffers. Workspace sampling records 46 publications across warmups and samples
+on both sides. The subscribed sample records 2,300 callbacks and 2,300 raw
+projection rebuilds, with one transaction/filter/compilation build. Another 100
+unchanged projections do no additional work. Getters return the identical array,
+with no full collection copy on publication. The observed path has no bulk
+optimization; its timing difference is descriptive variation, not an attributed
+speedup. Synchronous validation, descriptor inspection, population and observed
+projection/listener work remain. These timings do not establish constant-time
+trace handling or a retained-memory conclusion.
+
+Production assets compared with the starting Git archive add 998 total raw
+JavaScript bytes including the service worker and 256 bytes using Node gzip
+(241,232 to 241,488). Initial-route JavaScript changes from 14,119 to
+14,120 bytes gzip with changed chunk references/build identity. CSS,
+schemas, packet fixtures and all budgets are unchanged; static/CSP/origin checks
+pass. Build identities and changed chunk references are included in these totals.
+The archive was built with its committed generated validators, TypeScript and
+Vite; schema-check output varies with the shared dependency symlink's generated
+region comments. The active checkout's full schema check passes unchanged.
+
+Validation of final source passed `npm run verify`: schema/knowledge checks,
+TypeScript, ESLint/architecture checks, Prettier, 1,122 unit tests (one existing
+skip), production build and static output/CSP/origin budgets. Directly affected
+trace, import, prepared capability, review/store and privacy tests passed. The
+focused Chromium set covered 33 journeys across transaction/raw review, reviewed
+read recovery, discovery interviews, candidate portability and offline catalog.
+The new journey checks full-local/shareable privacy boundaries, axe and the
+fixture's unhandled-error guard on final source. `git diff --check` passed. No snapshots,
+packet fixtures, dependencies, hardware operations or budget revisions changed.
+
 ## Remaining qualification
 
-The large workspace import still synchronously delays queued work by roughly
-33 ms median / 42 ms p95 in this desktop run. Removing duplicate validation does
+The final large workspace import still synchronously delays queued work by
+roughly 31 ms median / 48 ms p95 in this desktop run. Removing duplicate validation does
 not make it asynchronous. No worker, yielding, scheduler or trace-buffer redesign
-was introduced. The audit's roughly 434 ms repeated direct import at a saturated
-50,000-event trace cap remains deferred trace-trimming qualification, separate
-from the fresh-runtime workflow. Heap deltas were GC-sensitive and do not establish
+was introduced. The saturated unobserved direct-import cost is addressed by the
+bounded batch path above, separately from the fresh-runtime workflow. Active
+trace listeners still require sequential states and can dominate synchronous
+import cost. Heap deltas were GC-sensitive and do not establish
 a retained-memory leak. Hardware/Bluetooth and Android acceptance remain separate.
 
 Unexpected disconnect while a browser read remains unresolved conservatively

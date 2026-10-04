@@ -249,3 +249,49 @@ it("an empty raw review window defers arrivals until explicit latest", () => {
   owner.showLatestRaw();
   expect(owner.project(values).events).toHaveLength(1);
 });
+
+it("bulk imports preserve old raw slots, page and projection identity until explicit latest", () => {
+  const trace = new TraceRecorder();
+  const serialized = (index: number) => ({
+    timestamp: "same",
+    type: "gatt.read",
+    metadata: { index },
+    rawHex: "00ABFF",
+  });
+  trace.importSerialized(
+    Array.from({ length: INPUT_LIMITS.traceEvents }, (_, i) => serialized(i)),
+  );
+  const owner = new TransactionReview();
+  const values = {
+    ...input(0),
+    section: "raw" as const,
+    rawEvents: trace.events,
+    revisions: { transactions: 0, compilations: 0, raw: trace.revision },
+  };
+  owner.project(values);
+  owner.rawPage = 999;
+  owner.selected = "unrelated-selection";
+  const old = owner.project(values);
+  const retained = trace.events[100]!;
+  trace.importSerialized(
+    Array.from({ length: 100 }, (_, i) => serialized(50000 + i)),
+  );
+  values.revisions.raw = trace.revision;
+  const next = owner.project(values);
+  expect(trace.events[0]).toBe(retained);
+  expect(next.raw.page).toBe(999);
+  expect(next.events).toEqual(
+    old.events.map(({ id }) => ({ id, event: null })),
+  );
+  expect(next.rawPending).toBe(100);
+  expect(owner.selected).toBe("unrelated-selection");
+  expect(owner.work.raw).toBe(2);
+  for (let i = 0; i < 100; i++) owner.project(values);
+  expect(owner.work.raw).toBe(2);
+  owner.showLatestRaw();
+  const latest = owner.project(values);
+  expect(latest.raw.page).toBe(0);
+  expect(latest.events[0]!.event!.metadata.index).toBe(50099);
+  expect([...latest.events[0]!.event!.rawBytes!]).toEqual([0, 171, 255]);
+  expect(owner.work.raw).toBe(2);
+});

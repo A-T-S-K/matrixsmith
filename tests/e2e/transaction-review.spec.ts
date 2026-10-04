@@ -1,4 +1,5 @@
 import { expect, test } from "./fixtures";
+import AxeBuilder from "@axe-core/playwright";
 import { reviewTransaction } from "../helpers/review-fixtures";
 import type { Page } from "@playwright/test";
 
@@ -27,7 +28,7 @@ async function section(page: Page, name: string) {
     .getByRole("button", { name, exact: true })
     .click();
 }
-async function capture(page: Page, count = 1201) {
+async function capture(page: Page, count = 1201, traceCount = 151) {
   const bundle = await page.evaluate(() =>
     JSON.parse(
       (
@@ -58,7 +59,7 @@ async function capture(page: Page, count = 1201) {
   );
   bundle.transactions[count - 51].packets[50].direction = "RX";
   bundle.transactions[count - 51].packets[50].relation = "unrelated-concurrent";
-  bundle.trace = Array.from({ length: 151 }, (_, index) => ({
+  bundle.trace = Array.from({ length: traceCount }, (_, index) => ({
     timestamp: "2026-10-02T00:00:00.000Z",
     type: "gatt.read",
     metadata: { index },
@@ -336,4 +337,76 @@ test("raw arrivals preserve duplicate-event window and keyboard focus", async ({
   await expect(
     page.locator(".raw-layer li").first().locator("code"),
   ).toHaveText("00 AB FF");
+});
+
+test("capped report raw review retains evicted slots, keyboard focus and explicit latest evidence", async ({
+  page,
+}) => {
+  await connect(page);
+  await capture(page, 101, 50000);
+  await workbench(page, "Raw events");
+  const raw = page.getByRole("navigation", { name: "Raw events pagination" });
+  // Position beside the oldest page through the public store API, then select
+  // that page with the actual pagination control (avoid 999 repetitive clicks).
+  await page.evaluate(() => {
+    const store = (
+      globalThis as unknown as {
+        matrixsmithStore: import("../../src/presentation/store").PresentationStore;
+      }
+    ).matrixsmithStore;
+    store.setReviewPage("raw", 998);
+  });
+  await raw.getByRole("button", { name: "Next" }).click();
+  await expect(raw).toContainText("Page 1000 of 1000");
+  const before = await page.locator(".raw-layer li").allTextContents();
+  const latest = page.getByRole("button", { name: /^Show latest/ });
+  await latest.focus();
+  await page.evaluate(() => {
+    const store = (
+      globalThis as unknown as {
+        matrixsmithStore: import("../../src/presentation/store").PresentationStore;
+      }
+    ).matrixsmithStore;
+    store.controller.trace.importSerialized(
+      Array.from({ length: 100 }, (_, index) => ({
+        timestamp: "2026-10-03T12:00:00.000Z",
+        type: "gatt.read",
+        metadata: { bulkReviewIndex: index },
+        rawHex: "01ABFE",
+      })),
+    );
+  });
+  await expect(latest).toBeFocused();
+  await expect(raw).toContainText("Page 1000 of 1000");
+  await expect(page.locator(".raw-layer li")).toHaveCount(50);
+  await expect(page.locator(".raw-layer li").first()).toHaveText(
+    "Event removed by capture retention. Show latest to refresh.",
+  );
+  expect(await page.locator(".raw-layer li").allTextContents()).not.toEqual(
+    before,
+  );
+  await expect(latest).toHaveText("Show latest (100 new events)");
+  await latest.click();
+  await expect(latest).toBeFocused();
+  await expect(raw).toContainText("Page 1 of 1000");
+  await expect(page.locator(".raw-layer li").first()).toContainText(
+    '"bulkReviewIndex":99',
+  );
+  await expect(
+    page.locator(".raw-layer li").first().locator("code"),
+  ).toHaveText("01 AB FE");
+  const exported = await page.evaluate(() => {
+    const store = (
+      globalThis as unknown as {
+        matrixsmithStore: import("../../src/presentation/store").PresentationStore;
+      }
+    ).matrixsmithStore;
+    return {
+      count: JSON.parse(store.exportBundle("full-local-archive")).trace.length,
+      shareableCount: JSON.parse(store.exportBundle()).trace.length,
+      allowed: store.getSnapshot().content.allowed,
+    };
+  });
+  expect(exported).toEqual({ count: 50000, shareableCount: 0, allowed: false });
+  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
 });
