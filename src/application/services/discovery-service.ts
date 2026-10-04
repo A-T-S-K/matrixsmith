@@ -626,12 +626,12 @@ export class DiscoveryService {
           annotate();
           if (this.pendingRead === token) {
             this.pendingRead = null;
-            this.publish({ pendingRead: false });
             if (
               this.state?.status !== "running" &&
               this.state?.status !== "stopping"
             )
               this.owned = false;
+            this.publish({ pendingRead: false });
           }
         });
       const result = await Promise.race([
@@ -690,6 +690,12 @@ export class DiscoveryService {
         } else failureStage = "value";
       }
     } catch (error) {
+      // A synchronous reservation/context failure has not dispatched work.
+      if (this.pendingRead === token) {
+        this.pendingRead = null;
+        dispatched = false;
+        this.publish({ pendingRead: false });
+      }
       outcome = error instanceof ProbeStageError ? error.kind : "inconclusive";
       failureStage = "authorization";
       summary = error instanceof Error ? error.message : String(error);

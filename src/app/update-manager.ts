@@ -10,6 +10,20 @@ export interface UpdateState {
   readonly applying: boolean;
   readonly error: string | null;
 }
+/** The same ownership gate also answers service-worker readiness in other tabs. */
+export function workspaceUpdateBlocker(snapshot: {
+  readonly busy: string | null;
+  readonly contextTransitionReason: string | null;
+  readonly guidedFlow: unknown;
+}): string | null {
+  return (
+    snapshot.busy ??
+    snapshot.contextTransitionReason ??
+    (snapshot.guidedFlow
+      ? "Finish or close the guided test before updating."
+      : null)
+  );
+}
 
 /** Persistent across bootstrap and workspace mounts; owns update state only. */
 export class UpdateManager {

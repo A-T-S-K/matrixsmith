@@ -480,6 +480,13 @@ export class ApplicationRuntime {
   get discoveryBusy() {
     return this.discoveryService.busy;
   }
+  get executionBusy() {
+    return (
+      this.discoveryService.busy ||
+      this.connection.pendingGattOperation ||
+      this.transmission.executionBusy
+    );
+  }
   startDiscovery = (): Promise<void> => this.discoveryService.start();
   stopDiscovery = (): void => this.discoveryService.stop();
   private guardDiscovery(): void {

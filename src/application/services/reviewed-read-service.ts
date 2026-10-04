@@ -52,6 +52,17 @@ export function executeReviewedRead(
     readAccess(read, session.fingerprint);
   if (access) throw new ProbeStageError("access", access);
   intent.reserve();
+  // Reservation publishes synchronously. Stop/context subscribers may retire
+  // this intent before the browser operation is dispatched.
+  if (
+    !intent.current() ||
+    `${read.definitionIdentity}/${registry.definitionIdentity(read.driverId, null)}` !==
+      definitionIdentity
+  )
+    throw new ProbeStageError(
+      "retired",
+      "The reviewed read was retired before browser dispatch.",
+    );
   return connection.read(read.endpoint, {
     transactionId,
     driverId: read.driverId,

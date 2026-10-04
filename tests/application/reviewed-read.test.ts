@@ -59,6 +59,35 @@ afterEach(async () => {
   await Promise.all(runtimes.splice(0).map((r) => r.dispose()));
   vi.useRealTimers();
 });
+it("Stop during synchronous reservation publication prevents browser dispatch and releases ownership", async () => {
+  const { runtime, transport, readCall } = await setup();
+  let stopped = false;
+  const unsubscribe = runtime.trace.subscribe((event) => {
+    if (
+      event.type === "discovery.progress" &&
+      !stopped &&
+      runtime.discovery?.pendingRead
+    ) {
+      stopped = true;
+      runtime.stopDiscovery();
+    }
+  });
+  try {
+    await runtime.startDiscovery();
+    expect(stopped).toBe(true);
+    expect(readCall).not.toHaveBeenCalled();
+    expect(transport.writes).toEqual([]);
+    expect(runtime.discovery?.attempts[0]).toMatchObject({
+      outcome: "retired",
+      transactionId: null,
+    });
+    expect(runtime.discovery?.pendingRead).toBe(false);
+    expect(runtime.executionBusy).toBe(false);
+    expect(runtime.transactions).toEqual([]);
+  } finally {
+    unsubscribe();
+  }
+});
 it("reads independently of registry order, retaining exact original evidence and zero writes/notifications/authority", async () => {
   for (const reverse of [false, true]) {
     const { runtime, transport, readCall } = await setup(

@@ -1,6 +1,9 @@
 import { ReplayTransport } from "./transport/replay";
 import { createBrowserEnvironment } from "./adapters/presentation/browser-environment";
-import type { UpdateManager } from "./app/update-manager";
+import {
+  workspaceUpdateBlocker,
+  type UpdateManager,
+} from "./app/update-manager";
 import { render } from "preact";
 import { ApplicationRuntime } from "./application/runtime";
 import { TraceRecorder } from "./diagnostics/trace";
@@ -89,12 +92,7 @@ export async function startApplication(
   });
   updates?.setBlocker(() => {
     const snapshot = store.getSnapshot();
-    return (
-      snapshot.busy ??
-      (snapshot.guidedFlow
-        ? "Finish or close the guided test before updating."
-        : null)
-    );
+    return workspaceUpdateBlocker(snapshot);
   });
   render(<App store={store} updates={updates} />, root);
   const initialization = store.initialize();
