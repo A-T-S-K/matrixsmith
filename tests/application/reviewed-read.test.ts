@@ -394,3 +394,39 @@ it("copied accessible identifiers in session data cannot manufacture transport a
   expect(readCall).not.toHaveBeenCalled();
   expect(runtime.discovery?.attempts[0]?.outcome).toBe("access");
 });
+
+it.each(["manual read", "discovery"])(
+  "both import entrypoints reject while %s owns a pending read",
+  async (owner) => {
+    const { prepareDiagnosticBundleImport } =
+      await import("../../src/diagnostics/bundle");
+    const { runtime, readCall } = await setup();
+    const json = runtime.exportBundle();
+    const prepared = prepareDiagnosticBundleImport(json);
+    let settle!: (bytes: Uint8Array) => void;
+    readCall.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          settle = resolve;
+        }),
+    );
+    const pending =
+      owner === "manual read"
+        ? runtime.read(LED_MATRIX_ENDPOINT)
+        : runtime.startDiscovery();
+    await vi.waitFor(() => expect(readCall).toHaveBeenCalledOnce());
+    const fingerprint = runtime.session.fingerprint;
+    expect(() => runtime.importBundle(json)).toThrow(
+      /owns execution|current operation/,
+    );
+    expect(() => runtime.adoptPreparedBundle(prepared)).toThrow(
+      /owns execution|current operation/,
+    );
+    expect(runtime.session.fingerprint).toBe(fingerprint);
+    expect(runtime.session.source).toBe("live");
+    settle(new Uint8Array(5));
+    await pending;
+    runtime.adoptPreparedBundle(prepared);
+    expect(runtime.session.source).toBe("imported");
+  },
+);

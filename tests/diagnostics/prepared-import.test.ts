@@ -91,6 +91,20 @@ it.each([
       ),
   ],
   ["semantic", JSON.stringify({ ...source(), createdAt: "not a date" })],
+  [
+    "count",
+    JSON.stringify({
+      ...source(),
+      trace: Array.from(
+        { length: BUNDLE_INPUT_LIMITS.traceEvents + 1 },
+        () => ({
+          timestamp: "2026-10-03T12:00:00.000Z",
+          type: "driver.match",
+          metadata: {},
+        }),
+      ),
+    }),
+  ],
 ])("never issues a capability for %s input", (_, json) => {
   expect(() => prepareDiagnosticBundleImport(json)).toThrow(
     BundleValidationError,

@@ -1,4 +1,7 @@
-import { parseDiagnosticBundle } from "./dependencies";
+import {
+  prepareDiagnosticBundleImport,
+  readPreparedDiagnosticBundle,
+} from "./dependencies";
 import type { ApplicationRuntime, MatrixTransport } from "./dependencies";
 import type { NoticeStore } from "./notice-store";
 import type { SnapshotStore } from "./snapshot-store";
@@ -207,11 +210,12 @@ export class WorkspaceStore {
     if (this.blocked(false)) return;
     let replacement: Workspace | null = null;
     try {
-      const bundle = parseDiagnosticBundle(json);
+      const prepared = prepareDiagnosticBundleImport(json);
+      const bundle = readPreparedDiagnosticBundle(prepared);
       replacement = this.makeWorkspace(
         this.environment.createOfflineWorkspace(bundle.fingerprint),
       );
-      replacement.controller.importBundle(json);
+      replacement.controller.adoptPreparedBundle(prepared);
       replacement.established = true;
       replacement.label =
         replacement.controller.session.fingerprint?.name ?? "Offline report";
@@ -219,10 +223,14 @@ export class WorkspaceStore {
       if (replacement) void this.retire(replacement);
       this.ports
         .noticeStore()
-        .setError(error instanceof Error ? error.message : String(error));
+        .setError(
+          error instanceof Error ? error.message : String(error),
+          "diagnostic-import",
+        );
       this.ports.snapshotStore()._emit();
       return;
     }
+    this.ports.noticeStore().setError(null, "diagnostic-import");
     const previous = this.offline;
     // A never-used bootstrap runtime is not a retained physical workspace.
     const unusedLive =

@@ -1,3 +1,4 @@
+import { BUNDLE_INPUT_LIMITS } from "../../src/diagnostics/bundle";
 import * as gifCodec from "../../src/render/gif";
 import { FrameSequence } from "../../src/render/frame-sequence";
 import { Framebuffer } from "../../src/render/framebuffer";
@@ -563,3 +564,98 @@ it.each(["success", "failure"])(
     expect(s.runtime.transactions.at(-1)?.source).toBe("gatt-read");
   },
 );
+
+it.each(["factory", "adoption", "factory mutation"])(
+  "preserves active live and retained review on %s failure and retries",
+  async (failure) => {
+    const s = await setup();
+    s.store.updateContentSettings({ text: "live draft" });
+    s.store.importBundle(s.json);
+    const retained = s.store.controller;
+    const retainedDispose = vi.spyOn(retained, "dispose");
+    s.store.setReviewNote("retained review");
+    s.store.setTransactionSearch("retained search");
+    s.store.returnToLiveWorkspace();
+    s.store.setReviewNote("live review");
+    s.store.importExternalCapture("bad capture");
+    const liveError = s.store.getSnapshot().error;
+    const before = s.store.getSnapshot();
+    const liveDispose = vi.spyOn(s.runtime, "dispose");
+    const disconnect = vi.spyOn(s.transport, "disconnect");
+    let replacementDispose: ReturnType<typeof vi.spyOn> | undefined;
+    s.createOfflineWorkspace.mockImplementationOnce((fingerprint) => {
+      if (failure === "factory") throw new Error("Replacement creation failed");
+      if (failure === "factory mutation")
+        Object.assign(fingerprint.services[0]!.characteristics[0]!.properties, {
+          read: false,
+        });
+      const transport = new ReplayTransport(fingerprint);
+      const controller = new ApplicationRuntime(transport);
+      replacementDispose = vi.spyOn(controller, "dispose");
+      vi.spyOn(controller, "adoptPreparedBundle").mockImplementationOnce(() => {
+        throw new Error("Replacement adoption failed");
+      });
+      return { transport, controller };
+    });
+    s.store.importBundle(s.json);
+    expect(s.store.controller).toBe(s.runtime);
+    expect(s.store.getSnapshot()).toMatchObject({
+      source: before.source,
+      liveConnected: true,
+      offlineWorkspaceAvailable: true,
+      reviewNote: "live review",
+      content: { settings: { text: "live draft" } },
+    });
+    expect(s.store.getSnapshot().error).toMatch(/failed|read only/);
+    expect(retainedDispose).not.toHaveBeenCalled();
+    expect(liveDispose).not.toHaveBeenCalled();
+    expect(disconnect).not.toHaveBeenCalled();
+    if (replacementDispose) expect(replacementDispose).toHaveBeenCalledOnce();
+    // Import failure has its own notice owner; existing errors remain accessible.
+    const notices = s.store["noticeStore"];
+    notices.setError(null, "diagnostic-import");
+    expect(notices.getError()).toBe(liveError);
+    s.store.returnToOfflineWorkspace();
+    expect(s.store.controller).toBe(retained);
+    expect(s.store.getSnapshot()).toMatchObject({
+      reviewNote: "retained review",
+      transactionSearch: "retained search",
+    });
+    s.store.returnToLiveWorkspace();
+    // Fail again without clearing the import owner, then successfully retry.
+    s.store.importBundle("{");
+    s.store.importBundle(s.json);
+    expect(s.store.controller.session.source).toBe("imported");
+    expect(retainedDispose).toHaveBeenCalledOnce();
+    s.store.returnToLiveWorkspace();
+    expect(s.store.controller).toBe(s.runtime);
+    expect(s.transport.state).toBe("connected");
+    expect(s.store.getSnapshot().error).toBe(liveError);
+  },
+);
+
+it("invalid input and pending manual-read ownership reject before factory creation", async () => {
+  const s = await setup();
+  for (const json of [
+    "{",
+    '{"schemaVersion":999}',
+    " ".repeat(BUNDLE_INPUT_LIMITS.diagnosticBundleBytes + 1),
+  ])
+    s.store.importBundle(json);
+  expect(s.createOfflineWorkspace).not.toHaveBeenCalled();
+  expect(s.store.controller).toBe(s.runtime);
+  const response = deferred<Uint8Array>();
+  vi.spyOn(s.transport, "read").mockReturnValueOnce(response.promise);
+  const reading = s.store.readCharacteristic({
+    serviceUuid: "0000fff0-0000-1000-8000-00805f9b34fb",
+    characteristicUuid: "0000fff1-0000-1000-8000-00805f9b34fb",
+  });
+  s.store.importBundle(s.json);
+  expect(s.createOfflineWorkspace).not.toHaveBeenCalled();
+  expect(s.store.controller).toBe(s.runtime);
+  expect(s.store.getSnapshot().error).toMatch(/Finish the current operation/);
+  response.resolve(new Uint8Array([1]));
+  await reading;
+  s.store.importBundle(s.json);
+  expect(s.createOfflineWorkspace).toHaveBeenCalledOnce();
+});

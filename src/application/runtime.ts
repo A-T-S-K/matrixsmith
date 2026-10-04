@@ -326,8 +326,12 @@ export class ApplicationRuntime {
     );
     this.exportBundle = this.reportImport.exportBundle.bind(this.reportImport);
     this.importBundle = (...args) => {
-      this.guardDiscovery();
+      this.guardImport();
       return this.reportImport.importBundle(...args);
+    };
+    this.adoptPreparedBundle = (...args) => {
+      this.guardImport();
+      return this.reportImport.adoptPreparedBundle(...args);
     };
     this.sendPersistentContent = (...args) => {
       this.guardDiscovery();
@@ -431,6 +435,7 @@ export class ApplicationRuntime {
   readonly recordObservation: ReportImportService["recordObservation"];
   readonly exportBundle: ReportImportService["exportBundle"];
   readonly importBundle: ReportImportService["importBundle"];
+  readonly adoptPreparedBundle: ReportImportService["adoptPreparedBundle"];
   readonly sendPersistentContent: TransmissionService["sendPersistentContent"];
   readonly importExternalLog: ReportImportService["importExternalLog"];
   get observations() {
@@ -489,6 +494,13 @@ export class ApplicationRuntime {
   }
   startDiscovery = (): Promise<void> => this.discoveryService.start();
   stopDiscovery = (): void => this.discoveryService.stop();
+  private guardImport(): void {
+    this.guardDiscovery();
+    if (this.connection.pendingGattOperation)
+      throw new Error(
+        "Finish the current operation before importing historical evidence.",
+      );
+  }
   private guardDiscovery(): void {
     if (this.discoveryService.busy)
       throw new Error(

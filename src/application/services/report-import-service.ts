@@ -3,7 +3,9 @@ import type { ManualObservation } from "../../core/evidence";
 import {
   createDiagnosticBundle,
   notificationPacketsFromBundle,
-  parseDiagnosticBundle,
+  prepareDiagnosticBundleImport,
+  readPreparedDiagnosticBundle,
+  type PreparedDiagnosticBundleImport,
   serializeDiagnosticBundle,
   type BundlePrivacy,
   type DiagnosticBundle,
@@ -236,18 +238,34 @@ export class ReportImportService {
     return serializeDiagnosticBundle(bundle);
   }
   importBundle(json: string): DiagnosticBundle {
+    return this.adoptPreparedBundle(prepareDiagnosticBundleImport(json));
+  }
+  adoptPreparedBundle(
+    prepared: PreparedDiagnosticBundleImport,
+  ): DiagnosticBundle {
+    const bundle = readPreparedDiagnosticBundle(prepared);
+    // Own only the data populated into editable runtime collections. The immutable
+    // source can safely be reused without another parse, validation or whole-bundle copy.
+    const fingerprint = structuredClone(bundle.fingerprint);
+    const profile = bundle.provisionalProfile
+      ? structuredClone(bundle.provisionalProfile)
+      : null;
+    const observations = structuredClone(bundle.observations);
+    const transactions = structuredClone(bundle.transactions ?? []);
+    const diagnosticRuns = structuredClone(bundle.diagnosticRuns ?? []);
+    const compilations = structuredClone(bundle.contentCompilations ?? []);
+    const importedEvidence = structuredClone(bundle.importedEvidence ?? []);
+    const investigation = bundle.investigation
+      ? structuredClone(bundle.investigation)
+      : null;
     const session = this.ports.connection().getSession();
-    const bundle = parseDiagnosticBundle(json);
     this.ports
       .protocolEvidence()
       .getNotificationRouter()
       .reset("Live response context was retired by historical import.");
     session.clearConnection();
-    this.ports
-      .identification()
-      .applyFingerprint(bundle.fingerprint, "imported");
-    if (bundle.provisionalProfile) {
-      const profile = bundle.provisionalProfile;
+    this.ports.identification().applyFingerprint(fingerprint, "imported");
+    if (profile) {
       const driver = this.ports
         .identification()
         .getRegistry()
@@ -265,7 +283,7 @@ export class ReportImportService {
             .getRegistry()
             .resolve(
               driver.id,
-              bundle.fingerprint,
+              fingerprint,
               "Historical imported geometry; no live authority.",
             ),
           profile: {
@@ -281,7 +299,16 @@ export class ReportImportService {
           },
         });
     }
-    this.ports.protocolEvidence().getTrace().importSerialized(bundle.trace);
+    this.ports
+      .protocolEvidence()
+      .getTrace()
+      .importSerialized(
+        bundle.trace.map((event) => ({
+          ...event,
+          // Validated trace metadata contains only scalar JSON values.
+          metadata: { ...(event.metadata as Record<string, unknown>) },
+        })),
+      );
     const captures = bundle.trace.filter(
       (event) =>
         event.type === "notification.raw" && typeof event.rawHex === "string",
@@ -299,11 +326,16 @@ export class ReportImportService {
         );
     this.ports
       .protocolEvidence()
+      .editObservations((value) =>
+        value.splice(0, value.length, ...observations),
+      );
+    this.ports
+      .protocolEvidence()
       .editTransactions((value) =>
         value.splice(
           0,
           this.ports.protocolEvidence().getTransactions().length,
-          ...(bundle.transactions ?? []),
+          ...transactions,
         ),
       );
     this.ports
@@ -312,7 +344,7 @@ export class ReportImportService {
         value.splice(
           0,
           this.ports.diagnostics().getDiagnosticRuns().length,
-          ...(bundle.diagnosticRuns ?? []),
+          ...diagnosticRuns,
         ),
       );
     this.ports
@@ -321,7 +353,7 @@ export class ReportImportService {
         value.splice(
           0,
           this.ports.protocolEvidence().getContentCompilations().length,
-          ...(bundle.contentCompilations ?? []),
+          ...compilations,
         ),
       );
     this.ports
@@ -330,7 +362,7 @@ export class ReportImportService {
         value.splice(
           0,
           this.ports.protocolEvidence().getImportedEvidence().length,
-          ...(bundle.importedEvidence ?? []),
+          ...importedEvidence,
         ),
       );
     // An imported investigation is external historical evidence in its
@@ -338,11 +370,8 @@ export class ReportImportService {
     this.ports
       .investigation()
       .setInvestigation(
-        bundle.investigation
-          ? demoteInvestigationEvidence(
-              bundle.investigation,
-              "imported-external",
-            )
+        investigation
+          ? demoteInvestigationEvidence(investigation, "imported-external")
           : null,
       );
     this.ports

@@ -295,3 +295,140 @@ test("cancellation retries without reload and a retained live disconnect updates
     page.getByRole("button", { name: "Send to display", exact: true }),
   ).toBeDisabled();
 });
+
+async function uploadReport(
+  page: import("@playwright/test").Page,
+  json: string,
+) {
+  await page
+    .locator('input[type="file"][accept="application/json,.json"]')
+    .setInputFiles({
+      name: "report.json",
+      mimeType: "application/json",
+      buffer: Buffer.from(json),
+    });
+}
+
+test("file imports preserve live and retained review through invalid input, replacement failure, retry and return", async ({
+  page,
+}) => {
+  await page.goto("/?sim#/home");
+  await page
+    .getByRole("button", { name: "Connect a display", exact: true })
+    .click();
+  await page
+    .getByRole("textbox", { name: "Text", exact: true })
+    .fill("retained live draft");
+  const json = await page.evaluate(() => {
+    const store = (
+      globalThis as unknown as {
+        matrixsmithStore: import("../../src/presentation/store").PresentationStore;
+      }
+    ).matrixsmithStore;
+    store.startDevelopInvestigation();
+    return store.exportBundle();
+  });
+  await page.getByRole("button", { name: /back to MatrixSmith home/ }).click();
+  await uploadReport(page, json);
+  await expect(
+    page.getByRole("heading", { name: "Offline report", exact: true }),
+  ).toBeVisible();
+  await section(page, "Evidence / observations");
+  await page
+    .getByRole("textbox", { name: "Unsaved review note" })
+    .fill("retained offline review");
+  await page.getByRole("button", { name: /back to MatrixSmith home/ }).click();
+  await uploadReport(page, "{");
+  await expect(
+    page
+      .getByRole("alert")
+      .getByText("Diagnostic bundle is not valid JSON.", { exact: true }),
+  ).toBeVisible();
+  expect(
+    await page.evaluate(() => {
+      const store = (
+        globalThis as unknown as {
+          matrixsmithStore: import("../../src/presentation/store").PresentationStore;
+        }
+      ).matrixsmithStore;
+      return {
+        source: store.getSnapshot().source,
+        note: store.getSnapshot().reviewNote,
+        connected: store.getSnapshot().retainedLiveConnection,
+      };
+    }),
+  ).toEqual({
+    source: "imported",
+    note: "retained offline review",
+    connected: "connected",
+  });
+  await page.evaluate(() => {
+    const store = (
+      globalThis as unknown as {
+        matrixsmithStore: import("../../src/presentation/store").PresentationStore;
+      }
+    ).matrixsmithStore;
+    const environment = store["workspaceStore"]["environment"];
+    const create = environment.createOfflineWorkspace;
+    environment.createOfflineWorkspace = (fingerprint) => {
+      environment.createOfflineWorkspace = create;
+      const next = create(fingerprint);
+      const dispose = next.controller.dispose;
+      Object.assign(next.controller, {
+        adoptPreparedBundle: () => {
+          throw new Error(
+            "Replacement adoption failed; choose the report again to retry.",
+          );
+        },
+        dispose: () => {
+          (globalThis as Record<string, unknown>).failedReplacementDisposed =
+            true;
+          return dispose();
+        },
+      });
+      return next;
+    };
+  });
+  await uploadReport(page, json);
+  await expect(
+    page
+      .getByRole("alert")
+      .getByText(
+        "Replacement adoption failed; choose the report again to retry.",
+        { exact: true },
+      ),
+  ).toBeVisible();
+  expect(
+    await page.evaluate(
+      () => (globalThis as Record<string, unknown>).failedReplacementDisposed,
+    ),
+  ).toBe(true);
+  expect(
+    await page.evaluate(
+      () =>
+        (
+          globalThis as unknown as {
+            matrixsmithStore: import("../../src/presentation/store").PresentationStore;
+          }
+        ).matrixsmithStore.getSnapshot().reviewNote,
+    ),
+  ).toBe("retained offline review");
+  await uploadReport(page, json);
+  await expect(
+    page.getByRole("heading", { name: "Offline report", exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: /Return to live display/ }).click();
+  await page
+    .getByRole("button", { name: /Create$/, exact: false })
+    .first()
+    .click();
+  await expect(
+    page.getByRole("textbox", { name: "Text", exact: true }),
+  ).toHaveValue("retained live draft");
+  await expect(
+    page.getByRole("button", {
+      name: "Return to retained report",
+      exact: true,
+    }),
+  ).toBeVisible();
+});

@@ -143,6 +143,14 @@ for (const width of [390, 1280])
     expect(document.label).toBe("Owner reviewed still display");
     expect(document.candidate.history.status).toBe("locally-verified");
     expect(document.contradictions.companyId).toBeNull();
+    const attachmentDownload = page.waitForEvent("download");
+    await page
+      .getByRole("button", {
+        name: "Download shareable candidate evidence",
+        exact: true,
+      })
+      .click();
+    const attachment = readFileSync((await (await attachmentDownload).path())!);
     await page.goto("/?sim=unknown#/home");
     await page.reload(); // Fresh runtime, same browser history must not unlock.
     await upload(page, portable);
@@ -150,6 +158,40 @@ for (const width of [390, 1280])
       page.getByText(/Evidence attachment is missing/),
     ).toBeVisible();
     await capture(page, `reload-${width}`);
+    await page
+      .locator(
+        '[aria-labelledby="profile-review-title"] input[type="file"][accept=".json,application/json"]',
+      )
+      .setInputFiles({
+        name: "candidate-evidence.json",
+        mimeType: "application/json",
+        buffer: Buffer.from(attachment),
+      });
+    await expect(
+      page.getByText(/Referenced V3 evidence attachment inspected/),
+    ).toBeVisible();
+    expect(
+      await page.evaluate(() => {
+        const store = (
+          globalThis as unknown as {
+            matrixsmithStore: import("../../src/presentation/store").PresentationStore;
+          }
+        ).matrixsmithStore;
+        return {
+          source: store.controller.session.source,
+          investigation: store.controller.investigation,
+          permission: store.controller.session.experimentalTxEnabled,
+          confirmation: store.controller.session.confirmedPlanDigest,
+          certainty: store.controller.panelProgram().certainty,
+        };
+      }),
+    ).toEqual({
+      source: "live",
+      investigation: null,
+      permission: false,
+      confirmation: null,
+      certainty: "unknown",
+    });
     await page
       .getByRole("button", { name: "Load reviewed profile", exact: true })
       .click();
