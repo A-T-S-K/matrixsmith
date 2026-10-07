@@ -302,6 +302,140 @@ The new journey checks full-local/shareable privacy boundaries, axe and the
 fixture's unhandled-error guard on final source. `git diff --check` passed. No snapshots,
 packet fixtures, dependencies, hardware operations or budget revisions changed.
 
+## Reusable qualification harness (2026-10-06)
+
+Run the maintained software command from an isolated checkout with its own
+installed dependencies. Acquire the fleet installation and performance-quiet
+leases first; stop other fleet CPU-heavy work before collecting comparisons.
+The command loads TypeScript through Vite's middleware module loader, without
+starting a browser listener, and stores its cache in the external run directory.
+Use the actual Node/npm toolchain in the run metadata; the requested pin is
+Node 24.20.0/npm 11.19.0. A different Node version leaves pinned qualification open.
+
+```sh
+node scripts/qualify-runtime-costs.ts \
+  --output /absolute/external/evidence/I/unique-run \
+  --warmups 3 --samples 20 \
+  --contamination "quiet lease ID; process observations; thermal/power state"
+```
+
+The parent directory must already exist. The destination must be new, absolute,
+and outside every Git checkout, including symlink aliases; an existing directory
+is rejected. No reports or execution logs are written to the source checkout.
+Each raw warmup/sample is preserved immediately in an exclusive JSON file, with
+`metadata.json`, `report-fixture.json` and a final `results.json`. A failed run
+retains completed samples and must not be represented as a successful comparison.
+The source record includes exact HEAD, Git dirty inventory, tracked patch digest,
+and SHA-256 contents of dirty/untracked files, checked again after sampling.
+
+`tests/helpers/runtime-qualification-fixtures.ts` independently generates a
+seeded xorshift32 noisy 48-frame 32×16 RGB sequence, positive 100 ms frame timing,
+and a compact valid Bundle V3 report. The report contains 10,000 historical
+software trace events with independently owned byte buffers and no identifiers,
+selected driver/profile, capabilities, observations, or live evidence. Fixtures
+pass the real structural/semantic import boundary and original size/count limits.
+Run metadata binds seed, fixture hashes, byte/frame/packet/event counts and caps.
+It does not reuse temporary audit fixtures or a capture upload. Synthetic executable
+software plans use separate freshly compiled data, never report-derived evidence.
+
+Measured boundaries are compile, prepare plus **denied** offline authorization,
+fresh direct/workspace import at 100 and 10,000 events, separate report
+preparation and authenticated historical adoption, saturated direct/no-listener import,
+a 100-event subscribed review burst at the real 50,000-event trace cap, and forty
+unchanged/relevant review projections. Each sample has fresh prepared state;
+saturation and listener attachment occur outside measurement. The subscribed
+case runs the actual `TransactionReview.project` on each chronological event,
+with real projection work counters. Unchanged inputs retain revisions; relevant
+edits append trace events and change search. This directly preserves the latest
+bulk trace contract instead of replacing its recorder.
+
+The coordinator approved an isolated synthetic software policy/executor model in
+`I-executor-contract-002`. The harness uses FakeTransport and synthetic plan
+identities, the unchanged reviewed animation compiler, actual preparation and
+SafetyPolicy, a fresh target binding, and exact experimental digest confirmation.
+It does not forge AuthorizedTransmission, bypass policy, reuse imported evidence
+or publish simulation output as device evidence. Paced and zero-delay variants
+compile independently and own independent packet buffers; changing pacing requires
+fresh preparation and authorization. Production pacing remains untouched.
+Successful authorization and zero-delay executor work are distinct stages.
+The deliberate-pacing stage performs one measured sample without warmups, bounded
+to one full valid upload per command; its summary is descriptive, with no useful
+p95 estimate from one observation. Its total includes executor work and scheduling;
+requested pacing sum is a separate counter, never labelled measured sleep time.
+Detailed C executor counters and G snapshot rebuild instrumentation remain blocked
+until their approved commits/contracts are integrated through the orchestrator.
+
+The sampler uses `performance.now()`, with setup/disposal excluded. Immediately
+before the operation it queues a zero-delay timer and records elapsed time until
+that callback runs. This indicates blocked queued work; it is not browser INP.
+Process user/system CPU time is recorded separately from wall duration; neither
+wall-minus-CPU nor requested pacing is represented as measured sleep. It retains
+three warmups and twenty samples by default, excludes warmups from
+summary, uses upper median `sorted[floor(n/2)]`, and nearest-rank empirical p95
+`sorted[ceil(0.95*n)-1]`. For twenty samples these are indices 10 and 18. Earlier
+audit tables used upper-index p95 index 19; do not silently compare quantiles.
+Stage quantiles do not add to total quantiles. No speed assertion is used in CI.
+
+For before/after work, use isolated Git checkouts at each exact named commit
+under serialized Git/setup grants, install each reviewed lockfile independently,
+and run the same harness/fixture version, toolchain, instrumentation,
+warmups, samples and environment. Record harness overlay hashes when the baseline
+predates it. This command requires Git source identity; an extracted archive
+without independently verified commit/tree provenance cannot satisfy that gate. Compare only matching fixture hashes and conditions; preserve slower
+and unchanged results. Record all contamination and exclude exploratory overlap
+only with the raw excluded record retained. Reuse an existing baseline only when
+source, fixture, environment and logs can be verified. The older audit described
+moving source and temporary `/tmp` evidence; those tables are descriptive history,
+not a reproducible exact-source acceptance gate. Do not repeat expensive timings
+merely to recreate an unverified headline. Actual fleet results belong in the
+external evidence directory and the lane handoff, not this maintained document.
+
+### Finite owner-run Android acceptance
+
+This is an unrun procedure requiring a real named Android phone and a separately
+approved hardware session. Desktop throttling and phone emulation cannot establish
+Android support. Record source/build identity, phone model/RAM, Android and Chrome
+versions, installed PWA version/service-worker state, power/thermal condition,
+fixture hashes, transport/firmware identity in restricted local evidence, and
+whether remote DevTools was attached. Keep device identifiers out of shared reports.
+
+1. Open the exact production build on the real phone, then inspect it through
+   [Chrome remote debugging](https://developer.chrome.com/docs/devtools/remote-debugging/).
+   Disable screencasting during measurement because it affects frame rates.
+   Record one diagnostic session, then repeat the same interactions without
+   DevTools to identify instrumentation effects.
+2. Capture three runs of the noisy animation workflow under the owner's approved
+   transport test. During each transfer, type/edit text, switch ordinary views,
+   navigate back/forward and review progress. Record interaction-to-next-paint
+   separately from time to host acceptance or upload completion. Follow
+   [INP's input, processing and presentation phases](https://web.dev/articles/inp)
+   and inspect main-thread work; an asynchronous transfer's completion time is
+   not the interaction's paint latency.
+3. Import the normal and bounded large fixture once each in three fresh sessions;
+   navigate and type during/just after selection, open raw review, change search,
+   and show latest. Preserve Performance recordings of input delay, processing,
+   presentation and [long tasks](https://web.dev/articles/optimize-long-tasks)
+   (tasks over 50 ms). Record trace/listener/projection counts alongside elapsed
+   import time. Attribute the measured stage before considering workers/yielding.
+4. Select the same image and GIF ten times each, alternate with text, clear the
+   selection and navigate away after each cycle. Record peak allocation and
+   retained memory after equivalent cleanup/quiescence points, using
+   [heap snapshots and retaining paths](https://developer.chrome.com/docs/devtools/memory-problems/heap-snapshots).
+   Compare baseline, cycle five and cycle ten. A single GC-sensitive heap delta
+   does not establish a leak; check retained typed arrays, decoded frames, object
+   URLs and detached DOM nodes without forcing a favorable result.
+5. Install the PWA, repeat one transfer/import/media cycle set, background and
+   resume, then launch offline and verify report/history remains historical.
+   Record navigation/edit responsiveness, file cleanup, memory, update ownership
+   and errors for browser tab and installed mode independently. A successful
+   screenshot or desktop run is not physical rendering or Android acceptance.
+
+The acceptance record must state what ran, what failed, raw trace/snapshot paths
+and finite remaining cases. UI responsiveness, import latency, upload completion,
+retained memory and physical appearance are separate outcomes. This fleet performs
+no real Bluetooth or owner/phone acceptance and proposes no media/worker refactor
+before stage attribution.
+
 ## Remaining qualification
 
 The final large workspace import still synchronously delays queued work by
