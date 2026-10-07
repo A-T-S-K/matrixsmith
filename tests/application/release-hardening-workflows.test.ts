@@ -77,7 +77,13 @@ it("retires even if the same authorized device reconnects with an identical fing
   const attempts = transport.writeAttempts.length;
   await runtime.disconnect();
   transport.fingerprint = fingerprint;
-  await runtime.connect();
+  Object.defineProperty(transport, "reconnectAuthorized", {
+    value: (
+      _id: string,
+      options: Parameters<typeof transport.selectAndConnect>[0],
+    ) => transport.selectAndConnect(options),
+  });
+  await runtime.reconnectAuthorized("fixture-device");
   transport.connectionId = oldConnection;
   gate.release();
   const run = await pending;
@@ -294,5 +300,32 @@ it("old diagnostic cleanup cannot free a new diagnostic on the replacement conne
   gates[1]!.resolve();
   expect((await replacement).status).toBe("passed");
   expect(runtime.executionBusy).toBe(false);
+  await runtime.dispose();
+});
+
+it("never revives a diagnostic after its captured identity authority was withdrawn and old values restored", async () => {
+  const { runtime, transport } = await setup();
+  const original = {
+    fingerprint: runtime.session.fingerprint,
+    selection: runtime.session.selection,
+    profile: runtime.session.profile,
+    protocolResolution: runtime.session.protocolResolution,
+  };
+  const gate = holdStep(2);
+  const pending = runtime.runDiagnostic(tool);
+  await gate.entered;
+  const attempts = transport.writeAttempts.length;
+  runtime.session.withdrawIdentityTrust();
+  // Old values cannot reconstitute uninterrupted workflow authority.
+  Object.assign(runtime.session, original);
+  gate.release();
+  const run = await pending;
+  expect(run).toMatchObject({
+    status: "failed",
+    restorationAttempted: false,
+    restorationVerified: false,
+  });
+  expect(transport.writeAttempts).toHaveLength(attempts);
+  expect(runtime.session.latestDeviceInfo).toBeNull();
   await runtime.dispose();
 });

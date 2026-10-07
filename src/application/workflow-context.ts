@@ -12,12 +12,14 @@ export function captureWorkflowContext(
     | "getSession"
     | "getTransport"
     | "getConnectionGeneration"
+    | "getIdentityAuthorityRevision"
     | "_requireTargetBinding"
     | "_currentTargetBinding"
   >,
   relevantTarget = true,
 ): WorkflowContext {
   const generation = connection.getConnectionGeneration();
+  const identityRevision = connection.getIdentityAuthorityRevision();
   const binding = connection._requireTargetBinding();
   const session = connection.getSession();
   const profile = session.profile;
@@ -33,6 +35,7 @@ export function captureWorkflowContext(
     const now = connection._currentTargetBinding();
     retired ||= !(
       connection.getConnectionGeneration() === generation &&
+      connection.getIdentityAuthorityRevision() === identityRevision &&
       connection.getTransport().state === "connected" &&
       session.source === "live" &&
       now?.connectionId === binding.connectionId &&

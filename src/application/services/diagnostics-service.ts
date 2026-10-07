@@ -27,6 +27,7 @@ interface Ports {
     | "setConnectionState"
     | "getTransport"
     | "getConnectionGeneration"
+    | "getIdentityAuthorityRevision"
     | "_requireTargetBinding"
     | "_currentTargetBinding"
   >;
