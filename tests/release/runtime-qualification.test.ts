@@ -195,7 +195,7 @@ describe("runtime qualification fixtures", () => {
       const result = await zero.executor.execute(authorized);
       const work = executionWork(result);
       if (work.executorCountersAvailable) {
-        expect(work.wholePlanDigestCount).toBe(2);
+        expect(work.wholePlanDigestCount).toBe(1);
         expect(work.targetCheckCount).toBeGreaterThan(
           zero.prepared.packets.length,
         );
