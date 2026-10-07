@@ -181,16 +181,42 @@ self.addEventListener("fetch", (event) => {
           : cachedShell;
       }
       const assets = await caches.open(ASSET_CACHE);
-      const cached =
-        (await assets.match(event.request, { ignoreSearch: true })) ??
-        (await shell.match(event.request, { ignoreSearch: true }));
-      if (cached) return cached;
+      // A cached Response carries its canonical URL. For the finite recovery
+      // stages, let module dependencies resolve from the requesting URL so the
+      // preinstalled import-map scope remains effective. Only build-owned
+      // cached script assets can cross this boundary; bytes and policy survive.
+      const assetResponse = (cached) =>
+        event.request.destination === "script" &&
+        url.pathname.endsWith(".js") &&
+        url.searchParams.size === 1 &&
+        /^(?:a1|a[01]f[01])$/.test(
+          url.searchParams.get("matrixsmith-retry") ?? "",
+        )
+          ? new Response(cached.body, {
+              status: cached.status,
+              statusText: cached.statusText,
+              headers: cached.headers,
+            })
+          : cached;
+      const cachedAsset = await assets.match(event.request, {
+        ignoreSearch: true,
+      });
+      if (cachedAsset) return assetResponse(cachedAsset);
+      const cachedShell = await shell.match(event.request, {
+        ignoreSearch: true,
+      });
+      if (cachedShell) return cachedShell;
       // Old open pages may still request an asset from the retained previous build.
       if (/\/assets\//.test(url.pathname)) {
-        const previous = await caches.match(event.request, {
-          ignoreSearch: true,
-        });
-        if (previous) return previous;
+        for (const key of await caches.keys()) {
+          if (!key.startsWith(`${CACHE_PREFIX}assets-`) || key === ASSET_CACHE)
+            continue;
+          const retained = await caches.open(key);
+          const previous = await retained.match(event.request, {
+            ignoreSearch: true,
+          });
+          if (previous) return assetResponse(previous);
+        }
       }
       return fetch(event.request);
     })(),
