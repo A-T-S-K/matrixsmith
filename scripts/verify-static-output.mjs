@@ -246,23 +246,36 @@ function verifyRecoveryMap(html) {
         throw new Error(`Recovery asset is not precached: ${address}`);
       return address.split("?")[0];
     };
-    const dependencies = (address) => {
+    const dependencies = (address, includeDynamic = false) => {
       const file = validAddress(address);
       const source = readFileSync(join(root, file), "utf8");
-      return [
+      const references = [
         ...source.matchAll(
           /\b(?:import|export)(?:[^"'(]*?from)?["']([^"']+\.js)["']/g,
         ),
-      ].map(
-        (match) => "./" + relative(root, resolve(root, file, "..", match[1])),
-      );
+      ];
+      if (includeDynamic)
+        references.push(
+          ...source.matchAll(/\bimport\(\s*["'`]([^"'`]+\.js)["'`]\s*\)/g),
+        );
+      return [
+        ...new Set(
+          references.map(
+            (match) =>
+              "./" + relative(root, resolve(root, file, "..", match[1])),
+          ),
+        ),
+      ];
     };
-    const closure = (address) => {
+    const closure = (address, includeDynamic = false) => {
       const found = new Set();
       const visit = (file) => {
         if (found.has(file)) return;
         found.add(file);
         for (const dependency of dependencies(file)) visit(dependency);
+        if (includeDynamic && !initial.has(file))
+          for (const dependency of dependencies(file, true))
+            if (!featureEntries.has(dependency)) visit(dependency);
       };
       visit(validAddress(address));
       return found;
@@ -271,7 +284,12 @@ function verifyRecoveryMap(html) {
     if (!entry)
       throw new Error("Missing initial entry for recovery validation.");
     const initial = closure(entry);
-    const application = closure(map.imports["matrixsmith/application/1"]);
+    const featureEntries = new Set(
+      Object.entries(map.imports)
+        .filter(([alias]) => !alias.startsWith("matrixsmith/application/"))
+        .map(([, address]) => validAddress(address)),
+    );
+    const application = closure(map.imports["matrixsmith/application/1"], true);
     const aliases = ["matrixsmith/application/1"];
     for (const feature of [
       "ControlView",
@@ -290,7 +308,7 @@ function verifyRecoveryMap(html) {
     const expectedScopes = {};
     const featureOwners = new Map();
     for (const alias of aliases.filter((alias) => alias.endsWith("/0/1")))
-      for (const file of closure(map.imports[alias])) {
+      for (const file of closure(map.imports[alias], true)) {
         if (initial.has(file) || application.has(file)) continue;
         featureOwners.set(file, (featureOwners.get(file) ?? 0) + 1);
       }
@@ -311,18 +329,24 @@ function verifyRecoveryMap(html) {
             ? app
               ? "a1"
               : ""
-            : featureRevision;
+            : featureEntries.has(file) && !featureRevision
+              ? app
+                ? "a1f0"
+                : ""
+              : featureRevision;
       const revised = (file) =>
         file +
         (revisionFor(file) ? `?matrixsmith-retry=${revisionFor(file)}` : "");
       if (address !== revised(validAddress(address)))
         throw new Error(`Incorrect entry revision: ${alias}`);
-      for (const file of closure(address)) {
+      for (const file of closure(address, true)) {
         if (!revisionFor(file)) continue;
         expectedScopes[revised(file)] = Object.fromEntries(
-          dependencies(file).map((dependency) => [
+          dependencies(file, true).map((dependency) => [
             dependency,
-            revised(dependency),
+            application.has(file) && featureEntries.has(dependency)
+              ? dependency + (app ? "?matrixsmith-retry=a1f0" : "")
+              : revised(dependency),
           ]),
         );
       }
@@ -342,7 +366,7 @@ function verifyRecoveryMap(html) {
     }
     if (normalized(map.scopes) !== normalized(expectedScopes))
       throw new Error(
-        "Recovery scopes do not match the static graph and preserved application identity.",
+        "Recovery scopes do not match the static/lazy graph and preserved application identity.",
       );
     console.log(
       `Recovery import map: ${aliases.length} finite entries; exact CSP hash and static graph verified.`,

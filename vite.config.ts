@@ -36,13 +36,16 @@ const offlineAssetManifest: Plugin = {
       if (!root) this.error(`Missing recovery entry: ${suffix}`);
       return root.fileName;
     };
-    const closure = (root: string): Set<string> => {
+    const closure = (root: string, includeDynamic = false): Set<string> => {
       const found = new Set<string>();
       const visit = (file: string): void => {
         if (found.has(file)) return;
         found.add(file);
         for (const dependency of chunks.get(file)?.imports ?? [])
           visit(dependency);
+        if (includeDynamic && !initial.has(file))
+          for (const dependency of chunks.get(file)?.dynamicImports ?? [])
+            if (!featureEntries.has(dependency)) visit(dependency);
       };
       visit(root);
       return found;
@@ -50,8 +53,19 @@ const offlineAssetManifest: Plugin = {
     const initialEntry = [...chunks.values()].find((chunk) => chunk.isEntry);
     if (!initialEntry) this.error("Missing initial application entry");
     const initial = closure(initialEntry.fileName);
+    const features = (
+      [
+        ["ControlView", "/src/ui/views/ControlView.tsx"],
+        ["InvestigationView", "/src/ui/views/InvestigationView.tsx"],
+        ["DevelopView", "/src/ui/views/DevelopView.tsx"],
+        ["ReportDialog", "/src/ui/components/report/ReportDialog.tsx"],
+      ] as const
+    ).map(([name, suffix]) => [name, rootFor(suffix)] as const);
+    const featureEntries = new Set(features.map(([, entry]) => entry));
     const application = rootFor("/src/application-bootstrap.tsx");
-    const applicationGraph = closure(application);
+    // Lazy helper branches must retain the successful application revision too.
+    // Traversing their metadata does not download or execute them eagerly.
+    const applicationGraph = closure(application, true);
     const imports: Record<string, string> = {};
     const scopes: Record<string, Record<string, string>> = {};
     const address = (file: string, revision: string): string =>
@@ -66,16 +80,28 @@ const offlineAssetManifest: Plugin = {
         if (initial.has(file)) return "";
         if (applicationGraph.has(file))
           return appAttempt ? `a${appAttempt}` : "";
+        if (featureEntries.has(file))
+          return featureRevision ?? (appAttempt ? `a${appAttempt}f0` : "");
         return featureRevision ?? "";
       };
       imports[alias] = address(entry, revisionFor(entry));
-      for (const file of closure(entry)) {
+      for (const file of closure(entry, true)) {
         const revision = revisionFor(file);
         if (!revision) continue;
         const mappings = Object.fromEntries(
-          (chunks.get(file)?.imports ?? []).map((dependency) => [
+          [
+            ...(chunks.get(file)?.imports ?? []),
+            ...(chunks.get(file)?.dynamicImports ?? []),
+          ].map((dependency) => [
             address(dependency, ""),
-            address(dependency, revisionFor(dependency)),
+            address(
+              dependency,
+              applicationGraph.has(file) && featureEntries.has(dependency)
+                ? appAttempt
+                  ? `a${appAttempt}f0`
+                  : ""
+                : revisionFor(dependency),
+            ),
           ]),
         );
         const scope = address(file, revision);
@@ -91,13 +117,7 @@ const offlineAssetManifest: Plugin = {
     // scope: a fresh entry alone cannot repair a cached failed static child.
     for (let attempt = 1; attempt <= 1; attempt++)
       addGraph(`matrixsmith/application/${attempt}`, application, attempt);
-    for (const [name, suffix] of [
-      ["ControlView", "/src/ui/views/ControlView.tsx"],
-      ["InvestigationView", "/src/ui/views/InvestigationView.tsx"],
-      ["DevelopView", "/src/ui/views/DevelopView.tsx"],
-      ["ReportDialog", "/src/ui/components/report/ReportDialog.tsx"],
-    ] as const) {
-      const entry = rootFor(suffix);
+    for (const [name, entry] of features) {
       for (let appAttempt = 0; appAttempt <= 1; appAttempt++)
         for (let attempt = 0; attempt <= 1; attempt++) {
           if (!appAttempt && !attempt) continue;
