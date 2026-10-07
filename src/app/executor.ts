@@ -1,6 +1,8 @@
 import { normalizeUuid } from "../core/device";
 import {
   transmissionDigest,
+  copyPreparedTransmission,
+  packetHex,
   responseContractProblem,
   type AuthorizedTransmission,
   type TargetBinding,
@@ -13,11 +15,35 @@ import type {
 import type { DecodedNotification, MatrixDriver } from "../drivers/types";
 import {
   ResponseAmbiguityError,
+  ResponseCancelledError,
   ResponseTimeoutError,
   type NotificationRecord,
   type NotificationRouter,
 } from "./notifications";
 import { fingerprintIdentityKey } from "../investigation/device-identity";
+import type {
+  ExecutionEvidence,
+  PacketExecutionAttempt,
+} from "./execution-evidence";
+
+type Mutable<T> = { -readonly [K in keyof T]: T[K] };
+type ExecutionRecorder = Mutable<ExecutionEvidence> & {
+  attempts: Mutable<PacketExecutionAttempt>[];
+  receipts: TransportReceipt[];
+  packetTimings: PacketTiming[];
+};
+const failureEvidence = new WeakMap<object, ExecutionEvidence>();
+
+/** Returns an independent copy only for failures actually observed by execution. */
+export function executionEvidence(error: unknown): ExecutionEvidence | null {
+  if (
+    (typeof error !== "object" || error === null) &&
+    typeof error !== "function"
+  )
+    return null;
+  const evidence = failureEvidence.get(error);
+  return evidence ? structuredClone(evidence) : null;
+}
 
 export class IndeterminateWriteError extends Error {
   readonly indeterminate = true;
@@ -64,6 +90,8 @@ export interface ExecutionResult {
   readonly responseAmbiguous: boolean;
   /** Wall-clock timestamp of the final packet's host acceptance. */
   readonly finalWriteAcceptedAt: string | null;
+  /** Present on live executor results; older stored or synthetic results may omit it. */
+  readonly evidence?: ExecutionEvidence;
 }
 
 export interface ExecutionProgress {
@@ -75,6 +103,7 @@ export interface ExecutionProgress {
 
 export class TransmissionExecutor {
   #running = false;
+  #indeterminateConnectionId: string | null = null;
   get busy(): boolean {
     return this.#running;
   }
@@ -87,27 +116,101 @@ export class TransmissionExecutor {
   ) {}
 
   async execute(
-    authorized: AuthorizedTransmission,
+    input: AuthorizedTransmission,
     driver?: MatrixDriver,
     onProgress?: (progress: ExecutionProgress) => void,
   ): Promise<ExecutionResult> {
     if (this.#running)
       throw new Error("A transmission is already in progress.");
-    if (this.transport.state !== "connected")
-      throw new Error("Cannot transmit while disconnected.");
-    this.#verifyAuthorization(authorized);
+    this.#running = true;
+    let evidence: ExecutionRecorder | null = null;
+    try {
+      // Own and validate the complete command before calling observers, the
+      // target provider, the notification router, or transport. Caller mutations
+      // after entry cannot replace the confirmed command's bytes or consequences.
+      const authorized: AuthorizedTransmission = {
+        plan: copyPreparedTransmission(input.plan),
+        targetBinding: { ...input.targetBinding },
+        digest: input.digest,
+        authorizedAt: input.authorizedAt,
+        policyDecision: input.policyDecision,
+      };
+      if (
+        authorized.policyDecision !== "allow" ||
+        !sameBinding(authorized.plan.targetBinding, authorized.targetBinding) ||
+        authorized.digest !== authorized.plan.digest ||
+        transmissionDigest(authorized.plan, authorized.targetBinding) !==
+          authorized.digest
+      )
+        throw new Error("Authorized transmission changed after confirmation.");
+      evidence = {
+        planId: authorized.plan.id,
+        digest: authorized.digest,
+        targetBinding: { ...authorized.targetBinding },
+        authorizedAt: authorized.authorizedAt,
+        driverId: authorized.plan.driverId,
+        profileId: authorized.plan.profileId,
+        totalPackets: authorized.plan.packets.length,
+        startedAt: new Date().toISOString(),
+        settledAt: "",
+        outcome: "completed",
+        attempts: [],
+        receipts: [],
+        packetTimings: [],
+        finalWriteAcceptedAt: null,
+        failedPacketIndex: null,
+        failedStage: "authorization",
+        responseStatus:
+          authorized.plan.responseExpectation.type === "none"
+            ? "none"
+            : "armed",
+        responseRecord: null,
+        responseTimedOut: false,
+        responseAmbiguous: false,
+        wholePlanDigestCount: 1,
+        targetCheckCount: 0,
+      };
+      return await this.#executeOwned(authorized, evidence, driver, onProgress);
+    } catch (error) {
+      if (!evidence) throw error;
+      const failure =
+        (typeof error === "object" && error !== null) ||
+        typeof error === "function"
+          ? error
+          : new Error(errorMessage(error), { cause: error });
+      evidence.outcome =
+        error instanceof IndeterminateWriteError ? "indeterminate" : "failed";
+      evidence.settledAt = new Date().toISOString();
+      failureEvidence.set(failure, structuredClone(evidence));
+      throw failure;
+    } finally {
+      this.#running = false;
+    }
+  }
+
+  async #executeOwned(
+    authorized: AuthorizedTransmission,
+    evidence: ExecutionRecorder,
+    driver?: MatrixDriver,
+    onProgress?: (progress: ExecutionProgress) => void,
+  ): Promise<ExecutionResult> {
+    evidence.failedStage = "response";
     const responseProblem = responseContractProblem(authorized.plan);
     if (responseProblem) throw new Error(responseProblem);
     const expectation = authorized.plan.responseExpectation;
+    const responseMatches = driver?.responseMatches?.bind(driver);
     if (
       expectation.type === "notification" &&
       (!this.notifications ||
-        !driver?.responseMatches ||
-        driver.id !== authorized.plan.driverId)
+        !responseMatches ||
+        driver?.id !== authorized.plan.driverId)
     )
       throw new Error("The response contract has no reviewed driver context.");
-    const receipts: TransportReceipt[] = [];
-    const packetTimings: PacketTiming[] = [];
+    evidence.failedStage = "authorization";
+    this.#verifyCurrentTarget(authorized.targetBinding, evidence);
+    const transportConnectionId = this.transport.connectionId;
+    const receipts = evidence.receipts;
+    const packetTimings = evidence.packetTimings;
     let previousWriteStartMs: number | null = null;
     const executionStartedMs = Date.now();
     const armed =
@@ -115,19 +218,43 @@ export class TransmissionExecutor {
         ? this.notifications.arm(
             expectation,
             (notification, expected) =>
-              driver.responseMatches?.(notification, expected) ?? false,
+              responseMatches?.(
+                structuredClone(notification),
+                structuredClone(expected),
+              ) ?? false,
             authorized.targetBinding.connectionId,
           )
         : null;
     // Observe both outcomes before any write can remain pending.
     const responseOutcome = armed?.promise.then(
-      (response) => ({ ok: true as const, response }),
-      (error: unknown) => ({ ok: false as const, error }),
+      (response) => {
+        evidence.responseStatus = "matched";
+        evidence.responseRecord = structuredClone(response);
+        return { ok: true as const, response };
+      },
+      (error: unknown) => {
+        evidence.responseTimedOut = error instanceof ResponseTimeoutError;
+        evidence.responseAmbiguous = error instanceof ResponseAmbiguityError;
+        evidence.responseStatus = evidence.responseTimedOut
+          ? "timeout"
+          : evidence.responseAmbiguous
+            ? "ambiguous"
+            : error instanceof ResponseCancelledError
+              ? "cancelled"
+              : "failed";
+        if (error instanceof ResponseAmbiguityError)
+          evidence.responseRecord = error.record
+            ? structuredClone(error.record)
+            : null;
+        return { ok: false as const, error };
+      },
     );
-    this.#running = true;
     try {
       for (const packet of authorized.plan.packets) {
-        this.#verifyAuthorization(authorized);
+        evidence.failedPacketIndex = packet.index;
+        evidence.failedStage = "authorization";
+        this.#verifyCurrentTarget(authorized.targetBinding, evidence);
+        evidence.failedStage = "endpoint";
         if (
           !endpointAvailable(this.transport, packet.endpoint, packet.writeMode)
         )
@@ -136,21 +263,45 @@ export class TransmissionExecutor {
           );
         {
           const attempt = 1;
+          evidence.failedStage = "observer";
           this.trace.record(
             "tx.packet.started",
             { planId: authorized.plan.id, packetIndex: packet.index, attempt },
-            packet.bytes,
+            packet.bytes.slice(),
           );
+          let writeAttempt: Mutable<PacketExecutionAttempt> | null = null;
           try {
             const writeStartMs = Date.now();
+            // An observer may synchronously disconnect or replace the target.
+            evidence.failedStage = "authorization";
+            this.#verifyCurrentTarget(authorized.targetBinding, evidence);
             if (
               expectation.type === "notification" &&
               packet.index === expectation.dispatchPacketIndex
-            )
+            ) {
+              evidence.responseStatus = "pending";
               armed?.dispatch();
+            }
+            evidence.failedStage = "write";
+            const writeBytes = packet.bytes.slice();
+            writeAttempt = {
+              index: packet.index,
+              attempt,
+              writeStartedAt: new Date(writeStartMs).toISOString(),
+              endpoint: { ...packet.endpoint },
+              writeMode: packet.writeMode,
+              bytes: writeBytes.slice(),
+              hex: packetHex(writeBytes),
+              settledAt: "",
+              settlement: "failed",
+              receipt: null,
+              lateReceipt: null,
+              timing: null,
+            };
+            evidence.attempts.push(writeAttempt);
             const pendingWrite = this.transport.write(
-              packet.endpoint,
-              packet.bytes,
+              { ...packet.endpoint },
+              writeBytes,
               packet.writeMode,
             );
             const receipt = await withWriteTimeout(
@@ -162,21 +313,29 @@ export class TransmissionExecutor {
                   packet.index,
                   authorized.plan.timeoutMs,
                 );
-                if (
-                  sameBindingOrNull(
-                    this.targetBinding(),
-                    authorized.targetBinding,
+                writeAttempt!.settlement = "indeterminate";
+                writeAttempt!.settledAt = new Date().toISOString();
+                this.#indeterminateConnectionId = transportConnectionId;
+                // Quarantine/trace observers must not replace the timeout error.
+                try {
+                  // Revoking geometry/definition authority does not retire the
+                  // physical write. Quarantine its unbroken transport generation.
+                  if (
+                    transportConnectionId &&
+                    this.transport.connectionId === transportConnectionId
                   )
-                )
-                  this.transport.quarantine(error.message);
-                this.trace.record("tx.packet.indeterminate", {
+                    this.transport.quarantine(error.message);
+                } catch {
+                  // The original indeterminate write remains the primary error.
+                }
+                this.#recordSecondary("tx.packet.indeterminate", {
                   planId: authorized.plan.id,
                   packetIndex: packet.index,
                   timeoutMs: authorized.plan.timeoutMs,
                 });
                 void pendingWrite.then(
                   (lateReceipt) =>
-                    this.trace.record("tx.packet.lateHostAccepted", {
+                    this.#recordSecondary("tx.packet.lateHostAccepted", {
                       planId: authorized.plan.id,
                       packetIndex: packet.index,
                       acceptedAt: lateReceipt.acceptedAt,
@@ -186,13 +345,13 @@ export class TransmissionExecutor {
                       lateError as { lateReceipt?: TransportReceipt } | null
                     )?.lateReceipt;
                     if (lateReceipt)
-                      this.trace.record("tx.packet.lateHostAccepted", {
+                      this.#recordSecondary("tx.packet.lateHostAccepted", {
                         planId: authorized.plan.id,
                         packetIndex: packet.index,
                         acceptedAt: lateReceipt.acceptedAt,
                       });
                     else
-                      this.trace.record("tx.packet.lateRejected", {
+                      this.#recordSecondary("tx.packet.lateRejected", {
                         planId: authorized.plan.id,
                         packetIndex: packet.index,
                         message: errorMessage(lateError),
@@ -202,19 +361,30 @@ export class TransmissionExecutor {
                 return error;
               },
             );
-            this.#verifyAuthorization(authorized);
-            receipts.push(receipt);
-            packetTimings.push({
+            // Record actual acceptance before any target check or observer can
+            // fail. Retain receipt data independently of the transport's objects.
+            const accepted = { ...receipt, endpoint: { ...receipt.endpoint } };
+            receipts.push(accepted);
+            const timing: PacketTiming = {
               index: packet.index,
               writeStartedAt: new Date(writeStartMs).toISOString(),
-              hostAcceptedAt: receipt.acceptedAt,
+              hostAcceptedAt: accepted.acceptedAt,
               scheduledDelayMs: packet.delayAfterMs ?? 0,
               gapSincePreviousTxMs:
                 previousWriteStartMs === null
                   ? null
                   : writeStartMs - previousWriteStartMs,
-            });
+            };
+            packetTimings.push(timing);
+            writeAttempt.settlement = "accepted";
+            writeAttempt.settledAt = new Date().toISOString();
+            writeAttempt.receipt = accepted;
+            writeAttempt.timing = timing;
+            evidence.finalWriteAcceptedAt = accepted.acceptedAt;
             previousWriteStartMs = writeStartMs;
+            evidence.failedStage = "authorization";
+            this.#verifyCurrentTarget(authorized.targetBinding, evidence);
+            evidence.failedStage = "observer";
             this.trace.record("tx.packet.hostAccepted", {
               planId: authorized.plan.id,
               packetIndex: packet.index,
@@ -223,6 +393,7 @@ export class TransmissionExecutor {
             });
             const completedPackets = packetTimings.length;
             const elapsedMs = Date.now() - executionStartedMs;
+            evidence.failedStage = "progress";
             onProgress?.({
               completedPackets,
               totalPackets: authorized.plan.packets.length,
@@ -246,8 +417,26 @@ export class TransmissionExecutor {
             )
               await sleep(packet.delayAfterMs);
           } catch (error) {
+            if (writeAttempt && !writeAttempt.settledAt)
+              writeAttempt.settledAt = new Date().toISOString();
+            if (writeAttempt && writeAttempt.settlement === "failed") {
+              const lateReceipt = (
+                error as { lateReceipt?: TransportReceipt } | null
+              )?.lateReceipt;
+              if (lateReceipt) {
+                writeAttempt.lateReceipt = {
+                  ...lateReceipt,
+                  endpoint: { ...lateReceipt.endpoint },
+                };
+                this.#recordSecondary("tx.packet.lateHostAccepted", {
+                  planId: authorized.plan.id,
+                  packetIndex: packet.index,
+                  acceptedAt: lateReceipt.acceptedAt,
+                });
+              }
+            }
             const message = errorMessage(error);
-            this.trace.record("tx.packet.failed", {
+            this.#recordSecondary("tx.packet.failed", {
               planId: authorized.plan.id,
               packetIndex: packet.index,
               message,
@@ -261,7 +450,10 @@ export class TransmissionExecutor {
       let responseTimedOut = false;
       let responseAmbiguous = false;
       let responseRecord: NotificationRecord | null = null;
-      this.#verifyAuthorization(authorized);
+      evidence.failedPacketIndex = null;
+      evidence.failedStage = "authorization";
+      this.#verifyCurrentTarget(authorized.targetBinding, evidence);
+      evidence.failedStage = "response";
       if (responseOutcome) {
         const outcome = await responseOutcome;
         if (outcome.ok) {
@@ -282,7 +474,9 @@ export class TransmissionExecutor {
           });
         } else throw outcome.error;
       }
-      this.#verifyAuthorization(authorized);
+      evidence.failedStage = "authorization";
+      this.#verifyCurrentTarget(authorized.targetBinding, evidence);
+      evidence.failedStage = "observer";
       if (response)
         this.trace.record("tx.response.matched", {
           planId: authorized.plan.id,
@@ -302,6 +496,8 @@ export class TransmissionExecutor {
         protocolAcknowledged,
         deviceStateVerified,
       });
+      evidence.settledAt = completedAt;
+      evidence.failedStage = null;
       return {
         planId: authorized.plan.id,
         receipts,
@@ -316,25 +512,43 @@ export class TransmissionExecutor {
         responseAmbiguous,
         finalWriteAcceptedAt:
           packetTimings[packetTimings.length - 1]?.hostAcceptedAt ?? null,
+        evidence: structuredClone(evidence),
       };
     } finally {
       armed?.cancel();
-      this.#running = false;
     }
   }
 
-  #verifyAuthorization(authorized: AuthorizedTransmission): void {
+  #verifyCurrentTarget(
+    binding: TargetBinding,
+    evidence: ExecutionRecorder,
+  ): void {
+    evidence.targetCheckCount++;
+    if (this.transport.state !== "connected")
+      throw new Error("Cannot transmit while disconnected.");
+    if (
+      this.#indeterminateConnectionId &&
+      this.transport.connectionId === this.#indeterminateConnectionId
+    )
+      throw new Error(
+        "A write may still complete. Disconnect and reconnect before sending again.",
+      );
     const current = this.targetBinding();
-    if (!current || !sameBinding(current, authorized.targetBinding))
+    if (!current || !sameBinding(current, binding))
       throw new Error(
         "Authorization belongs to a different connection or physical target.",
       );
-    if (
-      authorized.digest !== authorized.plan.digest ||
-      transmissionDigest(authorized.plan, authorized.targetBinding) !==
-        authorized.digest
-    ) {
-      throw new Error("Authorized transmission changed after confirmation.");
+  }
+
+  #recordSecondary(
+    type: Parameters<TraceRecorder["record"]>[0],
+    metadata: Parameters<TraceRecorder["record"]>[1],
+  ): void {
+    try {
+      this.trace.record(type, metadata);
+    } catch {
+      // An observer failure during failure reporting cannot erase the primary
+      // execution error or create an unhandled late-settlement rejection.
     }
   }
 }
@@ -403,8 +617,4 @@ function endpointAvailable(
         ),
     ) ?? false
   );
-}
-
-function sameBindingOrNull(a: TargetBinding | null, b: TargetBinding): boolean {
-  return a !== null && sameBinding(a, b);
 }
