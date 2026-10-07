@@ -196,7 +196,7 @@ for (const failedChunk of ["DevelopView"]) {
   });
 }
 
-for (const failedChunk of ["application-bootstrap", "application-runtime"]) {
+for (const failedChunk of ["application-bootstrap", "known-profiles"]) {
   test(`${failedChunk} download retry retains the selected capture before workspace construction`, async ({
     page,
   }) => {
@@ -388,7 +388,7 @@ test.describe("installed worker native recovery", () => {
       for (const name of await caches.keys()) {
         const cache = await caches.open(name);
         for (const key of await cache.keys()) {
-          if (!/\/assets\/application-runtime-.*\.js$/.test(key.url)) continue;
+          if (!/\/assets\/known-profiles-.*\.js$/.test(key.url)) continue;
           state.removedRecoveryResponses.push({
             cache: name,
             url: key.url,
@@ -440,7 +440,7 @@ test.describe("installed worker native recovery", () => {
     ).toBe(true);
     expect(
       requests.some((url) =>
-        /application-runtime-.*\.js\?matrixsmith-retry=a1$/.test(url),
+        /known-profiles-.*\.js\?matrixsmith-retry=a1$/.test(url),
       ),
     ).toBe(true);
     expect(
@@ -560,7 +560,7 @@ test("recovered startup child supports advisory and local profile helpers withou
 }) => {
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
-  const child = /\/assets\/application-runtime-.*\.js/;
+  const child = /\/assets\/known-profiles-.*\.js/;
   await page.route(child, (route) => route.abort("failed"));
   await observeWorkspace(page);
   await page.goto("/");

@@ -28,14 +28,9 @@ export function retryableImport<Module>(
 ): ModuleLoader<Module> {
   let pending: Promise<Module> | undefined;
   let failure: unknown;
-  let attempts = 0;
-  let requested = false;
+  let attempt = 0;
   const load = () => {
     if (pending) return pending;
-    if (attempts === 2 || (attempts && !requested))
-      return Promise.reject(failure);
-    requested = false;
-    const attempt = attempts++;
     const alias =
       entry === "application"
         ? "matrixsmith/application/1"
@@ -50,18 +45,20 @@ export function retryableImport<Module>(
         return module;
       },
       (error: unknown) => {
-        pending = undefined;
         failure = error;
         throw error;
       },
     );
     return pending;
   };
-  const canRetry = () => attempts === 1 && isDownloadFailure(failure);
+  const canRetry = () => attempt === 0 && isDownloadFailure(failure);
   return Object.assign(load, {
     canRetry,
     retry: () => {
-      if (canRetry()) requested = true;
+      if (canRetry()) {
+        attempt = 1;
+        pending = undefined;
+      }
     },
   });
 }

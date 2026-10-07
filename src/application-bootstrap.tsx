@@ -13,6 +13,10 @@ import { App } from "./ui/App";
 import type { ApplicationCommand } from "./application/commands";
 import { runApplicationEffect } from "./application/effects";
 
+// The shared advisory component retains owner-scoped state across views. Keep
+// its module in the successful application graph during native view recovery.
+export { AdvisoryKnowledge } from "./ui/components/AdvisoryKnowledge";
+
 /**
  * Loads the hardware/application graph only when a user enters a workspace.
  * The cold Home route deliberately does not construct a transport, driver

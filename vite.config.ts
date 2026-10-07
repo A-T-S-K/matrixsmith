@@ -169,7 +169,7 @@ const offlineAssetManifest: Plugin = {
       readFileSync("public/sw.js", "utf8")
         .replaceAll("__MATRIXSMITH_BUILD_ID__", identity.buildId)
         .replace("/* __MATRIXSMITH_ASSETS__ */ []", JSON.stringify(assets)),
-      { module: false },
+      { module: false, mangle: { toplevel: true } },
     );
     if (worker.errors[0]) this.error(worker.errors[0].message);
     this.emitFile({
@@ -198,13 +198,6 @@ export default defineConfig(({ mode }) => {
         output: {
           codeSplitting: {
             groups: [
-              {
-                // Shared advisory UI retains state across feature routes. Keep
-                // it in the successful application graph during view recovery.
-                name: "application-runtime",
-                test: /\/src\/(?:presentation\/store\.ts|ui\/components\/AdvisoryKnowledge\.tsx)$/,
-                includeDependenciesRecursively: false,
-              },
               {
                 // These standalone validators share generated runtime code.
                 // A single lazy chunk compresses it across schema boundaries.

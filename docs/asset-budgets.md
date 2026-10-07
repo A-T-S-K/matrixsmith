@@ -34,7 +34,7 @@ Disabling the existing compressor's statement sequencing or variable joining
 also increased gzip and was rejected. These are bounded comparisons, not final
 startup-repair or mobile acceptance. The enforced ceilings remain unchanged.
 
-Module recovery groups the shared advisory UI with the application runtime so
+Module recovery anchors the shared advisory UI in the application bootstrap so
 feature retries preserve its owner-scoped state. Knowledge data and its loader
 remain lazy. The emitted shell contains a finite import map for one explicit
 recovery attempt; its exact SHA256 source is added to both generated CSP policies.
