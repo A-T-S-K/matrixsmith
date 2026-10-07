@@ -37,7 +37,10 @@ interface Ports {
   cancelConfirmations(): void;
   guidedActive(): boolean;
   noticeStore(): Pick<NoticeStore, "setError" | "setInfo" | "getBusy">;
-  snapshotStore(): Pick<SnapshotStore, "_emit">;
+  snapshotStore(): Pick<
+    SnapshotStore,
+    "_emit" | "_scheduleTracePublication" | "_cancelTracePublication"
+  >;
   navigationStore(): Pick<
     NavigationStore,
     | "setPage"
@@ -88,24 +91,43 @@ export class WorkspaceStore {
     this.watch(this.active);
   }
   private watch(workspace: Workspace): void {
-    const emit = () => {
+    const current = () =>
+      !this.disposed && (this.live === workspace || this.offline === workspace);
+    const updateLabel = () => {
       if (workspace.controller.session.fingerprint) {
         workspace.established = true;
         workspace.label =
           workspace.controller.session.fingerprint.name ?? "Unnamed display";
       }
-      if (
-        !this.disposed &&
-        (this.live === workspace || this.offline === workspace)
-      )
-        this.ports.snapshotStore()._emit();
     };
-    workspace.cleanups.push(workspace.controller.trace.subscribe(emit));
-    const unsubscribe = workspace.transport.subscribeState?.(emit);
+    workspace.cleanups.push(
+      workspace.controller.trace.subscribe((event) => {
+        if (!current()) return;
+        updateLabel();
+        // Ownership/recovery signals must invalidate UI and update readiness now.
+        if (
+          event.type === "disconnect" ||
+          event.type === "connection.quarantined" ||
+          event.type === "connection.unexpected-disconnect.handled" ||
+          event.type === "discovery.progress"
+        )
+          this.ports.snapshotStore()._emit();
+        else
+          this.ports
+            .snapshotStore()
+            ._scheduleTracePublication(workspace.generation, current);
+      }),
+    );
+    const unsubscribe = workspace.transport.subscribeState?.(() => {
+      if (!current()) return;
+      updateLabel();
+      this.ports.snapshotStore()._emit();
+    });
     if (unsubscribe) workspace.cleanups.push(unsubscribe);
   }
   private retire(workspace: Workspace): Promise<void> {
     workspace.ui = null;
+    this.ports.snapshotStore()._cancelTracePublication(workspace.generation);
     for (const cleanup of workspace.cleanups.splice(0)) cleanup();
     const existing = this.retirements.get(workspace.controller);
     if (existing) return existing;

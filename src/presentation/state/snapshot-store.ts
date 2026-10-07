@@ -21,6 +21,12 @@ import type { ProjectionStore } from "./projection-store";
 import type { GuidedProjectionStore } from "./guided-projection-store";
 import type { ContentEditorStore } from "./content-editor-store";
 import type { PresentationEnvironment } from "../environment";
+import { PublicationScheduler } from "./publication-scheduler";
+
+export interface PublicationFailure {
+  readonly phase: "projection" | "observer" | "reentrant";
+  readonly error: unknown;
+}
 
 interface Ports {
   workspaceStore(): Pick<
@@ -96,16 +102,45 @@ interface Ports {
 }
 export class SnapshotStore {
   private disposed = false;
+  private publishing = false;
+  private refreshing = false;
+  private projectionFailed = false;
+  private reentrantRefresh = false;
+  private needsRefresh = false;
+  private projectedEvidence: {
+    transactions: number;
+    compilations: number;
+    raw: number;
+    deviceInfo: unknown;
+  } | null = null;
+  private readonly failures: PublicationFailure[] = [];
+  private readonly counts = {
+    traceRequests: 0,
+    rebuilds: 0,
+    publications: 0,
+    observerCalls: 0,
+  };
+  private readonly publications = new PublicationScheduler(() =>
+    this.publish(this.needsRefresh || this.signalsChanged()),
+  );
   dispose(): void {
     this.disposed = true;
+    this.publications.dispose();
     this._listeners.clear();
   }
   private readonly _listeners = new Set<() => void>();
+  private readonly listenerVersions = new WeakMap<() => void, number>();
+  private nextListenerVersion = 0;
   private _snapshot!: AppSnapshot;
   subscribe = (listener: () => void): (() => void) => {
     if (this.disposed) return () => {};
+    const version = ++this.nextListenerVersion;
     this._listeners.add(listener);
-    return () => this._listeners.delete(listener);
+    this.listenerVersions.set(listener, version);
+    return () => {
+      if (this.listenerVersions.get(listener) === version)
+        this._listeners.delete(listener);
+    };
   };
 
   constructor(
@@ -116,7 +151,60 @@ export class SnapshotStore {
     >,
   ) {}
   getSnapshot() {
+    // Explicit UI/command/update reads see current ownership, even before the
+    // queued notification. Keep that notification for the other subscribers.
+    if (!this.disposed && !this.refreshing) {
+      // A final trace may be read before an executor/read owner releases. Those
+      // lightweight authority signals must be rechecked after settlement too.
+      if (
+        this.signalsChanged() ||
+        (this.needsRefresh && this.publications.hasPending)
+      )
+        this.refresh();
+    }
     return this._snapshot;
+  }
+  private signalsChanged(): boolean {
+    if (this.projectionFailed || !this.projectedEvidence) return false;
+    const workspace = this.ports.workspaceStore();
+    const controller = workspace.getController();
+    const revisions = controller.evidenceRevisions;
+    return (
+      this._snapshot.busy !== this.ports.noticeStore().getBusy() ||
+      this._snapshot.contextTransitionReason !== workspace.transitionReason() ||
+      this._snapshot.profileLoadReason !==
+        this.ports.connectionStore().getProfileLoadReason() ||
+      this._snapshot.connection !== workspace.getTransport().state ||
+      this._snapshot.retainedLiveConnection !== workspace.getLiveConnection() ||
+      this._snapshot.contextIdentity !== workspace.getContextIdentity() ||
+      this.projectedEvidence.transactions !== revisions.transactions ||
+      this.projectedEvidence.compilations !== revisions.compilations ||
+      this.projectedEvidence.raw !== controller.trace.revision ||
+      (controller.session.source === "live" &&
+        this.projectedEvidence.deviceInfo !==
+          controller.session.latestDeviceInfoRecord)
+    );
+  }
+  /** Bounded local supervision evidence; reading it never emits or persists. */
+  getPublicationFailures(): readonly PublicationFailure[] {
+    return this.failures.slice();
+  }
+  /** Deterministic local work counts for qualification, without timing or I/O. */
+  getPublicationCounts() {
+    return Object.freeze({ ...this.counts });
+  }
+  private failed(phase: PublicationFailure["phase"], error: unknown): void {
+    this.failures.push(Object.freeze({ phase, error }));
+    if (this.failures.length > 20) this.failures.shift();
+  }
+  _scheduleTracePublication(owner: string, current: () => boolean): void {
+    if (this.disposed) return;
+    this.counts.traceRequests++;
+    this.needsRefresh = true;
+    this.publications.schedule(owner, current);
+  }
+  _cancelTracePublication(owner: string): void {
+    this.publications.cancel(owner);
   }
   _liveResolved(): boolean {
     const session = this.ports.workspaceStore().getController().session;
@@ -153,17 +241,103 @@ export class SnapshotStore {
   }
   _emit(): void {
     if (this.disposed) return;
-    this._rebuild();
-    for (const listener of this._listeners) listener();
+    if (this.publishing || this.refreshing) {
+      this.reentrantRefresh = true;
+      this.failed(
+        "reentrant",
+        new Error("Recursive presentation publication."),
+      );
+      return;
+    }
+    this.publications.cancel();
+    this.publish(true);
+  }
+  private refresh(): void {
+    if (this.refreshing) return;
+    this.refreshing = true;
+    this.needsRefresh = false;
+    try {
+      this._rebuild();
+      this.projectionFailed = false;
+    } catch (error) {
+      this.projectionFailed = true;
+      this.failed("projection", error);
+      // A failed projection must not leave update activation appearing safe.
+      const reason =
+        "Presentation state could not be refreshed. Recover before changing workspace or updating.";
+      this._snapshot = Object.freeze({
+        ...this._snapshot,
+        contextTransitionReason: reason,
+        error: reason,
+        liveConnected: false,
+        pendingSend: null,
+        content: {
+          ...this._snapshot.content,
+          allowed: false,
+          allowedReason: reason,
+        },
+      });
+    } finally {
+      this.refreshing = false;
+    }
+  }
+  private publish(rebuild: boolean): void {
+    if (this.disposed) return;
+    this.publishing = true;
+    this.counts.publications++;
+    try {
+      if (rebuild) this.refresh();
+      for (const listener of [...this._listeners]) {
+        if (this.disposed) break;
+        if (!this._listeners.has(listener)) continue;
+        const version = this.listenerVersions.get(listener);
+        try {
+          this.counts.observerCalls++;
+          const outcome: unknown = listener();
+          if (
+            outcome &&
+            (typeof outcome === "object" || typeof outcome === "function") &&
+            "then" in outcome &&
+            typeof outcome.then === "function"
+          )
+            void Promise.resolve(outcome).catch((error: unknown) => {
+              // A late rejection cannot remove a newer subscription.
+              if (this.listenerVersions.get(listener) === version)
+                this._listeners.delete(listener);
+              this.failed("observer", error);
+            });
+        } catch (error) {
+          // Quarantine only the faulty observer; never feed errors into trace.
+          if (this.listenerVersions.get(listener) === version)
+            this._listeners.delete(listener);
+          this.failed("observer", error);
+        }
+      }
+    } finally {
+      // A subscriber may synchronously change UI state. Refresh once without
+      // calling subscribers again, so feedback cannot create an emission loop.
+      if (this.reentrantRefresh && !this.disposed) this.refresh();
+      this.reentrantRefresh = false;
+      this.publishing = false;
+    }
   }
   _rebuild(): void {
+    this.counts.rebuilds++;
     const session = this.ports.workspaceStore().getController().session;
     const fingerprint = session.fingerprint;
     const driver = session.selection?.selected;
     const profile = session.profile;
-    const info = session.latestDeviceInfo;
+    const infoRecord = session.latestDeviceInfoRecord;
+    const info = infoRecord?.decoded ?? null;
     const capabilities = driver && profile ? driver.capabilities(profile) : [];
     const controller = this.ports.workspaceStore().getController();
+    // Observe existing evidence revisions, rather than caching safety results.
+    // Bookkeeping can complete after a synchronous consumer reads a trace.
+    this.projectedEvidence = {
+      ...controller.evidenceRevisions,
+      raw: controller.trace.revision,
+      deviceInfo: infoRecord,
+    };
     const review = this.ports.reportStore().review.project({
       transactions: controller.transactions,
       compilations: controller.contentCompilations,
@@ -271,7 +445,7 @@ export class SnapshotStore {
       deviceInfoEvidence: deviceInfoEvidence(
         session.source,
         liveConnected,
-        session.latestDeviceInfoRecord?.timestamp ?? null,
+        infoRecord?.timestamp ?? null,
       ),
       deviceState: {
         brightness:
