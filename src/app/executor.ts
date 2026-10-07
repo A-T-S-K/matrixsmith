@@ -32,9 +32,9 @@ type ExecutionRecorder = Mutable<ExecutionEvidence> & {
   receipts: TransportReceipt[];
   packetTimings: PacketTiming[];
 };
-const failureEvidence = new WeakMap<object, ExecutionEvidence>();
+const failureEvidence = new WeakMap<object, ExecutionEvidence | null>();
 
-/** Returns an independent copy only for failures actually observed by execution. */
+/** Returns a defensive copy for a uniquely associated failure. Reused errors are ambiguous. */
 export function executionEvidence(error: unknown): ExecutionEvidence | null {
   if (
     (typeof error !== "object" || error === null) &&
@@ -119,6 +119,7 @@ export class TransmissionExecutor {
     input: AuthorizedTransmission,
     driver?: MatrixDriver,
     onProgress?: (progress: ExecutionProgress) => void,
+    onFailureEvidence?: (evidence: ExecutionEvidence) => void,
   ): Promise<ExecutionResult> {
     if (this.#running)
       throw new Error("A transmission is already in progress.");
@@ -181,7 +182,19 @@ export class TransmissionExecutor {
       evidence.outcome =
         error instanceof IndeterminateWriteError ? "indeterminate" : "failed";
       evidence.settledAt = new Date().toISOString();
-      failureEvidence.set(failure, structuredClone(evidence));
+      const snapshot = structuredClone(evidence);
+      // Error instances may legitimately be reused by transports or observers.
+      // Preserve their identity, but never silently replace another invocation's
+      // evidence. Live callers receive their own invocation's snapshot directly.
+      failureEvidence.set(
+        failure,
+        failureEvidence.has(failure) ? null : snapshot,
+      );
+      try {
+        onFailureEvidence?.(structuredClone(snapshot));
+      } catch {
+        // Evidence observation cannot replace the primary execution failure.
+      }
       throw failure;
     } finally {
       this.#running = false;

@@ -3,7 +3,10 @@ import {
   IndeterminateWriteError,
   TransmissionExecutor,
 } from "../../src/app/executor";
-import { executionEvidence } from "../../src/app/execution-evidence";
+import {
+  executionEvidence,
+  type ExecutionEvidence,
+} from "../../src/app/execution-evidence";
 import * as transmission from "../../src/core/transmission";
 import type { AuthorizedTransmission } from "../../src/core/transmission";
 import type { TransportReceipt } from "../../src/application/ports/transport";
@@ -106,6 +109,92 @@ function mutateConsequence(authorized: AuthorizedTransmission) {
   Object.assign(authorized.plan.metadata, { consequence: "different" });
   Object.assign(authorized.plan.recoveryNotes, { 0: "unsafe restoration" });
 }
+
+describe("failure evidence invocation ownership", () => {
+  it("preserves distinct concurrent attempts when transports reuse an Error", async () => {
+    const first = await fixture(2);
+    const second = await fixture(3);
+    const shared = new Error("shared transport rejection");
+    const release = deferred<void>();
+    const captured: ExecutionEvidence[] = [];
+    for (const current of [first, second]) {
+      vi.spyOn(current.transport, "write").mockImplementation(async () => {
+        await release.promise;
+        throw shared;
+      });
+    }
+    const executions = [first, second].map((current, index) =>
+      new TransmissionExecutor(current.transport, new TraceRecorder())
+        .execute(current.authorized, undefined, undefined, (evidence) => {
+          captured[index] = evidence;
+        })
+        .catch((error: unknown) => error),
+    );
+    release.resolve();
+    expect(await Promise.all(executions)).toEqual([shared, shared]);
+    expect(captured.map((evidence) => evidence.totalPackets)).toEqual([2, 3]);
+    expect(
+      captured.map((evidence) => evidence.targetBinding.connectionId),
+    ).toEqual([
+      first.authorized.targetBinding.connectionId,
+      second.authorized.targetBinding.connectionId,
+    ]);
+    expect(captured[0]!.targetBinding.connectionId).not.toBe(
+      captured[1]!.targetBinding.connectionId,
+    );
+    expect(captured.map((evidence) => evidence.attempts.length)).toEqual([
+      1, 1,
+    ]);
+    expect(captured.every((evidence) => evidence.receipts.length === 0)).toBe(
+      true,
+    );
+    expect(executionEvidence(shared)).toBeNull();
+  });
+
+  it("keeps earlier sequential evidence and the original error when observation throws", async () => {
+    const current = await fixture(1);
+    const shared = new Error("cached rejection", { cause: "original cause" });
+    vi.spyOn(current.transport, "write").mockRejectedValue(shared);
+    const executor = new TransmissionExecutor(
+      current.transport,
+      new TraceRecorder(),
+    );
+    const captured: ExecutionEvidence[] = [];
+    const observe = (evidence: ExecutionEvidence) => {
+      captured.push(evidence);
+      evidence.attempts[0]!.bytes[0] = 99;
+      throw new Error("secondary observer failure");
+    };
+    await expect(
+      executor.execute(current.authorized, undefined, undefined, observe),
+    ).rejects.toBe(shared);
+    expect(executionEvidence(shared)!.attempts[0]!.bytes[0]).toBe(1);
+    const firstSnapshot = structuredClone(captured[0]);
+    await expect(
+      executor.execute(current.authorized, undefined, undefined, observe),
+    ).rejects.toBe(shared);
+    expect(captured[0]).toEqual(firstSnapshot);
+    expect(captured).toHaveLength(2);
+    expect(executionEvidence(shared)).toBeNull();
+    expect(shared.cause).toBe("original cause");
+  });
+
+  it("does not manufacture an invocation snapshot for an invalid authorization", async () => {
+    const current = await fixture(1);
+    const observe = vi.fn();
+    const invalid = { ...current.authorized, digest: "changed" };
+    await expect(
+      new TransmissionExecutor(current.transport, new TraceRecorder()).execute(
+        invalid,
+        undefined,
+        undefined,
+        observe,
+      ),
+    ).rejects.toThrow("changed after confirmation");
+    expect(observe).not.toHaveBeenCalled();
+    expect(current.transport.writes).toHaveLength(0);
+  });
+});
 
 describe("executor private command ownership", () => {
   const tampering: [string, (value: AuthorizedTransmission) => void][] = [
