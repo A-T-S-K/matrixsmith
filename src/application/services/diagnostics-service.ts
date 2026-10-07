@@ -2,6 +2,7 @@ import {
   captureWorkflowContext,
   type WorkflowContext,
 } from "../workflow-context";
+import { ProbeStageError } from "../discovery-outcome";
 import { validateGeometry } from "../../domain/device/geometry";
 import type {
   DiagnosticRun,
@@ -184,24 +185,33 @@ export class DiagnosticsService {
     try {
       const execute = async (
         operation: import("../../core/operations").MatrixOperation,
+        stepId: string,
+        label: string,
       ) => {
         context.assertCurrent();
-        const result = await this.ports
-          .transmission()
-          ._execute(
-            this.ports.transmission().plan(operation),
-            "diagnostic",
-            id,
-          );
-        context.assertCurrent();
-        return result;
+        const transactionIds: string[] = [];
+        try {
+          const result = await this.ports
+            .transmission()
+            ._execute(
+              this.ports.transmission().plan(operation),
+              "diagnostic",
+              id,
+              undefined,
+              undefined,
+              (recording) => transactionIds.push(recording.transactionId),
+            );
+          context.assertCurrent();
+          return result;
+        } catch (error) {
+          if (transactionIds.length)
+            step(stepId, label, false, errorMessage(error), transactionIds);
+          throw error;
+        }
       };
       const id = diagnosticRunId();
       const startedAt = new Date().toISOString();
       const steps: DiagnosticStepResult[] = [];
-      const transactionIndex = this.ports
-        .protocolEvidence()
-        .getTransactions().length;
       let restorationAttempted = false;
       let restorationVerified = false;
       let status: DiagnosticRun["status"];
@@ -211,18 +221,14 @@ export class DiagnosticsService {
         label: string,
         passed: boolean,
         summary: string,
-        from: number,
+        transactionIds: readonly string[],
       ): void => {
         steps.push({
           id: stepId,
           label,
           status: passed ? "passed" : "failed",
           summary,
-          transactionIds: this.ports
-            .protocolEvidence()
-            .getTransactions()
-            .slice(from)
-            .map((value) => value.id),
+          transactionIds: [...transactionIds],
         });
       };
       let baseline: number | null = null;
@@ -235,6 +241,17 @@ export class DiagnosticsService {
             .probe(tool.driverId, tool.probeId ?? "get-device-info", {
               beforePlan: () => context.assertCurrent(),
               canAdopt: () => context.current(),
+            })
+            .catch((error: unknown) => {
+              if (error instanceof ProbeStageError && error.transactionId)
+                step(
+                  "identify",
+                  "Get Device Info",
+                  false,
+                  errorMessage(error),
+                  [error.transactionId],
+                );
+              throw error;
             });
           context.assertCurrent();
           step(
@@ -244,25 +261,31 @@ export class DiagnosticsService {
             result.identification.matched
               ? result.identification.summary
               : result.identification.reason,
-            transactionIndex,
+            [result.transactionId],
           );
           if (!result.identification.matched)
             throw new Error(result.identification.reason);
         } else if (tool.workflow === "refresh-device-info") {
-          const from = this.ports.protocolEvidence().getTransactions().length;
-          const result = await execute({ type: "GetDeviceInfo" });
+          const result = await execute(
+            { type: "GetDeviceInfo" },
+            "refresh",
+            "Refresh Device Info",
+          );
           step(
             "refresh",
             "Refresh Device Info",
             Boolean(result.response),
             result.response?.summary ?? "No matching response.",
-            from,
+            [result.transactionId],
           );
           if (!result.response)
             throw new Error("Device-info refresh timed out.");
         } else if (tool.workflow === "brightness-round-trip") {
-          let from = this.ports.protocolEvidence().getTransactions().length;
-          const baselineResult = await execute({ type: "GetDeviceInfo" });
+          const baselineResult = await execute(
+            { type: "GetDeviceInfo" },
+            "baseline",
+            "Record baseline brightness",
+          );
           baseline = numberField(baselineResult.response, "brightnessRaw");
           step(
             "baseline",
@@ -271,36 +294,42 @@ export class DiagnosticsService {
             baseline === null
               ? "Brightness was absent from device info."
               : `Baseline is ${baseline}.`,
-            from,
+            [baselineResult.transactionId],
           );
           if (baseline === null)
             throw new Error(
               "Cannot validate brightness without a baseline readback.",
             );
           const test = chooseTestBrightness(baseline);
-          from = this.ports.protocolEvidence().getTransactions().length;
           testWasAttempted = true;
-          const setResult = await execute({ type: "SetBrightness", raw: test });
+          const setResult = await execute(
+            { type: "SetBrightness", raw: test },
+            "set-test",
+            "Set test brightness",
+          );
           step(
             "set-test",
             "Set test brightness",
             setResult.protocolAcknowledged === true,
             `Command response ${setResult.protocolAcknowledged ? "matched" : "did not match"}; test value ${test}.`,
-            from,
+            [setResult.transactionId],
           );
           if (!setResult.protocolAcknowledged)
             throw new Error(
               "Test brightness command did not receive the required matching response.",
             );
-          from = this.ports.protocolEvidence().getTransactions().length;
-          const verify = await execute({ type: "GetDeviceInfo" });
+          const verify = await execute(
+            { type: "GetDeviceInfo" },
+            "verify-test",
+            "Verify test brightness",
+          );
           const actual = numberField(verify.response, "brightnessRaw");
           step(
             "verify-test",
             "Verify test brightness",
             actual === test,
             `Expected ${test}; read back ${actual ?? "unknown"}.`,
-            from,
+            [verify.transactionId],
           );
           if (actual !== test)
             throw new Error(
@@ -320,24 +349,30 @@ export class DiagnosticsService {
       ) {
         restorationAttempted = true;
         try {
-          let from = this.ports.protocolEvidence().getTransactions().length;
-          const restore = await execute({
-            type: "SetBrightness",
-            raw: baseline,
-          });
+          const restore = await execute(
+            {
+              type: "SetBrightness",
+              raw: baseline,
+            },
+            "restore",
+            "Restore baseline brightness",
+          );
           step(
             "restore",
             "Restore baseline brightness",
             restore.protocolAcknowledged === true,
             `Restore response ${restore.protocolAcknowledged ? "matched" : "did not match"}.`,
-            from,
+            [restore.transactionId],
           );
           if (!restore.protocolAcknowledged)
             throw new Error(
               "Restore command did not receive the required matching response.",
             );
-          from = this.ports.protocolEvidence().getTransactions().length;
-          const verifyRestore = await execute({ type: "GetDeviceInfo" });
+          const verifyRestore = await execute(
+            { type: "GetDeviceInfo" },
+            "verify-restore",
+            "Verify restoration",
+          );
           const restored = numberField(verifyRestore.response, "brightnessRaw");
           restorationVerified = restored === baseline;
           step(
@@ -345,7 +380,7 @@ export class DiagnosticsService {
             "Verify restoration",
             restorationVerified,
             `Expected baseline ${baseline}; read back ${restored ?? "unknown"}.`,
-            from,
+            [verifyRestore.transactionId],
           );
           if (!restorationVerified)
             throw new Error(
