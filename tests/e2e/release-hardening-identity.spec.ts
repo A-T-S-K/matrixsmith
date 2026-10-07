@@ -25,6 +25,21 @@ test("late structured company contradiction withdraws live profile trust in the 
       capturedAt: new Date().toISOString(),
       source: "web-bluetooth-watch",
       advertisedServiceUuids: [],
+      manufacturerData: [{ companyId: 0x31ae, dataHex: "FFFF" }],
+      serviceData: [],
+    });
+    (
+      runtime as unknown as {
+        connection: { _enrichAdvertisementEvidence(): void };
+      }
+    ).connection._enrichAdvertisementEvidence();
+    await Promise.resolve();
+    await Promise.resolve();
+    const harmlessPlanAllowed = runtime.authorize(plan).allowed;
+    transport.observeAdvertisements = async () => ({
+      capturedAt: new Date().toISOString(),
+      source: "web-bluetooth-watch",
+      advertisedServiceUuids: [],
       manufacturerData: [{ companyId: 0xffff, dataHex: "AE31" }],
       serviceData: [],
     });
@@ -37,6 +52,7 @@ test("late structured company contradiction withdraws live profile trust in the 
     await Promise.resolve();
     return {
       profileBefore,
+      harmlessPlanAllowed,
       profileAfter: runtime.session.profile,
       withdrawn: runtime.session.identityTrustWithdrawn,
       experimental: runtime.session.experimentalTxEnabled,
@@ -53,6 +69,7 @@ test("late structured company contradiction withdraws live profile trust in the 
   });
   expect(result.profileBefore).not.toBeNull();
   expect(result).toMatchObject({
+    harmlessPlanAllowed: true,
     profileAfter: null,
     withdrawn: true,
     experimental: false,

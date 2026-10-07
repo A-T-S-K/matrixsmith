@@ -73,6 +73,22 @@ describe("live advertisement identity reconciliation", () => {
       await runtime.dispose();
     }
   });
+  it("keeps a prepared plan valid across harmless observation enrichment on the same trusted target", async () => {
+    const { runtime, transport } = setup();
+    try {
+      await runtime.connect();
+      const plan = runtime.plan({ type: "GetDeviceInfo" });
+      expect(runtime.authorize(plan).allowed).toBe(true);
+      const profile = runtime.session.profile;
+      const revision = runtime.session.identityAuthorityRevision;
+      await transport.deliver(observed());
+      expect(runtime.session.profile).toBe(profile);
+      expect(runtime.session.identityAuthorityRevision).toBe(revision);
+      expect(runtime.authorize(plan).allowed).toBe(true);
+    } finally {
+      await runtime.dispose();
+    }
+  });
   it("late contradictions clear authority, selected response, prepared work and current evidence; disappearance does not restore trust", async () => {
     const { runtime, transport } = setup();
     try {

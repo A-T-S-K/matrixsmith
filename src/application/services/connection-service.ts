@@ -600,7 +600,10 @@ export class ConnectionService {
       return null;
     return {
       connectionId,
-      fingerprintKey: `${fingerprintIdentityKey(fingerprint)}|geometry-revision:${this.session.geometryRevision}|identity-authority-revision:${this.session.identityAuthorityRevision}`,
+      // Advertisement enrichment changes observations on the same connection.
+      // Executable trust changes only through reconciliation's authority revision;
+      // geometry has its own revision. Keep harmless enrichment from retiring work.
+      fingerprintKey: `${fingerprintIdentityKey({ ...fingerprint, advertisementObservation: undefined })}|geometry-revision:${this.session.geometryRevision}|identity-authority-revision:${this.session.identityAuthorityRevision}`,
       browserDeviceId: fingerprint.browserDeviceId ?? null,
     };
   }
