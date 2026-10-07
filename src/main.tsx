@@ -5,11 +5,45 @@ import { createBrowserUpdates } from "./adapters/updates/browser-updates";
 import "./style.css";
 import { render } from "preact";
 import { BootstrapHome } from "./ui/pages/BootstrapHome";
+import { retryableImport } from "./ui/components/module-recovery";
 import type { ApplicationCommand } from "./application/commands";
 
 const root = document.querySelector<HTMLElement>("#app");
 if (!root) throw new Error("Missing #app root");
 const appRoot = root;
+
+function startupStatus(
+  label: string,
+  failed = false,
+  retry = () => window.location.reload(),
+  exhausted = false,
+): void {
+  render(
+    <main class="workspace">
+      <h1
+        tabIndex={-1}
+        ref={(heading) => {
+          if (failed) heading?.focus();
+        }}
+      >
+        {failed ? `${label} unavailable` : `Loading ${label}…`}
+      </h1>
+      <p role={failed ? "alert" : "status"}>
+        {failed
+          ? "Could not open this workspace. Retry or return to Home."
+          : "Opening your workspace…"}
+      </p>
+      {failed && exhausted && (
+        <p role="alert">Retry failed. Return to Home to continue.</p>
+      )}
+      {failed && !exhausted && (
+        <button onClick={retry}>Retry loading {label}</button>
+      )}
+      <a href={import.meta.env.BASE_URL}>Go to Home</a>
+    </main>,
+    appRoot,
+  );
+}
 
 // Presentation mode uses the real framebuffer preview without constructing a
 // transport, loading a workspace, or consulting persisted device state.
@@ -42,7 +76,10 @@ if (query.has("offline")) {
       ),
     );
 } else if (new URLSearchParams(location.search).get("demo") === "1") {
-  void import("./ui/pages/Demo").then(({ Demo }) => render(<Demo />, appRoot));
+  startupStatus("demo");
+  void import("./ui/pages/Demo")
+    .then(({ Demo }) => render(<Demo />, appRoot))
+    .catch(() => startupStatus("demo", true));
 } else {
   const updates =
     import.meta.env.PROD && "serviceWorker" in navigator
@@ -56,27 +93,64 @@ if (query.has("offline")) {
   );
 
   let applicationPromise: Promise<void> | null = null;
-  function startApplication(action?: ApplicationCommand): Promise<void> {
+  const loadApplication = retryableImport(
+    "application",
+    () => import("./application-bootstrap"),
+  );
+  function startApplication(
+    action?: ApplicationCommand,
+    retainedSelection?: Promise<BluetoothDevice>,
+  ): Promise<void> {
     if (applicationPromise) return applicationPromise;
-    // Invoke the chooser before loading the application, while the gesture is active.
-    const selection =
-      action?.kind === "connect" ? selectFromHome(action) : undefined;
+    let release: (() => void) | undefined;
+    let selection: Promise<BluetoothDevice> | undefined;
+    try {
+      release = updates?.beginActivity(
+        "Finish opening the workspace before updating.",
+      );
+      // Invoke the chooser before loading the application, while the gesture is active.
+      selection =
+        retainedSelection ??
+        (action?.kind === "connect" ? selectFromHome(action) : undefined);
+    } catch (error) {
+      release?.();
+      return Promise.reject(error);
+    }
     void selection?.catch(() => undefined);
-    const attempt = import("./application-bootstrap").then((module) =>
+    const attempt = loadApplication().then((module) =>
       module.startApplication(appRoot, action, updates, selection),
     );
-    applicationPromise = attempt;
-    void attempt.catch(() => {
-      applicationPromise = null;
+    // An import may fail while the native chooser is still open. Keep ownership
+    // until that selection actually settles; never restart the chooser here.
+    const owned = attempt.finally(async () => {
+      await selection?.catch(() => undefined);
+      release?.();
     });
-    return attempt;
+    applicationPromise = owned;
+    void owned.catch(() => {
+      applicationPromise = null;
+      startupStatus(
+        "MatrixSmith",
+        true,
+        action
+          ? () => {
+              loadApplication.retry();
+              startupStatus("MatrixSmith");
+              void startApplication(action, selection).catch(() => undefined);
+            }
+          : undefined,
+        Boolean(action) && !loadApplication.canRetry(),
+      );
+    });
+    return owned;
   }
 
   const coldHome = location.hash === "" || location.hash === "#/home";
   const simulated =
     import.meta.env.DEV && new URLSearchParams(location.search).has("sim");
   if (!coldHome || simulated) {
-    void startApplication();
+    startupStatus("MatrixSmith");
+    void startApplication().catch(() => undefined);
   } else {
     render(
       <BootstrapHome

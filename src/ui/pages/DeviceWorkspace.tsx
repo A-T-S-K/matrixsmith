@@ -1,21 +1,34 @@
 import { useEffect, useRef } from "preact/hooks";
 import type { JSX } from "preact";
-import { lazy, Suspense } from "preact/compat";
+import { LazyFeature } from "../components/LazyFailureBoundary";
+import { retryableImport } from "../components/module-recovery";
 import type {
   AppSnapshot,
   PresentationStore,
   WorkspaceView,
 } from "../../presentation/store";
 import { DeviceHeader } from "../components/DeviceHeader";
-const ControlView = lazy(async () => ({
-  default: (await import("../views/ControlView")).ControlView,
-}));
-const InvestigationView = lazy(async () => ({
-  default: (await import("../views/InvestigationView")).InvestigationView,
-}));
-const DevelopView = lazy(async () => ({
-  default: (await import("../views/DevelopView")).DevelopView,
-}));
+const importControlView = retryableImport(
+  "ControlView",
+  () => import("../views/ControlView"),
+);
+const importInvestigationView = retryableImport(
+  "InvestigationView",
+  () => import("../views/InvestigationView"),
+);
+const importDevelopView = retryableImport(
+  "DevelopView",
+  () => import("../views/DevelopView"),
+);
+const loadControlView = async () => ({
+  default: (await importControlView()).ControlView,
+});
+const loadInvestigationView = async () => ({
+  default: (await importInvestigationView()).InvestigationView,
+});
+const loadDevelopView = async () => ({
+  default: (await importDevelopView()).DevelopView,
+});
 
 // Device-centered navigation: Create/Control for known displays and guided
 // Investigation for characterization and troubleshooting. The protocol
@@ -186,21 +199,31 @@ export function DeviceWorkspace({
         </aside>
         <div class="workspace-content">
           {snapshot.view === "control" && (
-            <Suspense fallback={<p role="status">Loading Create…</p>}>
-              <ControlView snapshot={snapshot} store={store} />
-            </Suspense>
+            <LazyFeature
+              label="Create"
+              loader={loadControlView}
+              recovery={importControlView}
+              viewProps={{ snapshot, store }}
+              home={() => store.goHome()}
+            />
           )}{" "}
           {snapshot.view === "diagnose" && (
-            <Suspense fallback={<p role="status">Loading investigation…</p>}>
-              <InvestigationView snapshot={snapshot} store={store} />
-            </Suspense>
+            <LazyFeature
+              label="Investigation"
+              loader={loadInvestigationView}
+              recovery={importInvestigationView}
+              viewProps={{ snapshot, store }}
+              home={() => store.goHome()}
+            />
           )}{" "}
           {snapshot.view === "develop" && (
-            <Suspense
-              fallback={<p role="status">Loading protocol workbench…</p>}
-            >
-              <DevelopView snapshot={snapshot} store={store} />
-            </Suspense>
+            <LazyFeature
+              label="Protocol workbench"
+              loader={loadDevelopView}
+              recovery={importDevelopView}
+              viewProps={{ snapshot, store }}
+              home={() => store.goHome()}
+            />
           )}
         </div>
       </div>

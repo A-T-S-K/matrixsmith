@@ -81,7 +81,7 @@ export function BootstrapHome({
     device: null,
     assessment: { summary: "No display connected.", readiness: "no-device" },
     busy,
-    error,
+    error: null,
     bluetoothSupported: capabilities.bluetoothSupported,
     liveWorkspaceAvailable: false,
     previouslyAuthorized,
@@ -90,6 +90,7 @@ export function BootstrapHome({
   return (
     <>
       <Home snapshot={snapshot} store={store} />
+      {error && <p role="alert">{error}</p>}
       <UpdateNotice updates={updates} blocked={busy} />
     </>
   );

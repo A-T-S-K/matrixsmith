@@ -74,40 +74,70 @@ export async function startApplication(
     return { controller, transport };
   };
   const { controller, transport } = createLiveWorkspace();
-  const store = new PresentationStore(controller, transport, {
-    ...createBrowserEnvironment(),
-    createLiveWorkspace,
-    createOfflineWorkspace(fingerprint) {
-      const offlineTransport = new ReplayTransport(fingerprint);
-      return {
-        transport: offlineTransport,
-        controller: new ApplicationRuntime(
-          offlineTransport,
-          new TraceRecorder(),
-          registry,
-        ),
-      };
-    },
-    ...(simulated ? { bluetoothSupported: true } : {}),
-  });
-  updates?.setBlocker(() => {
-    const snapshot = store.getSnapshot();
-    return workspaceUpdateBlocker(snapshot);
-  });
-  render(<App store={store} updates={updates} />, root);
-  const initialization = store.initialize();
-  if (action) await runApplicationEffect(store, action);
-  await initialization;
-  window.addEventListener(
-    "pagehide",
-    (event) => {
-      if (!event.persisted) void store.dispose();
-    },
-    { once: true },
-  );
+  let store: PresentationStore | undefined;
+  let releaseBlocker: (() => void) | undefined;
+  let removePagehide: (() => void) | undefined;
+  let disposal: Promise<void> | undefined;
+  let disposed = false;
+  const dispose = (): Promise<void> => {
+    if (disposal) return disposal;
+    disposed = true;
+    removePagehide?.();
+    try {
+      disposal = (store ? store.dispose() : controller.dispose()).finally(() =>
+        releaseBlocker?.(),
+      );
+    } catch (error) {
+      releaseBlocker?.();
+      disposal = Promise.reject(error);
+    }
+    return disposal;
+  };
+  try {
+    store = new PresentationStore(controller, transport, {
+      ...createBrowserEnvironment(),
+      createLiveWorkspace,
+      createOfflineWorkspace(fingerprint) {
+        const offlineTransport = new ReplayTransport(fingerprint);
+        return {
+          transport: offlineTransport,
+          controller: new ApplicationRuntime(
+            offlineTransport,
+            new TraceRecorder(),
+            registry,
+          ),
+        };
+      },
+      ...(simulated ? { bluetoothSupported: true } : {}),
+    });
+    const workspace = store;
+    releaseBlocker = updates?.addBlocker(() =>
+      workspaceUpdateBlocker(workspace.getSnapshot()),
+    );
+    const pagehide = (event: PageTransitionEvent): void => {
+      if (!event.persisted) void dispose().catch(() => undefined);
+    };
+    window.addEventListener("pagehide", pagehide);
+    removePagehide = () => window.removeEventListener("pagehide", pagehide);
+    // Observe both operations immediately and retain ownership until both settle.
+    const outcomes = await Promise.allSettled([
+      workspace.initialize(),
+      action ? runApplicationEffect(workspace, action) : Promise.resolve(),
+    ]);
+    const failure = outcomes.find((outcome) => outcome.status === "rejected");
+    if (failure?.status === "rejected") throw failure.reason;
+    if (disposed) {
+      await disposal;
+      return;
+    }
+    render(<App store={workspace} updates={updates} />, root);
 
-  if (import.meta.env.DEV) {
-    (globalThis as Record<string, unknown>).matrixsmithStore = store;
-    (globalThis as Record<string, unknown>).matrixsmithTransport = transport;
+    if (import.meta.env.DEV) {
+      (globalThis as Record<string, unknown>).matrixsmithStore = workspace;
+      (globalThis as Record<string, unknown>).matrixsmithTransport = transport;
+    }
+  } catch (error) {
+    await dispose().catch(() => undefined);
+    throw error;
   }
 }

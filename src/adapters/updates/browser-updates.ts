@@ -74,12 +74,12 @@ export function createBrowserUpdates(
   const message = (event: MessageEvent): void => {
     if (event.data?.type === "matrixsmith:check-ready") {
       const reason = manager.blockingReason;
-      event.ports[0]?.postMessage({ ready: !reason, reason });
       if (!reason) {
         manager.setActivationLock(true);
         clearTimeout(lockTimer);
         lockTimer = setTimeout(() => manager.setActivationLock(false), 16000);
       }
+      event.ports[0]?.postMessage({ ready: !reason, reason });
     } else if (event.data?.type === "matrixsmith:update-cancelled") {
       clearTimeout(lockTimer);
       manager.setActivationLock(false);
