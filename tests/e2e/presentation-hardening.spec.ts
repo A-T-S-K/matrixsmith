@@ -161,7 +161,9 @@ test("image reports actual target geometry, manual and Legacy modes remain selec
     });
     store.controller.trace.record("app.started", {});
   });
-  await page.getByRole("tab", { name: "Image", exact: true }).click();
+  await page
+    .getByRole("tab", { name: "Imagenot yet verified", exact: true })
+    .click();
   const input = page.locator('input[accept="image/png,image/jpeg,image/webp"]');
   await input.setInputFiles({
     name: "invalid.png",
