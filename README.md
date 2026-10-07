@@ -6,15 +6,15 @@ The initial supported profile is the characterized **CoolLEDUX iLedHat 31AE 32×
 
 ## Use the app
 
-1. Open MatrixSmith on the stable HTTPS release origin in the tested Chrome/Android environment. Desktop localhost is suitable for development.
+1. Open MatrixSmith on the stable HTTPS release origin in the planned Chrome/Android acceptance environment. Exact release-build browser/hardware support remains pending the physical checklist. Desktop localhost is suitable for development.
 2. Choose **Connect a display** and select your display in the browser chooser.
-3. For a recognized, ready display, use **Create** to enter text or choose an image, then **Display it**. A verified routine send replaces the current display content without a confirmation dialog.
+3. For a recognized, ready display, use **Create** to enter text or choose an image, then **Send to display**. A verified routine send replaces the current display content without a confirmation dialog. **Upload sent** reports host-side transfer completion; visual rendering and any protocol/readback result are separate evidence.
 4. Use **Investigate** to troubleshoot or characterize an unfamiliar display. Experimental writes show one consequence-specific confirmation; imported evidence never enables a live write.
 5. Use **Device actions → Share report…** for reports and Bundle V3 exports. A shareable bundle redacts device identifiers; a full local archive explicitly includes them.
 
 Demo animation is a built-in example, not an animation editor. Imported GIFs decode locally in supported Chrome/Android browsers into device-sized raster animations, using the trusted animation path. The native device GIF decoder remains experimental research. Firmware, password changes, and arbitrary raw writes are not available.
 
-After a successful online installation, the app shell and lazy features can open offline. Bluetooth access still depends on browser/device support. Updates are explicit and refresh open MatrixSmith tabs only after they acknowledge readiness. Finish active work or close an unavailable tab before applying an update.
+After a successful online installation, the app shell and lazy features can open offline. Installation downloads and caches the lazy chunks and reference/schema JSON even before their first use; lazy execution reduces initial work, not offline installation cost. Bluetooth access still depends on browser/device support. Updates are explicit and refresh open MatrixSmith tabs only after they acknowledge readiness. Finish active work or close an unavailable tab before applying an update.
 
 ## Development
 
@@ -38,7 +38,7 @@ npm run verify:release
 npm run release:package
 ```
 
-The complete gate includes all-production-source unit/browser coverage, browser error checks, responsive/accessibility journeys, two-build production upgrade/offline tests, dependency checks, and static-output verification. `release:package` requires a reviewed, committed working tree, runs the gate, and emits a static archive plus commit/build identity and SHA-256 manifests under `release/`.
+The complete gate includes all-production-source unit/browser coverage (run the complete `npm run test:coverage`, without narrowing files), browser error checks, responsive/accessibility journeys, two-build production upgrade/offline tests, dependency checks, and static-output verification. `release:package` requires a reviewed, committed working tree, runs the gate, and emits a static archive plus commit/build identity and SHA-256 manifests under `release/`.
 
 Deployment remains deferred. A local green run is not a successful Linux CI run or physical acceptance. See [the candidate and launch procedure](docs/releasing.md) before promotion.
 
@@ -66,6 +66,6 @@ Review free-form notes and raw protocol content before sharing diagnostics; auto
 
 This repository has no project `LICENSE`. MatrixSmith is described as source-available; no open-source license has been selected for it. [Third-party notices](THIRD_PARTY_NOTICES.md) preserve the notices for distributed runtime dependencies. Independently derived protocol implementations have separate provenance in `research/`.
 
-The [LSLED legacy offline reference](docs/lsled-offline.md) is reachable from Home
-without a device. It compiles one 44×11 monochrome bank and exposes a logical
-preview and exact planned packets; it does not establish live badge support.
+From Home, **Open offline protocol explorer** offers [LSLED legacy](docs/lsled-offline.md) (one 44×11 monochrome bank), [micro:bit LED Matrix State](docs/microbit-offline.md) (one 5×5 binary matrix), and [Merkury RGB blocks](docs/merkury-offline.md) (one 16×16 RGB frame). Previews and packets are offline software references; they do not establish live hardware support.
+
+Registered read support currently covers one bounded micro:bit LED Matrix State service value, tied to the inspected Lancaster DAL contract and an accessible Read characteristic. A read is evidence of that supplied endpoint value, not model identification or rendering; other firmware applicability remains unknown. Experimental discovery, still-route verification and session-only candidate V2 profiles require their own fresh target-bound evidence and confirmation; imported profiles/reports do not grant live authority.

@@ -1,13 +1,24 @@
 # Provisional static asset budgets
 
-The total JavaScript gzip ceiling is provisionally 220 KiB for the bounded
-local-profile, advisory-knowledge and bounded candidate slice, replacing the earlier 210 KiB
-ceiling. Initial JavaScript remains capped at 90 KiB. Static verification stays
-mandatory. This revision allows the measured standalone validators, trust
-registration, review UI and lazy advisory resolver without spending the slice on
-byte shaving. It is not a permanent calibrated mobile-performance threshold.
-Baseline and final byte measurements are reported in the task's chat and temporary
-review artifacts; no Android performance claim follows from desktop builds.
+The current enforced ceilings are **240 KiB total JavaScript gzip** (245,760
+bytes, including the service worker), **90 KiB initial JavaScript gzip** (92,160
+bytes across static imports/modulepreloads), and **256 KiB raw knowledge JSON**.
+`scripts/verify-static-output.mjs` enforces them. These are provisional artifact
+limits, not calibrated mobile-performance thresholds. Static verification,
+schema validation, CSP and origin checks remain mandatory.
+
+The measurements below describe earlier slices at their stated source/toolchain
+identities. They explain allowance changes; they are not final integrated-build
+acceptance. Retain the frozen commit's verifier output and manifests with release
+qualification evidence. No Android performance claim follows from desktop builds.
+Do not raise these limits or hide corpus/assets to pass the gate.
+
+Offline installation downloads and caches the shell, every lazy application
+chunk, and reference/schema JSON before those features are first executed. Lazy
+execution and installation cost are separate measurements; gzip sums are artifact
+estimates, not actual transfer bytes or cache storage.
+
+## Historical slice measurements
 
 Knowledge JSON is a separate asset capped at 256 KiB with a strict schema and
 semantic reference validation. It is fetched and parsed on request, with one
@@ -32,7 +43,7 @@ The 225,280-byte ceiling covers this measured addition. Initial Home remains
 lazy (13,346 bytes gzip in that candidate build), below its unchanged 90 KiB
 ceiling. Profile schemas are separate JSON assets included in offline caching;
 V3 schema, static/CSP/origin scanning and knowledge budget remain unchanged.
-Final exact costs are reported in chat; no Android performance inference is made.
+These are historical costs; no Android performance inference is made.
 
 The independent LSLED offline-family slice provisionally raises the total ceiling
 from 220 to 230 KiB (235,520 bytes). A Vite measurement of the exact starting
@@ -98,7 +109,7 @@ keep codec/application machinery out of Home. The manifest has 30 assets versus
 29; JavaScript/CSS measure 949,969 raw / 246,708 gzip bytes versus 939,746 /
 243,049 in this first read build. Knowledge remains 195,970 raw / 30,946 gzip
 bytes. No new image/font/vendor asset or external executable dependency is added.
-Final exact measurements are reported in chat. Node 24.20.0 was not available;
+Final integrated measurements require frozen-commit qualification. Node 24.20.0 was not available;
 these desktop asset measurements make no Android performance claim. Static,
 CSP, origin, schema and initial-budget checks remain mandatory.
 

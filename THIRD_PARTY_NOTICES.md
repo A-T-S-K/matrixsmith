@@ -32,7 +32,7 @@ The independently implemented protocol codecs use behavioral evidence and pinned
 
 ## Ajv 8.20.0 / ajv-formats 3.0.1 standalone helpers
 
-The Bundle V3 validator distributes Ajv ucs2length and ajv-formats full-format helpers, bundled at generation time. The compiler is development tooling only.
+The Bundle V3, profile V1/V2 and knowledge standalone validators distribute Ajv runtime helpers bundled at generation time. Bundle V3 also contains ajv-formats full-format helpers; the profile validator includes Ajv equal and fast-deep-equal (notice below). The Ajv compiler runs during development; its generated output and these helpers are shipped.
 
 The MIT License (MIT)
 
@@ -59,6 +59,32 @@ SOFTWARE.
 MIT License
 
 Copyright (c) 2020 Evgeny Poberezkin
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+## fast-deep-equal 3.1.3 standalone helper
+
+The generated profile V1/V2 validator includes this implementation through Ajv's runtime equal helper. [Pinned upstream license](https://github.com/epoberezkin/fast-deep-equal/blob/v3.1.3/LICENSE).
+
+MIT License
+
+Copyright (c) 2017 Evgeny Poberezkin
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -106,7 +132,7 @@ SOFTWARE.
 
 end of terms and conditions
 
-The licenses of externally maintained libraries from which parts of the Software is derived are listed [here](https://github.com/rolldown/rolldown/blob/main/THIRD-PARTY-LICENSE).
+The licenses of externally maintained libraries from which parts of the Software is derived are listed [here](https://github.com/rolldown/rolldown/blob/v1.2.6/THIRD-PARTY-LICENSE).
 
 ### Upstream runtime derivation notices
 

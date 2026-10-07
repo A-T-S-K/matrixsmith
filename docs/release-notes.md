@@ -2,9 +2,16 @@
 
 ## Initial supported scope
 
-The candidate targets the characterized CoolLEDUX iLedHat 31AE 32×16. Routine verified text/image sends remain direct. Other hardware remains bounded investigation territory; locally imported GIFs use the trusted raster animation substrate, while the native device GIF decoder and other unverified operations retain their experimental gates. Demo animation is not an authored animation editor.
+The candidate targets the characterized CoolLEDUX iLedHat 31AE 32×16. Characterized operations include device-info query, brightness and trusted text/image/raster-animation paths; they remain pending acceptance on the final frozen build. Routine verified text/image sends remain direct. Other hardware remains bounded investigation territory; locally imported GIFs use the trusted raster animation substrate, while the native device GIF decoder and other unverified operations retain their experimental gates. Demo animation is not an authored animation editor.
 
 Actual browser/OS and release-build hardware support must be filled from physical acceptance before publication. The planned primary acceptance environment is Chrome on Android using the stable HTTPS origin.
+
+## Investigation and reference scope
+
+- Discovery interview and still-image route verification are experimental, bounded journeys. Names, shared service UUIDs and source citations do not identify hardware or establish write readiness.
+- Candidate V2 profiles capture a reviewed still route and historical evidence. Loading is session-only and disconnected; fresh live family/geometry checks, bootstrap → raw channels → encoder verification, experimental permission and exact persistent-send confirmation are required again. Export/import is not hardware equivalence or authority.
+- Registered characteristic reads use browser-authorized, readable endpoints. The registered micro:bit LED Matrix State read is tied to the inspected Lancaster DAL contract; other firmware applicability remains unknown. Supplied service values and protocol query/notification evidence retain separate provenance; reading a value does not prove model identity or a rendered frame.
+- Home's offline protocol explorer compiles one LSLED 44×11 monochrome bank, micro:bit 5×5 LED Matrix State or Merkury 16×16 RGB block sequence. These source-only previews/planned bytes remain dry-run-only even in a live context. No receipt, timing, persistence or physical acceptance is inferred.
 
 ## Changes
 
@@ -20,7 +27,7 @@ Actual browser/OS and release-build hardware support must be filled from physica
 
 ## Compatibility
 
-Bundle V3 and `matrixsmith:v2:` settings/history remain unchanged. Older bundle formats remain unsupported. No protocol fixtures are intentionally changed. No backend, accounts, telemetry, new drivers, or firmware-writing features are added.
+Bundle V3 and `matrixsmith:v2:` settings/history remain unchanged. Older bundle formats remain unsupported. No protocol fixtures are intentionally changed. No backend, accounts, telemetry or firmware-writing features are added. The scope includes registered service-value reads and independent LSLED/micro:bit/Merkury offline reference compilers; these are not newly accepted live hardware profiles.
 
 Deployment, real-device acceptance, and the owner's project-license decision remain launch gates.
 
