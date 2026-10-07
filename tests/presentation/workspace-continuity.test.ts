@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { BUNDLE_INPUT_LIMITS } from "../../src/diagnostics/bundle";
 import * as gifCodec from "../../src/render/gif";
 import { FrameSequence } from "../../src/render/frame-sequence";
@@ -17,6 +18,7 @@ import { fileActivity } from "../../src/application/file-input";
 import {
   createHashRouter,
   parseRoute,
+  type HashRouter,
 } from "../../src/presentation/app/routes";
 
 const stores: PresentationStore[] = [];
@@ -25,7 +27,11 @@ afterEach(async () => {
   vi.restoreAllMocks();
 });
 
-async function setup(connected = true, experimental = false) {
+async function setup(
+  connected = true,
+  experimental = false,
+  router?: HashRouter,
+) {
   const transport = new FakeTransport(knownIledHatFingerprint());
   const runtime = new ApplicationRuntime(
     transport,
@@ -55,6 +61,7 @@ async function setup(connected = true, experimental = false) {
   const copy = deferred<boolean>();
   const store = new PresentationStore(runtime, transport, {
     ...createBrowserEnvironment(),
+    ...(router ? { router } : {}),
     storage,
     createLiveWorkspace,
     createOfflineWorkspace,
@@ -81,6 +88,198 @@ async function setup(connected = true, experimental = false) {
     json,
   };
 }
+
+function captureHistory() {
+  const events = new Map<string, () => void>();
+  const location = { hash: "#/home" } as Location;
+  const entries = [{ state: null as unknown, hash: location.hash }];
+  let index = 0;
+  const history = {
+    state: null as unknown,
+    pushState(state: unknown, _: string, hash: string) {
+      entries.splice(++index, entries.length, { state, hash });
+      this.state = state;
+      location.hash = hash;
+    },
+    replaceState(state: unknown, _: string, hash: string) {
+      entries[index] = { state, hash };
+      this.state = state;
+      location.hash = hash;
+    },
+  };
+  const router = createHashRouter({
+    location,
+    history: history as unknown as History,
+    addEventListener: (
+      type: string,
+      listener: EventListenerOrEventListenerObject,
+    ) => events.set(type, listener as () => void),
+    removeEventListener: vi.fn(),
+  });
+  const move = (offset: number) => {
+    index += offset;
+    const entry = entries[index]!;
+    history.state = entry.state;
+    location.hash = entry.hash;
+    events.get("popstate")!();
+  };
+  return { router, back: () => move(-1), forward: () => move(1) };
+}
+
+it.each(["cold", "no-fingerprint", "live", "offline"] as const)(
+  "routes accepted %s capture through its actual owner without changing evidence or authority",
+  async (kind) => {
+    const history = captureHistory();
+    const s = await setup(
+      kind === "live" || kind === "offline",
+      false,
+      history.router,
+    );
+    if (kind === "offline") s.store.importBundle(s.json);
+    const owner = s.store.controller;
+    const transport = s.store.transport;
+    const dispose = vi.spyOn(owner, "dispose");
+    const capture =
+      kind === "no-fingerprint"
+        ? [
+            "nRF Connect, 2026-08-31",
+            "I\t10:00:00.000\tData written to 0000fff1-0000-1000-8000-00805f9b34fb, value: (0x) 01-00-02-06-04-40-03",
+          ].join("\n")
+        : readFileSync(
+            new URL("../fixtures/nrf/iledhat-session.txt", import.meta.url),
+            "utf8",
+          );
+    const previousTransactions = owner.transactions.length;
+    s.store.importExternalCapture(capture);
+    expect(owner.transactions.length).toBeGreaterThan(previousTransactions);
+    expect(owner.importedEvidence.length).toBeGreaterThan(0);
+    if (kind === "no-fingerprint") expect(owner.session.fingerprint).toBeNull();
+    if (kind === "live") {
+      owner.session.enableExperimentalTx();
+      owner.session.confirmPlanDigest("retained live confirmation");
+    }
+    const session = owner.session;
+    const authority = {
+      source: session.source,
+      fingerprint: session.fingerprint,
+      selection: session.selection,
+      profile: session.profile,
+      identityAuthorityRevision: session.identityAuthorityRevision,
+      identityTrustWithdrawn: session.identityTrustWithdrawn,
+      experimentalTxEnabled: session.experimentalTxEnabled,
+      confirmedPlanDigest: session.confirmedPlanDigest,
+      allowed: s.store.getSnapshot().content.allowed,
+    };
+    expect(authority.source).toBe(kind === "live" ? "live" : "imported");
+    if (kind !== "live") expect(authority.allowed).toBe(false);
+    const transactions = [...owner.transactions];
+    const imported = [...owner.importedEvidence];
+    const writes = s.transport.writeAttempts.length;
+    const subscriptions = s.transport.notificationListenerCount;
+    const factories = s.createOfflineWorkspace.mock.calls.length;
+    const transaction = transactions[transactions.length - 1]!;
+    s.store.setReviewNote("unsaved capture note");
+    s.store.updateContentSettings({ text: "retained capture draft" });
+    s.store.setReportOptions({
+      ...s.store.getSnapshot().reportOptions,
+      goal: "capture routing goal",
+    });
+    const context = kind === "offline" ? "offline" : "live";
+    const reportGeneration = history.router.current.reportGeneration;
+    const assertRetained = () => {
+      expect(s.store.controller).toBe(owner);
+      expect(s.store.transport).toBe(transport);
+      expect(owner.session).toBe(session);
+      expect(owner.transactions).toEqual(transactions);
+      expect(owner.importedEvidence).toEqual(imported);
+      expect(owner.session).toMatchObject({
+        source: authority.source,
+        experimentalTxEnabled: authority.experimentalTxEnabled,
+        confirmedPlanDigest: authority.confirmedPlanDigest,
+        identityAuthorityRevision: authority.identityAuthorityRevision,
+        identityTrustWithdrawn: authority.identityTrustWithdrawn,
+      });
+      expect(owner.session.fingerprint).toBe(authority.fingerprint);
+      expect(owner.session.selection).toBe(authority.selection);
+      expect(owner.session.profile).toBe(authority.profile);
+      expect(s.store.getSnapshot()).toMatchObject({
+        missingContext: null,
+        reviewNote: "unsaved capture note",
+        reportOptions: { goal: "capture routing goal" },
+        content: {
+          allowed: authority.allowed,
+          settings: { text: "retained capture draft" },
+        },
+      });
+      expect(s.transport.writeAttempts).toHaveLength(writes);
+      expect(s.transport.notificationListenerCount).toBe(subscriptions);
+      expect(dispose).not.toHaveBeenCalled();
+      expect(s.createOfflineWorkspace).toHaveBeenCalledTimes(factories);
+      expect(s.createLiveWorkspace).not.toHaveBeenCalled();
+      if (history.router.current.id !== "home") {
+        expect(history.router.current).toMatchObject({ context });
+        expect(history.router.current.reportGeneration).toBe(reportGeneration);
+      }
+    };
+    s.store.setView("diagnose");
+    assertRetained();
+    s.store.setWorkbenchSection("transactions");
+    assertRetained();
+    s.store.openTransaction(transaction.id);
+    const generation = history.router.current.reviewGeneration;
+    expect(generation).toBeDefined();
+    expect(s.store.getSnapshot().review.selected).toBe(transaction);
+    assertRetained();
+    history.back();
+    expect(s.store.getSnapshot().review.selected).toBeNull();
+    assertRetained();
+    history.forward();
+    expect(s.store.getSnapshot().review.selected).toBe(transaction);
+    expect(history.router.current.reviewGeneration).toBe(generation);
+    assertRetained();
+    history.router.navigate(
+      context === "offline"
+        ? "offline-develop-transactions"
+        : "develop-transactions",
+      false,
+      reportGeneration,
+      { transactionId: transaction.id, generation: "retired-owner" },
+    );
+    expect(s.store.getSnapshot().missingContext).toBe(context);
+    history.back();
+    assertRetained();
+    s.store.closeTransaction();
+    assertRetained();
+    s.store.goHome();
+    assertRetained();
+    s.store.setView("diagnose");
+    assertRetained();
+    if (kind === "offline") {
+      s.store.returnToLiveWorkspace();
+      expect(s.store.controller).toBe(s.runtime);
+      expect(history.router.current).toMatchObject({ context: "live" });
+      s.store.returnToOfflineWorkspace();
+      assertRetained();
+    }
+  },
+);
+
+it("does not treat an unused owner or rejected capture as an available workspace", async () => {
+  const history = captureHistory();
+  const s = await setup(false, false, history.router);
+  s.store.setView("diagnose");
+  expect(s.store.getSnapshot().missingContext).toBe("live");
+  s.store.importExternalCapture("bad capture");
+  expect(s.runtime.importedEvidence).toHaveLength(0);
+  s.store.setWorkbenchSection("transactions");
+  expect(s.store.getSnapshot().missingContext).toBe("live");
+  history.router.navigate("offline-report");
+  expect(s.store.getSnapshot().missingContext).toBe("offline");
+  expect(s.store.controller).toBe(s.runtime);
+  expect(s.createOfflineWorkspace).not.toHaveBeenCalled();
+  expect(s.createLiveWorkspace).not.toHaveBeenCalled();
+  expect(s.transport.writeAttempts).toHaveLength(0);
+});
 
 it("connects from offline synchronously into a fresh authority and retains report without saving its investigation", async () => {
   const s = await setup(false);

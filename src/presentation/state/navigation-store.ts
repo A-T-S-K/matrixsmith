@@ -20,6 +20,7 @@ interface Ports {
   workspaceStore(): Pick<
     WorkspaceStore,
     | "getController"
+    | "getContext"
     | "selectContext"
     | "transitionReason"
     | "getReportGeneration"
@@ -126,10 +127,7 @@ export class NavigationStore {
     return this.missingContext;
   }
   private context(): WorkspaceContext {
-    return this.ports.workspaceStore().getController().session.source ===
-      "imported"
-      ? "offline"
-      : "live";
+    return this.ports.workspaceStore().getContext();
   }
   setWorkbenchSection(section: WorkbenchSection): void {
     this.sections.set(this.ports.workspaceStore().getController(), section);

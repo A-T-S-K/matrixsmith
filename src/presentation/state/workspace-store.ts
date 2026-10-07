@@ -161,6 +161,9 @@ export class WorkspaceStore {
   getTransport() {
     return this.active.transport;
   }
+  getContext(): WorkspaceContext {
+    return this.active === this.offline ? "offline" : "live";
+  }
   getLiveWorkspace() {
     return this.live !== this.active && this.live?.established
       ? this.live
@@ -222,11 +225,17 @@ export class WorkspaceStore {
         target.generation !== reportGeneration)
     )
       return false;
+    const activeCapture =
+      target === this.active &&
+      target.controller.session.source === "imported" &&
+      target.controller.importedEvidence.length > 0;
     if (target !== this.active) {
       if (this.blocked()) return false;
       this.activate(target);
     }
-    return target.established;
+    // Accepted historical capture can be reviewed in its current owner without
+    // claiming an established physical display or creating a replay workspace.
+    return target.established || activeCapture;
   }
   importBundle(json: string): void {
     if (this.blocked(false)) return;
