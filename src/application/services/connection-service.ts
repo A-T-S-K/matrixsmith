@@ -32,7 +32,10 @@ import type { ProtocolEvidenceService } from "./protocol-evidence-service";
 interface Ports {
   identification(): Pick<
     IdentificationService,
-    "getRegistry" | "applyFingerprint" | "deviceTarget"
+    | "getRegistry"
+    | "applyFingerprint"
+    | "deviceTarget"
+    | "reconcileAdvertisement"
   >;
   investigation(): Pick<
     InvestigationService,
@@ -119,6 +122,9 @@ export class ConnectionService {
   }
   getConnectionGeneration() {
     return this._lifetimeGeneration;
+  }
+  getIdentityAuthorityRevision(): number {
+    return this.session.identityAuthorityRevision;
   }
   getConnectionEpoch() {
     return this._connectionEpoch;
@@ -273,19 +279,32 @@ export class ConnectionService {
     if (!observe) return;
     const connectionId = this.transport.connectionId;
     const browserDeviceId = this.transport.fingerprint?.browserDeviceId ?? null;
+    const generation = this._lifetimeGeneration;
     void observe()
       .then((observation) => {
         if (this.disposed || !observation) return;
         if (
           !connectionId ||
+          generation !== this._lifetimeGeneration ||
+          this.transport.state !== "connected" ||
           this.transport.connectionId !== connectionId ||
           (this.transport.fingerprint?.browserDeviceId ?? null) !==
             browserDeviceId
         )
           return;
-        const updated = this.transport.fingerprint;
-        if (updated && this.session.source === "live")
-          this.patchSession({ fingerprint: updated });
+        if (
+          this.session.source !== "live" ||
+          !this.session.fingerprint ||
+          (this.session.fingerprint.browserDeviceId ?? null) !== browserDeviceId
+        )
+          return;
+        const withdrawn = this.ports
+          .identification()
+          .reconcileAdvertisement(observation);
+        if (withdrawn) this.ports.investigation().setStagedPanelProgram(null);
+        const target = this.ports.identification().deviceTarget();
+        if (target && this._connectionState.value === "connected")
+          this._connectionState = { ...this._connectionState, target };
       })
       .catch(() => undefined);
   }
@@ -570,7 +589,7 @@ export class ConnectionService {
       });
   }
   _currentTargetBinding(): TargetBinding | null {
-    const fingerprint = this.transport.fingerprint;
+    const fingerprint = this.session.fingerprint;
     const connectionId = this.transport.connectionId;
     if (
       this.session.source !== "live" ||
@@ -581,7 +600,7 @@ export class ConnectionService {
       return null;
     return {
       connectionId,
-      fingerprintKey: `${fingerprintIdentityKey(fingerprint)}|geometry-revision:${this.session.geometryRevision}`,
+      fingerprintKey: `${fingerprintIdentityKey(fingerprint)}|geometry-revision:${this.session.geometryRevision}|identity-authority-revision:${this.session.identityAuthorityRevision}`,
       browserDeviceId: fingerprint.browserDeviceId ?? null,
     };
   }

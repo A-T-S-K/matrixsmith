@@ -1,6 +1,10 @@
 import { validateGeometry } from "../../domain/device/geometry";
 import { fingerprintIdentityKey } from "../../investigation/device-identity";
-import type { DeviceFingerprint } from "../../core/device";
+import { definitionDigest } from "../../core/transmission";
+import type {
+  AdvertisementObservation,
+  DeviceFingerprint,
+} from "../../core/device";
 import type { GattEndpoint } from "../../core/device";
 import { ApplicationState } from "../state";
 
@@ -325,6 +329,15 @@ export class IdentificationService {
     this.ports
       .connection()
       .patchSession({ profile: driver?.resolveProfile(fingerprint) ?? null });
+    if (
+      selection.matches.some(
+        ({ driverId, score, contradictions }) =>
+          (driver ? driverId === driver.id : score > 0) &&
+          contradictions.length > 0,
+      ) ||
+      session.identityTrustWithdrawn
+    )
+      session.withdrawIdentityTrust();
     this.ports.investigation()._reconcileDeviceBoundary();
     for (const match of selection.matches)
       this.ports.protocolEvidence().getTrace().record("driver.match", {
@@ -341,6 +354,50 @@ export class IdentificationService {
           profileId: session.profile?.id ?? null,
         });
   }
+  /** Patch browser observations onto application-owned facts, then reconcile
+   * executable trust synchronously before publishing the enriched fingerprint.
+   */
+  reconcileAdvertisement(observation: AdvertisementObservation): boolean {
+    const session = this.ports.connection().getSession();
+    if (!session.fingerprint || session.source !== "live") return false;
+    const fingerprint = {
+      ...session.fingerprint,
+      advertisementObservation: structuredClone(observation),
+    };
+    const selection = this.registry.match(fingerprint);
+    const driver = session.selection?.selected;
+    const contradicted = selection.matches.some(
+      ({ driverId, score, contradictions }) =>
+        (driver ? driverId === driver.id : score > 0) &&
+        contradictions.length > 0,
+    );
+    const resolvedProfile = driver?.resolveProfile(fingerprint) ?? null;
+    const changedDefinition = Boolean(
+      session.profile &&
+      !session.profile.id.startsWith("provisional:") &&
+      (!resolvedProfile ||
+        this.registry.definitionIdentity(driver!.id, resolvedProfile) !==
+          this.registry.definitionIdentity(driver!.id, session.profile) ||
+        definitionDigest(resolvedProfile) !==
+          definitionDigest(session.profile)),
+    );
+    session.fingerprint = fingerprint;
+    // No automatic elevation: keep the prior application-owned selection and
+    // geometry only while its evidence remains consistent.
+    if (contradicted || changedDefinition) {
+      session.selection = selection;
+      session.withdrawIdentityTrust();
+      this.ports.investigation()._reconcileDeviceBoundary();
+      this.ports.protocolEvidence().getTrace().record("driver.match", {
+        authority: "withdrawn-after-observed-contradiction",
+        revision: session.identityAuthorityRevision,
+      });
+      return true;
+    }
+    if (session.selection)
+      session.selection = { ...session.selection, matches: selection.matches };
+    return false;
+  }
   _resolveProtocol(
     driver: MatrixDriver,
     profile: import("../../core/device").DeviceProfile | null,
@@ -351,6 +408,7 @@ export class IdentificationService {
     const session = this.ports.connection().getSession();
     const fingerprint = session.fingerprint;
     if (!fingerprint) return;
+    if (session.identityTrustWithdrawn) profile = null;
     const changed =
       session.selection?.selected?.id !== driver.id ||
       session.profile?.id !== profile?.id;

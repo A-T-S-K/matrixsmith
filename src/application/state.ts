@@ -14,6 +14,10 @@ export class ApplicationState {
   readonly notifications: NotificationRecord[] = [];
   private selectedDeviceInfo: NotificationRecord | null = null;
   geometryRevision = 0;
+  /** Monotonic live authority boundary; captured workflows must compare it. */
+  identityAuthorityRevision = 0;
+  /** Explicit contradiction cannot be undone by an absent later advertisement. */
+  identityTrustWithdrawn = false;
   geometryProposal:
     import("./services/identification-service").GeometryProposal | null = null;
   protocolResolution: {
@@ -75,7 +79,23 @@ export class ApplicationState {
     if (this.notifications.length > INPUT_LIMITS.traceEvents)
       this.notifications.shift();
   }
+  withdrawIdentityTrust(): void {
+    this.identityAuthorityRevision += 1;
+    this.identityTrustWithdrawn = true;
+    this.selection = this.selection
+      ? { ...this.selection, selected: null }
+      : null;
+    this.profile = null;
+    this.selectedDeviceInfo = null;
+    this.protocolResolution = null;
+    this.geometryProposal = null;
+    this.validatedRasterStrategy = null;
+    this.authority.disableExperimentalTx();
+    this.authority.consumePersistentConfirmation();
+  }
   clearConnection(): void {
+    this.identityAuthorityRevision += 1;
+    this.identityTrustWithdrawn = false;
     this.fingerprint = null;
     this.selection = null;
     this.profile = null;
