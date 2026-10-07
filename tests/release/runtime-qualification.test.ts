@@ -20,6 +20,7 @@ import {
 } from "../../scripts/qualify-runtime-costs";
 import {
   animationPlan,
+  executionWork,
   noisyAnimation,
   offlineRuntime,
   qualificationCases,
@@ -192,6 +193,15 @@ describe("runtime qualification fixtures", () => {
         ),
       ).toBe(true);
       const result = await zero.executor.execute(authorized);
+      const work = executionWork(result);
+      if (work.executorCountersAvailable) {
+        expect(work.wholePlanDigestCount).toBe(2);
+        expect(work.targetCheckCount).toBeGreaterThan(
+          zero.prepared.packets.length,
+        );
+      } else {
+        expect(work).toEqual({ executorCountersAvailable: 0 });
+      }
       expect(zero.transport.writes).toHaveLength(zero.prepared.packets.length);
       expect(result.packetTimings).toHaveLength(zero.prepared.packets.length);
       expect(result.deviceStateVerified).toBe(false);
@@ -245,6 +255,57 @@ describe("runtime qualification fixtures", () => {
       await prepared.dispose();
     }
   });
+
+  it("settles actual workspace publications and distinguishes absent counter seams", async () => {
+    const job = qualificationCases().find(
+      (job) => job.name === "import.fresh-workspace-100",
+    )!;
+    const prepared = await job.prepare();
+    try {
+      const counters = await prepared.run();
+      expect(counters.inputEvents).toBe(100);
+      expect(counters.retainedEvents).toBeGreaterThanOrEqual(100);
+      expect(counters.publications).toBeGreaterThan(0);
+      if (counters.snapshotCountersAvailable) {
+        expect(counters.traceRequests).toBeGreaterThanOrEqual(0);
+        expect(counters.snapshotRebuilds).toBeGreaterThan(0);
+        expect(counters.snapshotPublications).toBeGreaterThan(0);
+        expect(counters.snapshotObserverCalls).toBe(counters.publications);
+      } else {
+        expect(counters.snapshotCountersAvailable).toBe(0);
+        expect(counters).not.toHaveProperty("snapshotRebuilds");
+        expect(counters).not.toHaveProperty("traceRequests");
+      }
+    } finally {
+      await prepared.dispose();
+    }
+  });
+  it("preserves every recorder callback while settling subscribed workspace publication", async () => {
+    const job = qualificationCases().find(
+      (job) => job.name === "publication.subscribed-workspace-burst",
+    )!;
+    const prepared = await job.prepare();
+    try {
+      const counters = await prepared.run();
+      expect(counters).toMatchObject({
+        inputEvents: 100,
+        acceptedEvents: 100,
+        retainedEvents: INPUT_LIMITS.traceEvents,
+        traceCallbacks: 100,
+      });
+      expect(counters.publications).toBeGreaterThan(0);
+      if (counters.snapshotCountersAvailable) {
+        expect(counters.traceRequests).toBe(100);
+        expect(counters.snapshotObserverCalls).toBe(counters.publications);
+        expect(counters.snapshotRebuilds).toBeGreaterThan(0);
+      } else {
+        expect(counters.snapshotCountersAvailable).toBe(0);
+        expect(counters).not.toHaveProperty("snapshotRebuilds");
+      }
+    } finally {
+      await prepared.dispose();
+    }
+  }, 60_000);
 });
 
 describe("qualification accounting and output isolation", () => {

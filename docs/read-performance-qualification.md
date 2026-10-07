@@ -349,6 +349,14 @@ with real projection work counters. Unchanged inputs retain revisions; relevant
 edits append trace events and change search. This directly preserves the latest
 bulk trace contract instead of replacing its recorder.
 
+An additional subscribed workspace burst opens the real raw review at the
+50,000-event cap and imports the same 100 chronological events. It counts every
+actual recorder callback separately from presentation publications, plus the
+available snapshot work differences after the matched task boundary. Saturation
+occurs before presentation listeners attach and remains outside measurement.
+This distinguishes presentation coalescing from the unchanged raw recorder and
+standalone review workload.
+
 The coordinator approved an isolated synthetic software policy/executor model in
 `I-executor-contract-002`. The harness uses FakeTransport and synthetic plan
 identities, the unchanged reviewed animation compiler, actual preparation and
@@ -362,8 +370,22 @@ The deliberate-pacing stage performs one measured sample without warmups, bounde
 to one full valid upload per command; its summary is descriptive, with no useful
 p95 estimate from one observation. Its total includes executor work and scheduling;
 requested pacing sum is a separate counter, never labelled measured sleep time.
-Detailed C executor counters and G snapshot rebuild instrumentation remain blocked
-until their approved commits/contracts are integrated through the orchestrator.
+The harness reads actual `ExecutionResult.evidence.wholePlanDigestCount` and
+`targetCheckCount` when available. It reads frozen cumulative
+`PresentationStore.getPublicationCounts()` before and after workspace imports,
+records differences for trace requests, rebuilds, publications and observer calls,
+and rejects newly supervised publication failures. It never substitutes a
+packet-count formula for executor work. Original source without these seams
+records an availability flag of zero and omits the unavailable values; this is
+distinct from measured zero work. Final results list unavailable stages.
+
+Workspace import samples include a zero-delay task boundary after the operation
+on both algorithms, allowing queued publication work to finish before counters,
+wall duration and CPU usage are captured. Setup also settles before the sample.
+The queued-delay probe was scheduled before the operation and can run before a
+subsequent expensive publication; its value alone does not measure that later
+task or establish responsiveness. The subscribed raw review case keeps its
+synchronous chronological observer contract intact.
 
 The sampler uses `performance.now()`, with setup/disposal excluded. Immediately
 before the operation it queues a zero-delay timer and records elapsed time until
@@ -379,7 +401,13 @@ Stage quantiles do not add to total quantiles. No speed assertion is used in CI.
 For before/after work, use isolated Git checkouts at each exact named commit
 under serialized Git/setup grants, install each reviewed lockfile independently,
 and run the same harness/fixture version, toolchain, instrumentation,
-warmups, samples and environment. Record harness overlay hashes when the baseline
+warmups, samples and environment. Alternatively, freeze the final compatible
+harness on the original production core, measure that exact source first, then
+adopt only the approved production commits and reuse the identical harness bytes
+and independent dependencies in the same isolated checkout. Record every adopted
+commit and scope the comparison to the tested paths. An earlier baseline on a
+different measured harness does not establish a matched comparison.
+Record harness overlay hashes when the baseline
 predates it. This command requires Git source identity; an extracted archive
 without independently verified commit/tree provenance cannot satisfy that gate. Compare only matching fixture hashes and conditions; preserve slower
 and unchanged results. Record all contamination and exclude exploratory overlap

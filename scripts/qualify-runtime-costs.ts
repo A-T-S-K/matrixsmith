@@ -255,10 +255,11 @@ export async function runQualification(options: QualificationOptions) {
         subscribedBurst: 100,
       },
       instrumentation:
-        "Harness wall/process-CPU boundaries; real TransactionReview.work counters; no production source patch. FakeTransport execution contract approved by coordinator; C/G detailed work/snapshot seam pending.",
+        "Harness wall/process-CPU boundaries; real TransactionReview.work counters; feature-detected actual ExecutionResult.evidence and PresentationStore publication counts. No production source patch. Per-sample availability flags distinguish absent baseline seams from measured zeros.",
       method:
         "performance.now; setup/disposal outside measurement; timer queued immediately before operation; upper median sorted[floor(n/2)]; p95 nearest-rank sorted[ceil(.95*n)-1]. Raw warmups retained and excluded from summaries. Stage quantiles do not add. Timer delay is not INP.",
-      blockedStages: ["executor.internal-stage-counters", "snapshot.rebuilds"],
+      counterAvailability:
+        "executorCountersAvailable/snapshotCountersAvailable are 0 when seams are absent, with unavailable values omitted; 1 means actual returned counters. Final unavailableStages records missing seams. Workspace samples include one matched zero-delay task boundary after import, including queued publications; the queued-delay probe alone may run before that work.",
       authority:
         "Reports remain offline/imported. Synthetic software plans use FakeTransport, actual SafetyPolicy, fresh target-bound digest and exact experimental confirmation under coordinator decision I-executor-contract-002. No forged authorization, real Bluetooth, physical evidence or capture input.",
     };
@@ -324,6 +325,18 @@ export async function runQualification(options: QualificationOptions) {
       JSON.stringify(
         {
           source: after,
+          unavailableStages: [
+            ...(raw.some(
+              (sample) => sample.counters.executorCountersAvailable === 0,
+            )
+              ? ["executor.internal-stage-counters"]
+              : []),
+            ...(raw.some(
+              (sample) => sample.counters.snapshotCountersAvailable === 0,
+            )
+              ? ["snapshot.rebuilds"]
+              : []),
+          ],
           endEnvironment: {
             loadAverage: loadavg(),
             freeMemoryBytes: freemem(),

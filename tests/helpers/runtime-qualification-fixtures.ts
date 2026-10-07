@@ -37,6 +37,77 @@ export interface QualificationCase {
   }>;
 }
 
+/** Read actual optional instrumentation; never substitute packet-count formulas. */
+export function executionWork(result: unknown): QualificationCounters {
+  const evidence = (result as { evidence?: Record<string, unknown> }).evidence;
+  if (evidence === undefined) return { executorCountersAvailable: 0 };
+  const { wholePlanDigestCount, targetCheckCount } = evidence;
+  if (
+    !Number.isInteger(wholePlanDigestCount) ||
+    !Number.isInteger(targetCheckCount) ||
+    (wholePlanDigestCount as number) < 0 ||
+    (targetCheckCount as number) < 0
+  )
+    throw new Error("Executor returned invalid actual work counters.");
+  return {
+    executorCountersAvailable: 1,
+    wholePlanDigestCount: wholePlanDigestCount as number,
+    targetCheckCount: targetCheckCount as number,
+  };
+}
+
+interface PublicationCounts {
+  traceRequests: number;
+  rebuilds: number;
+  publications: number;
+  observerCalls: number;
+}
+function publicationCounts(store: PresentationStore): PublicationCounts | null {
+  const seam = store as PresentationStore & {
+    getPublicationCounts?: () => PublicationCounts;
+  };
+  if (!seam.getPublicationCounts) return null;
+  const counts = seam.getPublicationCounts();
+  for (const key of [
+    "traceRequests",
+    "rebuilds",
+    "publications",
+    "observerCalls",
+  ] as const)
+    if (!Number.isInteger(counts[key]) || counts[key] < 0)
+      throw new Error("Presentation returned invalid actual work counters.");
+  return counts;
+}
+function publicationFailures(store: PresentationStore): number | null {
+  const seam = store as PresentationStore & {
+    getPublicationFailures?: () => readonly unknown[];
+  };
+  return seam.getPublicationFailures?.().length ?? null;
+}
+function publicationWork(
+  store: PresentationStore,
+  before: PublicationCounts | null,
+  beforeFailures: number | null,
+): QualificationCounters {
+  const after = publicationCounts(store);
+  const afterFailures = publicationFailures(store);
+  if (afterFailures !== null && afterFailures !== beforeFailures)
+    throw new Error("Workspace publication failure during qualification.");
+  if (!before || !after) return { snapshotCountersAvailable: 0 };
+  return {
+    snapshotCountersAvailable: 1,
+    traceRequests: after.traceRequests - before.traceRequests,
+    snapshotRebuilds: after.rebuilds - before.rebuilds,
+    snapshotPublications: after.publications - before.publications,
+    snapshotObserverCalls: after.observerCalls - before.observerCalls,
+  };
+}
+
+/** Same task boundary on both algorithms; includes queued publication work. */
+function settlePublicationTask(): Promise<void> {
+  return new Promise((resolveTask) => setTimeout(resolveTask, 0));
+}
+
 /** Independently generated pixels; no capture, device identifier or evidence. */
 export function noisyAnimation(seed = QUALIFICATION_SEED): FrameSequence {
   let state = seed >>> 0;
@@ -136,9 +207,11 @@ export function offlineRuntime() {
   return { transport, runtime: new ApplicationRuntime(transport) };
 }
 
-export async function offlineStore(): Promise<PresentationStore> {
+export async function offlineStore(
+  workspace = offlineRuntime(),
+): Promise<PresentationStore> {
   const { PresentationStore } = await import("../../src/presentation/store");
-  const { runtime, transport } = offlineRuntime();
+  const { runtime, transport } = workspace;
   return new PresentationStore(runtime, transport, qualificationEnvironment());
 }
 
@@ -363,6 +436,7 @@ export function qualificationCases(): QualificationCase[] {
                 "Software receipt misrepresented device evidence.",
               );
             return {
+              ...executionWork(result),
               packets: fixture.prepared.packets.length,
               writes: fixture.transport.writes.length,
               packetBytes: fixture.transport.writes.reduce(
@@ -454,12 +528,15 @@ export function qualificationCases(): QualificationCase[] {
       name: `import.fresh-workspace-${eventCount}`,
       prepare: async () => {
         const store = await offlineStore();
+        await settlePublicationTask();
+        const before = publicationCounts(store);
+        const beforeFailures = publicationFailures(store);
         let publications = 0;
         const unsubscribe = store.subscribe(() => {
           publications++;
         });
         return {
-          run: () => {
+          run: async () => {
             store.importBundle(eventCount === 100 ? normalReport : report);
             if (
               store.controller.session.source !== "imported" ||
@@ -469,7 +546,9 @@ export function qualificationCases(): QualificationCase[] {
                 store.getSnapshot().error ??
                   "Workspace import did not remain historical.",
               );
+            await settlePublicationTask();
             return {
+              ...publicationWork(store, before, beforeFailures),
               inputEvents: eventCount,
               retainedEvents: store.controller.trace.events.length,
               publications,
@@ -482,6 +561,48 @@ export function qualificationCases(): QualificationCase[] {
         };
       },
     });
+  cases.push({
+    name: "publication.subscribed-workspace-burst",
+    prepare: async () => {
+      const workspace = offlineRuntime();
+      const serialized = JSON.parse(report).trace;
+      // Saturate before presentation listeners attach, outside measurement.
+      for (let i = 0; i < 5; i++)
+        workspace.runtime.trace.importSerialized(serialized);
+      const store = await offlineStore(workspace);
+      store.setView("develop");
+      store.setWorkbenchSection("raw");
+      await settlePublicationTask();
+      const before = publicationCounts(store);
+      const beforeFailures = publicationFailures(store);
+      const beforeRevision = store.controller.trace.revision;
+      let publications = 0;
+      let traceCallbacks = 0;
+      const unsubscribe = store.subscribe(() => publications++);
+      const unsubscribeTrace = store.controller.trace.subscribe(
+        () => traceCallbacks++,
+      );
+      return {
+        run: async () => {
+          store.controller.trace.importSerialized(burst);
+          await settlePublicationTask();
+          return {
+            ...publicationWork(store, before, beforeFailures),
+            inputEvents: burst.length,
+            acceptedEvents: store.controller.trace.revision - beforeRevision,
+            retainedEvents: store.controller.trace.events.length,
+            traceCallbacks,
+            publications,
+          };
+        },
+        dispose: async () => {
+          unsubscribeTrace();
+          unsubscribe();
+          await store.dispose();
+        },
+      };
+    },
+  });
   cases.push({
     name: "import.subscribed-review-burst",
     prepare: async () => {
