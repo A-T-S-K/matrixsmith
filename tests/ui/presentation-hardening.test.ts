@@ -244,9 +244,11 @@ it("cleans subscriptions and prevents disposed publications", async () => {
   const called = vi.fn();
   const unsubscribe = s.store.subscribe(called);
   s.runtime.trace.record("app.started", {});
+  await new Promise((resolve) => setTimeout(resolve, 0));
   expect(called).toHaveBeenCalledOnce();
   unsubscribe();
   s.runtime.trace.record("app.started", {});
+  await new Promise((resolve) => setTimeout(resolve, 0));
   expect(called).toHaveBeenCalledOnce();
   await s.store.dispose();
   const late = vi.fn();

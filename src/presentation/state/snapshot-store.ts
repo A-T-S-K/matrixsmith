@@ -22,6 +22,7 @@ import type { GuidedProjectionStore } from "./guided-projection-store";
 import type { ContentEditorStore } from "./content-editor-store";
 import type { PresentationEnvironment } from "../environment";
 import { PublicationScheduler } from "./publication-scheduler";
+import type { ApplicationState } from "../../application/state";
 
 export interface PublicationFailure {
   readonly phase: "projection" | "observer" | "reentrant";
@@ -113,6 +114,24 @@ export class SnapshotStore {
     raw: number;
     deviceInfo: unknown;
   } | null = null;
+  private projectedAuthority:
+    | (Pick<
+        ApplicationState,
+        | "source"
+        | "profile"
+        | "protocolResolution"
+        | "geometryRevision"
+        | "identityAuthorityRevision"
+        | "experimentalTxEnabled"
+        | "confirmedPlanDigest"
+        | "validatedRasterStrategy"
+      > & {
+        driver:
+          NonNullable<ApplicationState["selection"]>["selected"] | undefined;
+        width: number | undefined;
+        height: number | undefined;
+      })
+    | null = null;
   private readonly failures: PublicationFailure[] = [];
   private readonly counts = {
     traceRequests: 0,
@@ -170,6 +189,7 @@ export class SnapshotStore {
     const controller = workspace.getController();
     const revisions = controller.evidenceRevisions;
     return (
+      this.authorityChanged() ||
       this._snapshot.busy !== this.ports.noticeStore().getBusy() ||
       this._snapshot.contextTransitionReason !== workspace.transitionReason() ||
       this._snapshot.profileLoadReason !==
@@ -183,6 +203,25 @@ export class SnapshotStore {
       (controller.session.source === "live" &&
         this.projectedEvidence.deviceInfo !==
           controller.session.latestDeviceInfoRecord)
+    );
+  }
+  private authorityChanged(): boolean {
+    const previous = this.projectedAuthority;
+    if (!previous || this.projectionFailed) return false;
+    const session = this.ports.workspaceStore().getController().session;
+    return (
+      previous.source !== session.source ||
+      previous.profile !== session.profile ||
+      previous.driver !== session.selection?.selected ||
+      previous.protocolResolution !== session.protocolResolution ||
+      previous.geometryRevision !== session.geometryRevision ||
+      previous.identityAuthorityRevision !==
+        session.identityAuthorityRevision ||
+      previous.experimentalTxEnabled !== session.experimentalTxEnabled ||
+      previous.confirmedPlanDigest !== session.confirmedPlanDigest ||
+      previous.validatedRasterStrategy !== session.validatedRasterStrategy ||
+      previous.width !== session.profile?.width ||
+      previous.height !== session.profile?.height
     );
   }
   /** Bounded local supervision evidence; reading it never emits or persists. */
@@ -200,6 +239,10 @@ export class SnapshotStore {
   _scheduleTracePublication(owner: string, current: () => boolean): void {
     if (this.disposed) return;
     this.counts.traceRequests++;
+    if (this.authorityChanged()) {
+      this._emit();
+      return;
+    }
     this.needsRefresh = true;
     this.publications.schedule(owner, current);
   }
@@ -331,6 +374,19 @@ export class SnapshotStore {
     const info = infoRecord?.decoded ?? null;
     const capabilities = driver && profile ? driver.capabilities(profile) : [];
     const controller = this.ports.workspaceStore().getController();
+    this.projectedAuthority = {
+      source: session.source,
+      profile,
+      driver,
+      protocolResolution: session.protocolResolution,
+      geometryRevision: session.geometryRevision,
+      identityAuthorityRevision: session.identityAuthorityRevision,
+      experimentalTxEnabled: session.experimentalTxEnabled,
+      confirmedPlanDigest: session.confirmedPlanDigest,
+      validatedRasterStrategy: session.validatedRasterStrategy,
+      width: profile?.width,
+      height: profile?.height,
+    };
     // Observe existing evidence revisions, rather than caching safety results.
     // Bookkeeping can complete after a synchronous consumer reads a trace.
     this.projectedEvidence = {

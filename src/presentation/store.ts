@@ -517,6 +517,8 @@ export class PresentationStore {
   }
   subscribe = (listener: () => void) => this.snapshotStore.subscribe(listener);
   getSnapshot = () => this.snapshotStore.getSnapshot();
+  getPublicationFailures = () => this.snapshotStore.getPublicationFailures();
+  getPublicationCounts = () => this.snapshotStore.getPublicationCounts();
   get controller() {
     return this.workspaceStore.getController();
   }
