@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "./fixtures";
+import { qualificationArtifactPath } from "../helpers/qualification-paths";
 const profile = readFileSync(
   new URL("../../src/profiles/data/authored-ux-banner.json", import.meta.url),
 );
@@ -35,7 +36,7 @@ test("local profile review, atomic failure, load and portable reload", async ({
   await page.getByText("Provenance and limitations", { exact: true }).click();
   await expect(page.getByText(/Authored 48×8 fixture/)).toBeVisible();
   await page.screenshot({
-    path: `/private/tmp/matrixsmith-profile-review-${testInfo.project.name}.png`,
+    path: qualificationArtifactPath(testInfo, "profile-review.png"),
     fullPage: true,
   });
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
@@ -99,7 +100,7 @@ test("local profile review, atomic failure, load and portable reload", async ({
     page.getByRole("button", { name: "Load reviewed profile" }),
   ).toBeDisabled();
   await page.screenshot({
-    path: `/private/tmp/matrixsmith-profile-error-${testInfo.project.name}.png`,
+    path: qualificationArtifactPath(testInfo, "profile-error.png"),
     fullPage: true,
   });
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
@@ -157,11 +158,37 @@ test("source-backed candidate explanations are bounded and retained through navi
     page.getByRole("heading", { name: "Investigate", exact: true }),
   ).toBeVisible();
   expect(requests).toHaveLength(0);
+  const authority = () =>
+    page.evaluate(() => {
+      const runtime = (
+        globalThis as unknown as {
+          matrixsmithStore: import("../../src/presentation/store").PresentationStore;
+        }
+      ).matrixsmithStore.controller;
+      return {
+        writes: runtime.transactions
+          .flatMap((transaction) => transaction.packets)
+          .filter((packet) => packet.direction === "TX").length,
+        experimental: runtime.session.experimentalTxEnabled,
+        confirmation: runtime.session.confirmedPlanDigest,
+        resolution: runtime.session.protocolResolution,
+        profile: runtime.session.profile,
+        evidence: runtime.investigation?.claimEvidence ?? [],
+      };
+    });
+  const before = await authority();
+  expect(before).toMatchObject({ writes: 0, experimental: false });
   await page
     .getByRole("button", { name: "Explain plausible families" })
     .click();
   await expect(
     page.getByText(/Shared identifiers leave multiple plausible/),
+  ).toBeVisible();
+  await expect(
+    page.getByText(
+      "Public-source context is advisory. It establishes no support claim or permission to send.",
+      { exact: true },
+    ),
   ).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "CoolLEDUX advanced" }),
@@ -171,29 +198,37 @@ test("source-backed candidate explanations are bounded and retained through navi
     page.locator('a[href*="CharlesLennon/coolledux-ble"]').first(),
   ).toBeVisible();
   await page.getByText(/Search the reference index/).click();
-  await page.getByLabel("Reference search").fill("microbit-led-service");
-  await expect(page.getByText(/micro:bit/i).last()).toBeVisible();
-  const before = await page.evaluate(() => {
-    const runtime = (
-      globalThis as unknown as {
-        matrixsmithStore: import("../../src/presentation/store").PresentationStore;
-      }
-    ).matrixsmithStore.controller;
-    return {
-      writes: runtime.transactions
-        .flatMap((t) => t.packets)
-        .filter((p) => p.direction === "TX").length,
-      authority: runtime.session.experimentalTxEnabled,
-    };
+  const search = page.locator("details").filter({
+    has: page.getByLabel("Reference search", { exact: true }),
   });
-  expect(before).toEqual({ writes: 0, authority: false });
+  const query = search.getByRole("textbox", { name: "Reference search" });
+  await query.fill("microbit-led-service");
+  const result = search.getByRole("listitem").filter({
+    has: page.locator("strong").getByText("BBC micro:bit v1", { exact: true }),
+  });
+  await expect(result).toHaveCount(1);
+  await expect(result.locator("strong")).toBeVisible();
+  await expect(result).toContainText(
+    "family applicability is a research candidate relationship.",
+  );
+  await expect(result).toContainText(
+    "board generation, firmware and security compatibility cannot be inferred from name or service.",
+  );
+  await expect(search.getByRole("listitem")).toHaveCount(2);
+  await expect(search).toContainText("At most eight results.");
+  await query.focus();
+  await expect(query).toBeFocused();
+  await result.getByText("Index references", { exact: true }).click();
+  await expect(result.getByRole("link")).toHaveCount(2);
+  await expect(result.getByRole("link").first()).toBeVisible();
+  expect(await authority()).toEqual(before);
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= window.innerWidth,
     ),
   ).toBe(true);
   await page.screenshot({
-    path: `/private/tmp/matrixsmith-candidate-sources-${testInfo.project.name}.png`,
+    path: qualificationArtifactPath(testInfo, "candidate-sources.png"),
     fullPage: true,
   });
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
@@ -211,6 +246,8 @@ test("source-backed candidate explanations are bounded and retained through navi
   await expect(page.getByLabel("Reference search")).toHaveValue(
     "microbit-led-service",
   );
+  await expect(result.locator("strong")).toBeVisible();
+  expect(await authority()).toEqual(before);
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= window.innerWidth,
