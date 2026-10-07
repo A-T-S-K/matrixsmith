@@ -59,6 +59,23 @@ export default defineConfig(({ mode }) => {
   ).MATRIXSMITH_TUNNEL_HOST?.trim();
   return {
     base: "./",
+    build: {
+      rolldownOptions: {
+        output: {
+          codeSplitting: {
+            groups: [
+              {
+                // These standalone validators share generated runtime code.
+                // A single lazy chunk compresses it across schema boundaries.
+                name: "evidence-validators",
+                test: /\/src\/(?:diagnostics|profiles|knowledge)\/generated\/(?:bundle|profile|knowledge)-validator\.js$/,
+                includeDependenciesRecursively: true,
+              },
+            ],
+          },
+        },
+      },
+    },
     define: {
       __MATRIXSMITH_VERSION__: JSON.stringify(
         `${identity.version}+${identity.buildId}`,
