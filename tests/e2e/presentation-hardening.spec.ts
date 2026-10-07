@@ -121,6 +121,14 @@ test("Home diagnosis preserves connection and blocked connection actions explain
 test("menu-launched report restores stable trigger focus through Escape and Browser Back", async ({
   page,
 }) => {
+  let releaseView!: () => void;
+  const viewGate = new Promise<void>((resolve) => {
+    releaseView = resolve;
+  });
+  await page.route(/\/src\/ui\/views\/ControlView\.tsx/, async (route) => {
+    await viewGate;
+    await route.continue();
+  });
   await page.goto("/?sim#/home");
   await page.getByRole("button", { name: "Connect a display" }).click();
   const trigger = page.getByRole("button", { name: "Device actions" });
@@ -129,6 +137,13 @@ test("menu-launched report restores stable trigger focus through Escape and Brow
     await page.keyboard.press("Enter");
     const report = page.getByRole("button", { name: "Share report…" });
     await report.focus();
+    if (method === "escape") {
+      releaseView();
+      await expect(
+        page.getByRole("heading", { name: "Create", exact: true }),
+      ).toBeVisible();
+      await expect(report).toBeFocused();
+    }
     await page.keyboard.press("Enter");
     const dialog = page.getByRole("dialog");
     await expect(dialog).toBeVisible();
@@ -143,6 +158,37 @@ test("menu-launched report restores stable trigger focus through Escape and Brow
     await expect(trigger).toBeFocused();
     await expect(page.locator(".app-shell")).toHaveJSProperty("inert", false);
   }
+});
+
+test("late Create view preserves keyboard focus on the device action trigger", async ({
+  page,
+}) => {
+  let releaseView!: () => void;
+  const viewGate = new Promise<void>((resolve) => {
+    releaseView = resolve;
+  });
+  await page.route(/\/src\/ui\/views\/ControlView\.tsx/, async (route) => {
+    await viewGate;
+    await route.continue();
+  });
+  await page.goto("/?sim#/home");
+  await page.getByRole("button", { name: "Connect a display" }).click();
+  const trigger = page.getByRole("button", { name: "Device actions" });
+  await trigger.focus();
+  releaseView();
+  await expect(
+    page.getByRole("heading", { name: "Create", exact: true }),
+  ).toBeVisible();
+  await expect(trigger).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(trigger).toHaveAttribute("aria-expanded", "true");
+  const report = page.getByRole("button", { name: "Share report…" });
+  await report.focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(trigger).toBeFocused();
 });
 
 test("image reports actual target geometry, manual and Legacy modes remain selectable", async ({

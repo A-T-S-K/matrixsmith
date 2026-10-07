@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "preact/hooks";
+import { useLayoutEffect, useRef } from "preact/hooks";
 import type { JSX } from "preact";
 import { LazyFeature } from "../components/LazyFailureBoundary";
 import { retryableImport } from "../components/module-recovery";
@@ -49,11 +49,12 @@ export function DeviceWorkspace({
 }): JSX.Element {
   const mainRef = useRef<HTMLElement>(null);
   const focusedRoute = useRef("");
-  useEffect(() => {
+  useLayoutEffect(() => {
     const key = `${snapshot.contextIdentity}:${snapshot.view}:${snapshot.workbenchSection}:${snapshot.missingContext}`;
     if (focusedRoute.current === key || snapshot.busy) return;
     const main = mainRef.current;
     if (!main || document.querySelector('[role="dialog"]')) return;
+    const focusOrigin = document.activeElement;
     const focusHeading = () => {
       const current = store.getSnapshot();
       if (current.busy) return false;
@@ -68,8 +69,14 @@ export function DeviceWorkspace({
           ? main.querySelector<HTMLElement>("[data-review-detail-heading]")
           : main.querySelector<HTMLElement>("h1");
       if (!heading) return false;
-      if (document.activeElement?.matches("input,textarea,select")) return true;
       focusedRoute.current = key;
+      // Route focus runs before interaction; lazy arrival respects later choices.
+      const active = document.activeElement;
+      if (
+        active?.matches("input,textarea,select,[aria-expanded='true']") ||
+        (active !== focusOrigin && active?.matches("button"))
+      )
+        return true;
       heading.tabIndex = -1;
       heading.focus();
       return true;
