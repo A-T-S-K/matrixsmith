@@ -61,6 +61,26 @@ File buttons catch both synchronous failures and rejected promises. Bounded read
 
 A single update manager spans cold Home and the full application. Build identity is derived from source/build inputs and package version. The production worker precaches a complete generation and serves its matching shell, retaining the previous successful generation. Explicit activation waits for readiness from every open app tab, and operational errors remain visible independently of update availability.
 
+Cold Home reserves update activity before invoking a native chooser or importing
+the application. Ownership lasts through selection, initialization and action
+settlement; an activation reservation refuses a new startup before the chooser
+opens. Failed initialization disposes the candidate's owners. Page restoration
+keeps a live update supervisor; actual disposal releases its subscriptions.
+
+Direct routes and demo startup show loading and accessible failure states.
+Feature download failures retain the mounted store and offer one explicit retry
+or Home; programming failures keep their original error. A canonical loader
+coalesces pending requests and retains successful namespaces. The build generates
+finite native import-map scopes for original entries and their static children,
+including lazy helper branches that refer back to the application. Mapping those
+branches does not load them eagerly. It preserves the successful initial and
+application revisions. Shared advisory UI
+belongs to that application graph, while knowledge loading stays dynamic.
+Both emitted CSP policies allow only the exact generated map hash. Cached worker
+responses for bounded recovery script requests preserve the requesting module
+URL, including assets from the retained build, without changing their bytes or
+security headers. Exhaustion never reloads a mounted workspace automatically.
+
 No backend, cloud persistence, analytics, or runtime third-party service is introduced by this architecture.
 
 Imported GIFs cross a narrow `render/gif.ts` boundary: bounded local file →

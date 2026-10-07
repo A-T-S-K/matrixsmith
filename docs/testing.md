@@ -7,7 +7,7 @@ Use the pinned Node/npm versions, then install dependencies with `npm ci` and Ch
 - `npm run verify`: typecheck, ESLint/native architecture and promise checks, formatting, unit/application tests, production build, and static-output validation.
 - `npm run test:coverage`: unit tests plus instrumented development-browser journeys, instrumented identically on original source before Node/browser transformations and combined into one production-source coverage inventory. Thresholds remain 80% statements, 70% branches, 80% functions, and 80% lines. Test helpers do not contribute production coverage. Instrumentation is never enabled in release builds.
 - `npm run test:e2e`: simulator/browser journeys, ARIA and reviewed visual baselines, axe, breakpoint checks, file recovery, exports, and disconnect handling. Unexpected page errors/unhandled rejections fail the journey.
-- `npm run test:e2e:offline`: real production builds A/B on an isolated server; first install, upgrade, multiple tabs, offline lazy routes, failed installation, and rollback.
+- `npm run test:e2e:offline`: real production builds A/B on an isolated server; first install, upgrade, multiple tabs, offline lazy routes, failed installation, rollback, native module recovery and generated CSP enforcement.
 - `npm run verify:release`: the complete candidate gate including audit and whitespace checks.
 
 Linux image baselines are reviewed in the pinned Playwright Ubuntu container used by CI; macOS image baselines remain separate because the application uses native system fonts. ARIA snapshots are shared across platforms. Baseline changes require visual review, not relaxed tolerances.
@@ -45,6 +45,20 @@ latency, and distinguish empty references from evicted or missing transactions.
 These checks establish software evidence, never physical rendering or retention.
 
 Release-specific tests exercise pre-decode limits, malformed files, unavailable storage, runtime disposal, repeated offline workspace replacement, retained live connections, update failure/retry, and identifier redaction inside structured diagnostics. The opt-in QA bundle generator remains skipped unless `QA_BUNDLE_PATH` is set.
+
+Startup qualification must distinguish native entry and static-child failures
+from fixture navigation errors. Require the same document, retained capture and
+unsaved state after feature recovery, shared advisory state across routes,
+coalesced explicit retry and accessible exhaustion. Controlled offline cases
+must verify revised child URLs under the real worker, not just an online entry
+retry. Production fixtures apply their generated hosting CSP as well as the HTML
+meta policy; an altered map must be blocked. Two-tab readiness cases hold the
+native chooser, application import and initialization separately, and require
+readiness after actual failure cleanup before any reload.
+After recovering startup, execute local-profile review and advisory knowledge
+loading to check their lazy helpers reuse the recovered application revision.
+Static verification parses emitted JavaScript without evaluation and checks
+both static and lazy recovery edges against their literal emitted imports.
 
 ## Hardware boundary
 

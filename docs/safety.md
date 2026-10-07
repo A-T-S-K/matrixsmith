@@ -179,3 +179,13 @@ Ambiguity is projected into existing findings and trace metadata. Bundle V3 rema
 unchanged and carries no runtime ownership tokens. Host acceptance, correlated
 response, declared operation fulfillment and physical observation remain separate;
 no response alone establishes visible rendering or retention.
+
+Startup and download recovery do not confer send authority. Startup acquires
+update activity before opening a chooser and retains it until the real selection
+and action settle. Explicit module retry reuses the existing chooser promise;
+it cannot open another chooser or resend a device command automatically. Failed
+application initialization disposes its candidate owners before readiness is
+released. A failed lazy view retains the mounted workspace and unsaved state,
+with one explicit recovery attempt and a Home action after exhaustion. These
+recovery controls preserve the existing target, trust, confirmation and
+persistent-send gates.
