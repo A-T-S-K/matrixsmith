@@ -24,6 +24,9 @@ try {
         `${name}:${sf.text.slice(0, node.getStart()).split("\n").length}: ${message}`,
       );
     const edge = (literal, typeOnly = false) => {
+      // A computed import's identifier resolves to its local variable, not a
+      // module. Only literal specifiers have compiler-resolved module edges.
+      if (!ts.isStringLiteralLikeNode(literal)) return;
       const symbol = project.checker.getSymbolAtLocation(literal);
       for (const declaration of symbol?.declarations ?? []) {
         const path = declaration.path;
