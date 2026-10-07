@@ -1,4 +1,8 @@
 import { defineConfig, devices } from "@playwright/test";
+import { prepareQualificationRun } from "./tests/helpers/qualification-paths";
+import { join } from "node:path";
+
+const run = prepareQualificationRun();
 
 export default defineConfig({
   testDir: "tests/e2e",
@@ -14,7 +18,11 @@ export default defineConfig({
   },
   fullyParallel: true,
   retries: 0,
-  reporter: "line",
+  outputDir: run.playwright,
+  reporter: [
+    ["line"],
+    ["json", { outputFile: join(run.reporter, "playwright.json") }],
+  ],
   use: { baseURL: "http://127.0.0.1:4187", trace: "retain-on-failure" },
   webServer: {
     command: "npm run dev -- --host 127.0.0.1 --port 4187 --strictPort",
