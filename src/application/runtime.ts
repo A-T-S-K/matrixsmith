@@ -13,7 +13,12 @@ import { TransmissionService } from "./services/transmission-service";
 import type { MatrixTransport } from "./ports/transport";
 import { TraceRecorder } from "../diagnostics/trace";
 import { DriverRegistry, builtInDrivers } from "../drivers/registry";
+import {
+  captureWorkflowContext,
+  WorkflowReservation,
+} from "./workflow-context";
 export class ApplicationRuntime {
+  private readonly workflows = new WorkflowReservation();
   private readonly discoveryService: DiscoveryService;
   private readonly connection: ConnectionService;
   private readonly diagnostics: DiagnosticsService;
@@ -48,6 +53,7 @@ export class ApplicationRuntime {
       this.transmission.authority,
     );
     this.diagnostics = new DiagnosticsService({
+      reserve: (context) => this.workflows.acquire(context),
       investigation: () => this.investigationService,
       connection: () => this.connection,
       identification: () => this.identification,
@@ -131,6 +137,7 @@ export class ApplicationRuntime {
       return this.connection.reconnectAuthorized(...args);
     };
     this.disconnect = () => {
+      this.workflows.retire();
       this.discoveryService.retire();
       return this.connection
         .disconnect()
@@ -167,6 +174,13 @@ export class ApplicationRuntime {
     );
     this.runDiagnostic = (...args) => {
       this.guardDiscovery();
+      if (
+        this.connection.pendingGattOperation ||
+        this.transmission.executionBusy
+      )
+        throw new Error(
+          "Finish the pending connection operation before starting a diagnostic workflow.",
+        );
       return this.diagnostics.runDiagnostic(...args);
     };
     this.beginExperiment = (...args) => {
@@ -488,11 +502,17 @@ export class ApplicationRuntime {
   get executionBusy() {
     return (
       this.discoveryService.busy ||
+      this.workflows.busy ||
       this.connection.pendingGattOperation ||
       this.transmission.executionBusy
     );
   }
-  startDiscovery = (): Promise<void> => this.discoveryService.start();
+  captureWorkflowContext = (relevantTarget = true) =>
+    captureWorkflowContext(this.connection, relevantTarget);
+  startDiscovery = (): Promise<void> => {
+    this.workflows.guard();
+    return this.discoveryService.start();
+  };
   stopDiscovery = (): void => this.discoveryService.stop();
   private guardImport(): void {
     this.guardDiscovery();
@@ -502,12 +522,14 @@ export class ApplicationRuntime {
       );
   }
   private guardDiscovery(): void {
+    this.workflows.guard();
     if (this.discoveryService.busy)
       throw new Error(
         "Display setup owns execution. Stop and wait for the pending check to settle before another operation.",
       );
   }
   dispose = (): Promise<void> => {
+    this.workflows.retire();
     this.discoveryService.dispose();
     return this.connection.dispose();
   };

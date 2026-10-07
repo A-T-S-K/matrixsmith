@@ -44,6 +44,7 @@ interface Ports {
   contentEditorStore(): Pick<ContentEditorStore, "updateContentSettings">;
 }
 export class ConnectionStore {
+  private workflowGeneration = 0;
   private _previouslyAuthorized: { id: string; name: string }[] = [];
   private _lastImport: ImportSummary | null = null;
   constructor(
@@ -413,6 +414,7 @@ export class ConnectionStore {
   restoreContext(
     state: ReturnType<ConnectionStore["captureContext"]> | null,
   ): void {
+    this.workflowGeneration += 1;
     this._lastImport = state?.lastImport ?? null;
     this.geometryDraft = state?.geometryDraft ?? {
       targetKey: "",
@@ -542,14 +544,26 @@ export class ConnectionStore {
       });
   }
   async runDiagnostic(id: string): Promise<void> {
+    const generation = this.workflowGeneration;
+    const workspace = this.ports.workspaceStore().getController();
     await this.ports.noticeStore()._run("Running diagnostic…", async () => {
-      const run = await this.ports
-        .workspaceStore()
-        .getController()
-        .runDiagnostic(id);
-      this.ports
-        .noticeStore()
-        .setInfo(run.status === "passed" ? "Diagnostic passed." : run.error);
+      const context = workspace.captureWorkflowContext(
+        workspace.diagnosticTools().find((tool) => tool.id === id)?.workflow !==
+          "family-identification",
+      );
+      const current = () =>
+        generation === this.workflowGeneration &&
+        workspace === this.ports.workspaceStore().getController() &&
+        context.current();
+      try {
+        const run = await workspace.runDiagnostic(id);
+        if (!current()) return;
+        this.ports
+          .noticeStore()
+          .setInfo(run.status === "passed" ? "Diagnostic passed." : run.error);
+      } catch (error) {
+        if (current()) throw error;
+      }
     });
   }
   async refreshInfo(): Promise<void> {
@@ -587,38 +601,40 @@ export class ConnectionStore {
     this.ports.snapshotStore()._emit();
   }
   async applyBrightness(raw: number): Promise<void> {
+    const generation = this.workflowGeneration;
+    const workspace = this.ports.workspaceStore().getController();
     this.ports
       .contentEditorStore()
       .updateContentSettings({ lastBrightness: raw });
     await this.ports.noticeStore()._run("Applying brightness…", async () => {
-      const command = await this.ports
-        .workspaceStore()
-        .getController()
-        .send(
-          this.ports
-            .workspaceStore()
-            .getController()
-            .plan({ type: "SetBrightness", raw }),
+      const context = workspace.captureWorkflowContext();
+      const current = () =>
+        generation === this.workflowGeneration &&
+        workspace === this.ports.workspaceStore().getController() &&
+        context.current();
+      try {
+        if (!current()) return;
+        const command = await workspace.send(
+          workspace.plan({ type: "SetBrightness", raw }),
         );
-      if (!command.protocolAcknowledged)
-        throw new Error("Brightness response did not match the command.");
-      const readback = await this.ports
-        .workspaceStore()
-        .getController()
-        .send(
-          this.ports
-            .workspaceStore()
-            .getController()
-            .plan({ type: "GetDeviceInfo" }),
+        if (!current()) return;
+        if (!command.protocolAcknowledged)
+          throw new Error("Brightness response did not match the command.");
+        const readback = await workspace.send(
+          workspace.plan({ type: "GetDeviceInfo" }),
         );
-      const actual = readback.response?.fields.brightnessRaw;
-      if (actual !== raw)
-        throw new Error(
-          `Brightness readback mismatch: expected ${raw}; received ${String(actual)}.`,
-        );
-      this.ports
-        .noticeStore()
-        .setInfo(`Brightness ${raw} verified by device-info readback.`);
+        if (!current()) return;
+        const actual = readback.response?.fields.brightnessRaw;
+        if (actual !== raw)
+          throw new Error(
+            `Brightness readback mismatch: expected ${raw}; received ${String(actual)}.`,
+          );
+        this.ports
+          .noticeStore()
+          .setInfo(`Brightness ${raw} verified by device-info readback.`);
+      } catch (error) {
+        if (current()) throw error;
+      }
     });
   }
   async readCharacteristic(endpoint: GattEndpoint): Promise<void> {
