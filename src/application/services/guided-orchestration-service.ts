@@ -31,6 +31,7 @@ import type { ConnectionService } from "./connection-service";
 import type { InvestigationService } from "./investigation-service";
 import type { ProtocolEvidenceService } from "./protocol-evidence-service";
 import type { TransmissionService } from "./transmission-service";
+import type { ApplicationExecutionRecording } from "./transmission-service";
 import type { ExperimentService } from "./experiment-service";
 interface Ports {
   guidedTestCatalog(): Pick<
@@ -56,10 +57,7 @@ interface Ports {
     | "orchestration"
     | "allClaimEvidence"
   >;
-  protocolEvidence(): Pick<
-    ProtocolEvidenceService,
-    "getTrace" | "getTransactions"
-  >;
+  protocolEvidence(): Pick<ProtocolEvidenceService, "getTrace">;
   transmission(): Pick<
     TransmissionService,
     "sendPersistentContent" | "sendRegisteredQuery"
@@ -218,9 +216,7 @@ export class GuidedOrchestrationService {
           "MatrixSmith prevented an unnecessary resend.",
       );
     }
-    const transactionIndex = this.ports
-      .protocolEvidence()
-      .getTransactions().length;
+    const transactionIds: string[] = [];
     const startedAt = new Date().toISOString();
     const transferId = newId("transfer");
     // The panel program is stamped by the send path itself, so that a partial
@@ -237,13 +233,23 @@ export class GuidedOrchestrationService {
         uncertaintyReason: null,
       });
     let finalWriteAcceptedAt: string | null = null;
+    let recording: ApplicationExecutionRecording | null = null;
+    const onTransactionRecorded = (
+      value: ApplicationExecutionRecording,
+    ): void => {
+      recording = value;
+    };
     try {
       const result =
         executionClass === "read-only-query"
-          ? await this.ports.transmission().sendRegisteredQuery(testId)
-          : await this.ports
+          ? await this.ports
               .transmission()
-              .sendPersistentContent(plan, { confirmedConsequence: true });
+              .sendRegisteredQuery(testId, { onTransactionRecorded })
+          : await this.ports.transmission().sendPersistentContent(plan, {
+              confirmedConsequence: true,
+              onTransactionRecorded,
+            });
+      transactionIds.push(result.transactionId);
       finalWriteAcceptedAt = result.finalWriteAcceptedAt;
       if (
         connectionId !== this.ports.connection().getTransport().connectionId ||
@@ -265,11 +271,6 @@ export class GuidedOrchestrationService {
         throw new Error(
           "The registered query did not receive its required matching response; no physical observation was established.",
         );
-      const transactionIds = this.ports
-        .protocolEvidence()
-        .getTransactions()
-        .slice(transactionIndex)
-        .map(({ id }) => id);
       if (isPreparedTransmission(plan))
         this.acceptedAttemptDigests.set(options.attemptId, {
           digest: plan.digest,
@@ -321,11 +322,12 @@ export class GuidedOrchestrationService {
       // A transfer that threw must settle its attempt. Leaving it open left a
       // zombie in-progress attempt forever and made the next real try look
       // like a continuation of a measurement that never started.
-      const transactionIds = this.ports
-        .protocolEvidence()
-        .getTransactions()
-        .slice(transactionIndex)
-        .map(({ id }) => id);
+      const failedRecording = recording as ApplicationExecutionRecording | null;
+      const failedTransactionId = failedRecording?.transactionId;
+      if (failedTransactionId && !transactionIds.includes(failedTransactionId))
+        transactionIds.push(failedTransactionId);
+      finalWriteAcceptedAt ??=
+        failedRecording?.evidence?.finalWriteAcceptedAt ?? null;
       const detail = errorMessage(error);
       if (
         executionClass === "persistent-content" &&

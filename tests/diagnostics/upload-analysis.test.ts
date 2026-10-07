@@ -86,6 +86,54 @@ function makeTransaction(
 }
 
 describe("CoolLEDUX stored-program receipt decoding", () => {
+  it("does not turn legacy TX timestamps into measured host acceptance", () => {
+    const packet: TransactionPacket = {
+      timestamp: new Date(1000).toISOString(),
+      direction: "TX",
+      hex: "01 00 02 05 1F 03",
+    };
+    const analysis = analyzeStoredProgramUpload(
+      makeTransaction([packet, rxPacket(announceReceiptHex(), 1100)]),
+      5,
+      decodeCoolLedUxNotification,
+    );
+    expect(analysis.timing).toMatchObject({
+      packetCount: 1,
+      acceptedPacketCount: 0,
+      totalUploadMs: null,
+      firstReceiptLatencyMs: null,
+    });
+  });
+
+  it("keeps the accepted prefix timing on a later unconfirmed dispatch", () => {
+    const { hostAcceptedAt: _accepted, ...unconfirmed } = txPacket(1, 1000);
+    const analysis = analyzeStoredProgramUpload(
+      makeTransaction([
+        txPacket(0, 1000),
+        unconfirmed,
+        {
+          ...rxPacket(announceReceiptHex(), 1010),
+          relation: "unrelated-concurrent",
+        },
+        {
+          ...rxPacket(announceReceiptHex(), 1020),
+          relation: "related-receipt",
+        },
+      ]),
+      5,
+      decodeCoolLedUxNotification,
+    );
+    expect(analysis.timing).toMatchObject({
+      packetCount: 2,
+      acceptedPacketCount: 1,
+      totalUploadMs: 5,
+      firstReceiptLatencyMs: 15,
+      receiptCount: 1,
+    });
+    expect(describeUploadAnalysis(analysis).join("\n")).toContain(
+      "First dispatch to last measured host acceptance: 5 ms",
+    );
+  });
   it("decodes the announce-style receipt structurally without success semantics", () => {
     const decoded = decodeCoolLedUxNotification(
       encodeEnvelope(Uint8Array.of(0x02, 0x00)),

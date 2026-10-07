@@ -72,7 +72,11 @@ export function SendResult({
           {failure && <p>{failure.message}</p>}
           {failure?.stage === "upload" && (
             <p>
-              Writes may have reached the display. The final content is unknown.
+              {evidence?.hostAccepted
+                ? "All planned writes were accepted by the host, but result review did not finish."
+                : evidence?.finalWriteAcceptedAt
+                  ? "Some writes were accepted by the host. The final content is unknown."
+                  : "No host acceptance was confirmed. The final content is unknown."}
             </p>
           )}
           {evidence && (

@@ -333,6 +333,7 @@ it("progress publications reuse previews and the cached display never authorizes
           estimatedRemainingMs: 100 - i,
         });
       return {
+        transactionId: "transaction:presentation-hardening-fixture",
         planId: plan.id,
         receipts: [],
         packetTimings: [],

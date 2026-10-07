@@ -24,6 +24,7 @@ import type { SnapshotStore } from "./snapshot-store";
 import type { NoticeStore } from "./notice-store";
 import type { PresentationEnvironment } from "../environment";
 import type { PendingSendCommand } from "./internal-types";
+import type { ApplicationExecutionRecording } from "../../application/services/transmission-service";
 interface Ports {
   contentEditorStore(): Pick<
     ContentEditorStore,
@@ -328,11 +329,46 @@ export class ContentSendStore {
     }
     this.ports.snapshotStore()._emit();
   }
-  private fail(error: unknown, executionStarted: boolean): void {
+  private fail(
+    error: unknown,
+    executionStarted: boolean,
+    recording: ApplicationExecutionRecording | null = null,
+  ): void {
+    const measured = recording?.evidence;
+    const transactionId = recording?.transactionId;
+    const transaction = this.owner?.workspace.transactions.find(
+      ({ id }) => id === transactionId,
+    );
+    const accepted =
+      measured?.attempts.filter(({ settlement }) => settlement === "accepted")
+        .length ?? 0;
+    const retainEvidence =
+      measured && transaction && (accepted > 0 || measured.responseRecord);
     this.attempt = {
       ...this.attempt!,
       phase: "failed",
-      evidence: null,
+      evidence: retainEvidence
+        ? {
+            hostAccepted: transaction.hostAccepted,
+            protocolAcknowledged: transaction.protocolAcknowledged,
+            deviceStateVerified: transaction.deviceStateVerified,
+            responseTimedOut: transaction.responseTimedOut,
+            completedAt: transaction.completedAt,
+            finalWriteAcceptedAt: measured.finalWriteAcceptedAt,
+          }
+        : null,
+      progress:
+        accepted > 0 && measured
+          ? {
+              completedPackets: accepted,
+              totalPackets: measured.totalPackets,
+              elapsedMs: Math.max(
+                0,
+                Date.parse(measured.settledAt) - Date.parse(measured.startedAt),
+              ),
+              estimatedRemainingMs: null,
+            }
+          : this.attempt!.progress,
       failure: {
         stage: executionStarted ? "upload" : "preflight",
         message: error instanceof Error ? error.message : String(error),
@@ -349,6 +385,7 @@ export class ContentSendStore {
     if (!owner || !this.current(owner)) return;
     await this.ports.noticeStore()._run("Sending upload…", async () => {
       let executionStarted = false;
+      let recording: ApplicationExecutionRecording | null = null;
       this.attempt = { ...this.attempt!, phase: "sending", progress: null };
       this._pendingSend = null;
       this.ports.navigationStore()._closeOverlay("send");
@@ -362,6 +399,9 @@ export class ContentSendStore {
           {
             confirmedConsequence,
             extras: pending.extras,
+            onTransactionRecorded: (value) => {
+              recording = value;
+            },
             onExecutionStarted: () => {
               executionStarted = true;
             },
@@ -386,7 +426,7 @@ export class ContentSendStore {
             },
           };
       } catch (error) {
-        if (this.current(owner)) this.fail(error, executionStarted);
+        if (this.current(owner)) this.fail(error, executionStarted, recording);
       } finally {
         this.wakeOwners.delete(owner.id);
         if (this.wakeOwners.size === 0) await this._wakeLock.release();

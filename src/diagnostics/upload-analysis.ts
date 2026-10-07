@@ -12,7 +12,7 @@ import type { ProtocolTransaction, TransactionPacket } from "./transactions";
  */
 
 export interface UploadReceiptSummary {
-  /** Data chunks the plan transmitted (excluding the announce packet). */
+  /** Planned data chunks (excluding announce); this is not transmission evidence. */
   readonly expectedChunks: number;
   readonly announceReceiptsObserved: number;
   readonly chunkReceiptsObserved: number;
@@ -27,7 +27,8 @@ export interface UploadReceiptSummary {
 
 export interface UploadTimingSummary {
   readonly packetCount: number;
-  /** First write start to last host acceptance, in ms. */
+  readonly acceptedPacketCount: number;
+  /** First dispatched write start to last measured host acceptance, in ms. */
   readonly totalUploadMs: number | null;
   readonly minTxGapMs: number | null;
   readonly averageTxGapMs: number | null;
@@ -57,7 +58,8 @@ export function analyzeStoredProgramUpload(
     (packet) => packet.direction === "TX",
   );
   const rxPackets = transaction.packets.filter(
-    (packet) => packet.direction === "RX",
+    (packet) =>
+      packet.direction === "RX" && packet.relation !== "unrelated-concurrent",
   );
   const decoded = rxPackets.map((packet) => ({
     packet,
@@ -111,7 +113,16 @@ export function analyzeStoredProgramUpload(
       rawStatuses: [...rawStatuses].sort((a, b) => a - b),
       otherReceipts,
     },
-    timing: timingSummary(txPackets, rxPackets),
+    timing: timingSummary(
+      txPackets,
+      decoded
+        .filter(
+          ({ packet, notification }) =>
+            packet.relation !== "unrelated-concurrent" &&
+            notification?.kind.includes("receipt"),
+        )
+        .map(({ packet }) => packet),
+    ),
   };
 }
 
@@ -123,8 +134,10 @@ function timingSummary(
     .map((packet) => packet.gapSincePreviousTxMs)
     .filter((gap): gap is number => typeof gap === "number");
   const firstTx = txPackets[0];
-  const lastTx = txPackets[txPackets.length - 1];
-  const lastAccepted = lastTx?.hostAcceptedAt ?? lastTx?.timestamp ?? null;
+  const acceptedPackets = txPackets.filter(
+    (packet) => packet.hostAcceptedAt !== undefined,
+  );
+  const lastAccepted = acceptedPackets.at(-1)?.hostAcceptedAt ?? null;
   const totalUploadMs =
     firstTx && lastAccepted
       ? Math.max(0, Date.parse(lastAccepted) - Date.parse(firstTx.timestamp))
@@ -146,6 +159,7 @@ function timingSummary(
   const lastRx = rxPackets[rxPackets.length - 1]?.timestamp ?? null;
   return {
     packetCount: txPackets.length,
+    acceptedPacketCount: acceptedPackets.length,
     totalUploadMs,
     minTxGapMs: gaps.length ? Math.min(...gaps) : null,
     averageTxGapMs: gaps.length
@@ -167,7 +181,8 @@ export function describeUploadAnalysis(
 ): readonly string[] {
   const { receipts, timing } = analysis;
   const lines = [
-    `Receipts: ${receipts.announceReceiptsObserved} announce-style, ${receipts.chunkReceiptsObserved}/${receipts.expectedChunks} chunk-style observed.`,
+    `Receipts: ${receipts.announceReceiptsObserved} announce-style, ${receipts.chunkReceiptsObserved} chunk-style observed (${receipts.expectedChunks} planned chunks).`,
+    `Observed TX: ${timing.packetCount} dispatched packet(s); ${timing.acceptedPacketCount} have measured host acceptance.`,
   ];
   if (receipts.missingChunkIndices.length > 0)
     lines.push(
@@ -183,7 +198,7 @@ export function describeUploadAnalysis(
     );
   if (timing.totalUploadMs !== null)
     lines.push(
-      `Upload: ${timing.packetCount} packet(s) over ${timing.totalUploadMs} ms; TX gaps min/avg/max ${timing.minTxGapMs ?? "—"}/${timing.averageTxGapMs ?? "—"}/${timing.maxTxGapMs ?? "—"} ms (requested pacing ${timing.requestedPacingMs ?? "none"} ms).`,
+      `First dispatch to last measured host acceptance: ${timing.totalUploadMs} ms; TX gaps min/avg/max ${timing.minTxGapMs ?? "—"}/${timing.averageTxGapMs ?? "—"}/${timing.maxTxGapMs ?? "—"} ms (requested pacing ${timing.requestedPacingMs ?? "none"} ms).`,
     );
   if (timing.firstReceiptLatencyMs !== null)
     lines.push(

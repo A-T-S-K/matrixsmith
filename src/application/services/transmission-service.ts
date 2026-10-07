@@ -20,9 +20,13 @@ import {
 import { type PolicyDecision } from "../../app/safety";
 import {
   isPreparedTransmission,
+  copyPreparedTransmission,
   prepareTransmission,
 } from "../../core/transmission";
-import type { TransactionSource } from "../../diagnostics/transactions";
+import type {
+  ProtocolTransaction,
+  TransactionSource,
+} from "../../diagnostics/transactions";
 import { resolveSessionBehavior } from "../../investigation/session-behavior";
 import { transitionConnection } from "../machines/connection-machine";
 import { candidateEndpoints, errorMessage } from "./runtime-support";
@@ -30,12 +34,86 @@ import { candidateEndpoints, errorMessage } from "./runtime-support";
 import type { ContentCompilationRecord } from "../../diagnostics/content-evidence";
 
 import { TransmissionExecutor } from "../../app/executor";
+import type { ExecutionEvidence } from "../../app/execution-evidence";
 import { SafetyPolicy } from "../../app/safety";
 
 import type { ConnectionService } from "./connection-service";
 import type { ProtocolEvidenceService } from "./protocol-evidence-service";
 import type { InvestigationService } from "./investigation-service";
 import type { IdentificationService } from "./identification-service";
+export type ApplicationExecutionResult = ExecutionResult & {
+  readonly transactionId: string;
+};
+
+export interface ApplicationExecutionRecording {
+  readonly transactionId: string;
+  readonly evidence: ExecutionEvidence | null;
+}
+
+function publishRecording(
+  callback: ((recording: ApplicationExecutionRecording) => void) | undefined,
+  transactionId: string,
+  evidence: ExecutionEvidence | null,
+): void {
+  try {
+    callback?.({
+      transactionId,
+      evidence: evidence ? structuredClone(evidence) : null,
+    });
+  } catch {
+    // An observer cannot change the already settled execution outcome.
+  }
+}
+
+const recordedFailures = new WeakMap<
+  object,
+  {
+    readonly transactionId: string;
+    readonly evidence: ExecutionEvidence | null;
+  } | null
+>();
+
+/** Application-owned linkage; caller/JSON fields never supply execution IDs. */
+export function executionTransactionId(error: unknown): string | null {
+  return error !== null &&
+    (typeof error === "object" || typeof error === "function")
+    ? (recordedFailures.get(error)?.transactionId ?? null)
+    : null;
+}
+
+export function recordedExecutionEvidence(
+  error: unknown,
+): ExecutionEvidence | null {
+  if (
+    error === null ||
+    (typeof error !== "object" && typeof error !== "function")
+  )
+    return null;
+  const evidence = recordedFailures.get(error)?.evidence;
+  return evidence ? structuredClone(evidence) : null;
+}
+
+function recordExecutionFailure(
+  error: unknown,
+  transactionId: string,
+  evidence: ExecutionEvidence | null = null,
+): unknown {
+  const original =
+    error !== null && (typeof error === "object" || typeof error === "function")
+      ? error
+      : new Error(errorMessage(error), { cause: error });
+  recordedFailures.set(
+    original,
+    recordedFailures.has(original)
+      ? null
+      : {
+          transactionId,
+          evidence: evidence ? structuredClone(evidence) : null,
+        },
+  );
+  return original;
+}
+
 export type FamilyProbeExecution = ExecutionResult & {
   readonly transactionId: string;
   readonly outcome: MachineOutcomeKind;
@@ -60,10 +138,11 @@ interface Ports {
     | "getTransport"
     | "setConnectionState"
     | "getConnectionState"
+    | "getConnectionGeneration"
+    | "getIdentityAuthorityRevision"
   >;
   protocolEvidence(): Pick<
     ProtocolEvidenceService,
-    | "getTransactions"
     | "_recordCompilation"
     | "getTrace"
     | "_recordTransaction"
@@ -101,6 +180,53 @@ export class TransmissionService {
   getPolicy() {
     return this.policy;
   }
+  private captureExecutionContext(): () => boolean {
+    const connection = this.ports.connection();
+    const session = connection.getSession();
+    const generation = connection.getConnectionGeneration();
+    const binding = connection._currentTargetBinding();
+    const selected = session.selection?.selected;
+    const profile = session.profile;
+    const protocol = session.protocolResolution;
+    const geometryRevision = session.geometryRevision;
+    const experimental = session.experimentalTxEnabled;
+    const confirmedDigest = session.confirmedPlanDigest;
+    const revision = connection.getIdentityAuthorityRevision();
+    const definition = selected
+      ? this.ports
+          .identification()
+          .getRegistry()
+          .definitionIdentity(selected.id, profile)
+      : null;
+    let retired = false;
+    return () => {
+      const currentBinding = connection._currentTargetBinding();
+      if (
+        session.source !== "live" ||
+        generation !== connection.getConnectionGeneration() ||
+        !binding ||
+        !currentBinding ||
+        binding.connectionId !== currentBinding.connectionId ||
+        binding.fingerprintKey !== currentBinding.fingerprintKey ||
+        binding.browserDeviceId !== currentBinding.browserDeviceId ||
+        revision !== connection.getIdentityAuthorityRevision() ||
+        selected !== session.selection?.selected ||
+        profile !== session.profile ||
+        protocol !== session.protocolResolution ||
+        geometryRevision !== session.geometryRevision ||
+        experimental !== session.experimentalTxEnabled ||
+        confirmedDigest !== session.confirmedPlanDigest ||
+        (selected &&
+          definition !==
+            this.ports
+              .identification()
+              .getRegistry()
+              .definitionIdentity(selected.id, session.profile))
+      )
+        retired = true;
+      return !retired;
+    };
+  }
   async sendPersistentContent(
     plan: TransmissionPlan,
     options: {
@@ -108,8 +234,11 @@ export class TransmissionService {
       readonly extras?: Partial<ContentCompilationRecord>;
       readonly onProgress?: (progress: ExecutionProgress) => void;
       readonly onExecutionStarted?: () => void;
+      readonly onTransactionRecorded?: (
+        recording: ApplicationExecutionRecording,
+      ) => void;
     } = {},
-  ): Promise<ExecutionResult> {
+  ): Promise<ApplicationExecutionResult> {
     if (plan.risk !== "persistent" && plan.persistence !== "persistent")
       throw new Error(
         "sendPersistentContent is only for persistent content plans.",
@@ -123,34 +252,56 @@ export class TransmissionService {
       throw new Error(
         "Persistent content must be prepared for the connected target before authorization.",
       );
+    const ownedPlan = copyPreparedTransmission(plan);
     const connectionId = this.ports.connection().getTransport().connectionId;
+    const generation = this.ports.connection().getConnectionGeneration();
     const experimentalWasEnabled = this.authority.experimentalTxEnabled;
     if (requiresExperimentalConfirmation) this.authority.enableExperimentalTx();
     if (requiresExperimentalConfirmation)
-      this.authority.confirmPlanDigest(plan.digest);
-    const transactionIndex = this.ports
-      .protocolEvidence()
-      .getTransactions().length;
+      this.authority.confirmPlanDigest(ownedPlan.digest);
+    let recording: ApplicationExecutionRecording | null = null;
+    let compilationAttempted = false;
+    const captureRecording = (value: ApplicationExecutionRecording): void => {
+      recording = value;
+      publishRecording(
+        options.onTransactionRecorded,
+        value.transactionId,
+        value.evidence,
+      );
+    };
     try {
       const result = await this._execute(
-        plan,
+        ownedPlan,
         "operation",
         null,
         options.onProgress,
         options.onExecutionStarted,
+        captureRecording,
       );
+      compilationAttempted = true;
       this.ports
         .protocolEvidence()
-        ._recordCompilation(
-          plan,
-          options.extras,
-          this.ports.protocolEvidence().getTransactions()[transactionIndex]
-            ?.id ?? null,
-        );
+        ._recordCompilation(ownedPlan, options.extras, result.transactionId);
       return result;
+    } catch (error) {
+      const transactionId = (recording as ApplicationExecutionRecording | null)
+        ?.transactionId;
+      if (transactionId && !compilationAttempted) {
+        try {
+          this.ports
+            .protocolEvidence()
+            ._recordCompilation(ownedPlan, options.extras, transactionId);
+        } catch {
+          // Compilation publication cannot replace the execution failure.
+        }
+      }
+      throw error;
     } finally {
       if (
-        connectionId === this.ports.connection().getTransport().connectionId
+        connectionId === this.ports.connection().getTransport().connectionId &&
+        generation === this.ports.connection().getConnectionGeneration() &&
+        (!requiresExperimentalConfirmation ||
+          this.authority.confirmedPlanDigest === ownedPlan.digest)
       ) {
         this.authority.consumePersistentConfirmation();
         if (requiresExperimentalConfirmation && !experimentalWasEnabled)
@@ -315,11 +466,18 @@ export class TransmissionService {
       confirmedPlanDigest: session.confirmedPlanDigest,
     });
   }
-  async send(plan: TransmissionPlan): Promise<ExecutionResult> {
+  async send(plan: TransmissionPlan): Promise<ApplicationExecutionResult> {
     return this._execute(plan, plan.purpose, null);
   }
   /** Accepts a registered id, never a caller-supplied plan or test definition. */
-  async sendRegisteredQuery(testId: string): Promise<ExecutionResult> {
+  async sendRegisteredQuery(
+    testId: string,
+    options: {
+      readonly onTransactionRecorded?: (
+        recording: ApplicationExecutionRecording,
+      ) => void;
+    } = {},
+  ): Promise<ApplicationExecutionResult> {
     const catalog = this.ports.guidedTestCatalog();
     const availability = catalog
       .guidedTests()
@@ -344,10 +502,12 @@ export class TransmissionService {
         "Registered experimental query execution requires explicit per-session unlock.",
       );
     return this.executeAuthorized(
-      plan,
       "diagnostic",
       null,
       this.evaluatePolicy(plan),
+      undefined,
+      undefined,
+      options.onTransactionRecorded,
     );
   }
   async _execute(
@@ -356,33 +516,27 @@ export class TransmissionService {
     diagnosticRunIdValue: string | null,
     onProgress?: (progress: ExecutionProgress) => void,
     onExecutionStarted?: () => void,
-  ): Promise<ExecutionResult> {
+    onTransactionRecorded?: (recording: ApplicationExecutionRecording) => void,
+  ): Promise<ApplicationExecutionResult> {
     return this.executeAuthorized(
-      plan,
       source,
       diagnosticRunIdValue,
       this.authorize(plan),
       onProgress,
       onExecutionStarted,
+      onTransactionRecorded,
     );
   }
   private async executeAuthorized(
-    plan: TransmissionPlan,
     source: TransactionSource,
     diagnosticRunIdValue: string | null,
     decision: PolicyDecision,
     onProgress?: (progress: ExecutionProgress) => void,
     onExecutionStarted?: () => void,
-  ): Promise<ExecutionResult> {
+    onTransactionRecorded?: (recording: ApplicationExecutionRecording) => void,
+  ): Promise<ApplicationExecutionResult> {
     const session = this.ports.connection().getSession();
-    const connectionId = this.ports.connection().getTransport().connectionId;
-    const fingerprint = session.fingerprint;
-    const geometryRevision = session.geometryRevision;
-    const current = () =>
-      session.source === "live" &&
-      session.fingerprint === fingerprint &&
-      session.geometryRevision === geometryRevision &&
-      connectionId === this.ports.connection().getTransport().connectionId;
+    const current = this.captureExecutionContext();
     const startedAt = new Date().toISOString();
     const notificationStart = this.ports
       .protocolEvidence()
@@ -390,11 +544,13 @@ export class TransmissionService {
     const sessionSource = session.source;
     if (!decision.allowed || !decision.authorized)
       throw new Error(decision.reasons.join(" "));
+    const executionPlan = decision.authorized.plan;
     const driver = this.ports
       .identification()
       .getRegistry()
-      .drivers.find(({ id }) => id === plan.driverId);
-    if (!driver) throw new Error(`Driver ${plan.driverId} is unavailable.`);
+      .drivers.find(({ id }) => id === executionPlan.driverId);
+    if (!driver)
+      throw new Error(`Driver ${executionPlan.driverId} is unavailable.`);
     await this.ports.connection().enableDriverNotifications(driver);
     if (!current())
       throw new Error("The connection changed during notification setup.");
@@ -403,21 +559,28 @@ export class TransmissionService {
     // HERE — the one path all of them go through — rather than in each
     // caller, where "Create → Send image" was silently exempt.
     const replacesStoredProgram =
-      plan.risk === "persistent" || plan.persistence === "persistent";
+      executionPlan.risk === "persistent" ||
+      executionPlan.persistence === "persistent";
     const staged = this.ports.investigation().getStagedPanelProgram();
     if (replacesStoredProgram)
       this.ports.investigation().setStagedPanelProgram(null);
+    let result: ExecutionResult | null = null;
+    let transaction: ProtocolTransaction | null = null;
+    let failureEvidence: ExecutionEvidence | null = null;
     try {
       onExecutionStarted?.();
-      const result = await this._executor.execute(
+      result = await this._executor.execute(
         decision.authorized,
         driver,
         onProgress,
+        (evidence: ExecutionEvidence) => {
+          failureEvidence = evidence;
+        },
       );
-      this.ports
+      transaction = this.ports
         .protocolEvidence()
         ._recordTransaction(
-          plan,
+          executionPlan,
           result,
           startedAt,
           current()
@@ -429,6 +592,11 @@ export class TransmissionService {
           null,
           sessionSource,
         );
+      publishRecording(
+        onTransactionRecorded,
+        transaction.id,
+        result.evidence ?? null,
+      );
       if (current()) session.recordCorrelatedResponse(result.responseRecord);
       if (current() && replacesStoredProgram) {
         // "Written at" is the final host-accepted write, never the moment the
@@ -438,7 +606,7 @@ export class TransmissionService {
           certainty: "known-replaced" as const,
           kind: "ordinary-content" as const,
           fingerprint: null,
-          label: `${plan.operation.type} (${plan.purpose})`,
+          label: `${executionPlan.operation.type} (${executionPlan.purpose})`,
           startedAt,
           writtenAt: null,
           uncertaintyReason: null,
@@ -448,51 +616,66 @@ export class TransmissionService {
           writtenAt: result.finalWriteAcceptedAt ?? new Date().toISOString(),
         });
       }
-      return result;
+      return { ...result, transactionId: transaction.id };
     } catch (error) {
-      if (
-        current() &&
-        this.ports.connection().getTransport().state === "quarantined" &&
-        isPreparedTransmission(plan)
-      ) {
-        const value = (error as { packetIndex?: unknown }).packetIndex;
-        this.ports.connection().setConnectionState(
-          transitionConnection(this.ports.connection().getConnectionState(), {
-            type: "WRITE_INDETERMINATE",
-            reason: {
-              planDigest: plan.digest,
-              packetIndex: typeof value === "number" ? value : -1,
-              message: errorMessage(error),
-            },
-          }),
-        );
-      }
-      // A failed persistent write may still have landed packets. What is on
-      // the panel is genuinely unknown, and saying otherwise in either
-      // direction would be a guess.
-      if (current() && replacesStoredProgram) {
+      const evidence = result?.evidence ?? failureEvidence;
+      const recordedTransaction =
+        transaction ??
         this.ports
-          .investigation()
-          ._invalidatePanelProgram(
-            "A persistent write failed part-way; what the display is showing was not established.",
+          .protocolEvidence()
+          ._recordTransaction(
+            executionPlan,
+            result,
+            startedAt,
+            current()
+              ? notificationStart
+              : this.ports.protocolEvidence().getNotificationRouter()
+                  .receiveSequence,
+            source,
+            diagnosticRunIdValue,
+            errorMessage(error),
+            sessionSource,
+            evidence,
           );
-      }
-      this.ports
-        .protocolEvidence()
-        ._recordTransaction(
-          plan,
-          null,
-          startedAt,
-          current()
-            ? notificationStart
-            : this.ports.protocolEvidence().getNotificationRouter()
-                .receiveSequence,
-          source,
-          diagnosticRunIdValue,
-          errorMessage(error),
-          sessionSource,
+      if (!transaction)
+        publishRecording(
+          onTransactionRecorded,
+          recordedTransaction.id,
+          evidence,
         );
-      throw error;
+      try {
+        if (
+          current() &&
+          this.ports.connection().getTransport().state === "quarantined" &&
+          isPreparedTransmission(executionPlan)
+        ) {
+          const value = (error as { packetIndex?: unknown }).packetIndex;
+          this.ports.connection().setConnectionState(
+            transitionConnection(this.ports.connection().getConnectionState(), {
+              type: "WRITE_INDETERMINATE",
+              reason: {
+                planDigest: executionPlan.digest,
+                packetIndex: typeof value === "number" ? value : -1,
+                message: errorMessage(error),
+              },
+            }),
+          );
+        }
+        // A failed persistent write may still have landed packets. What is on
+        // the panel is genuinely unknown, and saying otherwise in either
+        // direction would be a guess.
+        if (current() && replacesStoredProgram) {
+          this.ports
+            .investigation()
+            ._invalidatePanelProgram(
+              "A persistent write failed part-way; what the display is showing was not established.",
+            );
+        }
+      } catch {
+        // Ledger ownership is already complete. A secondary presentation
+        // bookkeeping error cannot replace the original execution failure.
+      }
+      throw recordExecutionFailure(error, recordedTransaction.id, evidence);
     }
   }
   async probe(
@@ -512,8 +695,7 @@ export class TransmissionService {
       );
     const connectionId = this.ports.connection().getTransport().connectionId;
     const fingerprint = session.fingerprint;
-    const selection = session.selection;
-    const geometryRevision = session.geometryRevision;
+    const current = this.captureExecutionContext();
     if (!fingerprint)
       throw new Error(
         "The requested probe driver is not available for this connection.",
@@ -693,12 +875,7 @@ export class TransmissionService {
     } catch (error) {
       throw new ProbeStageError("access", errorMessage(error));
     }
-    if (
-      connectionId !== this.ports.connection().getTransport().connectionId ||
-      session.fingerprint !== fingerprint ||
-      session.selection !== selection ||
-      session.geometryRevision !== geometryRevision
-    )
+    if (!current())
       throw new ProbeStageError(
         "retired",
         "The probe belongs to a retired connection or changed target.",
@@ -714,15 +891,23 @@ export class TransmissionService {
       throw new ProbeStageError("blocked", decision.reasons.join(" "));
     let result: ExecutionResult;
     let transaction: import("../../diagnostics/transactions").ProtocolTransaction;
+    let failureEvidence: ExecutionEvidence | null = null;
     try {
-      result = await this._executor.execute(decision.authorized, driver);
+      result = await this._executor.execute(
+        decision.authorized,
+        driver,
+        undefined,
+        (evidence: ExecutionEvidence) => {
+          failureEvidence = evidence;
+        },
+      );
       transaction = this.ports
         .protocolEvidence()
         ._recordTransaction(
           decision.authorized.plan,
           result,
           startedAt,
-          connectionId === this.ports.connection().getTransport().connectionId
+          current()
             ? notificationStart
             : this.ports.protocolEvidence().getNotificationRouter()
                 .receiveSequence,
@@ -732,13 +917,14 @@ export class TransmissionService {
           sessionSource,
         );
     } catch (error) {
+      const evidence = failureEvidence;
       const failedTransaction = this.ports
         .protocolEvidence()
         ._recordTransaction(
           decision.authorized.plan,
           null,
           startedAt,
-          connectionId === this.ports.connection().getTransport().connectionId
+          current()
             ? notificationStart
             : this.ports.protocolEvidence().getNotificationRouter()
                 .receiveSequence,
@@ -746,12 +932,10 @@ export class TransmissionService {
           null,
           errorMessage(error),
           sessionSource,
+          evidence,
         );
       throw new ProbeStageError(
-        connectionId !== this.ports.connection().getTransport().connectionId ||
-          session.fingerprint !== fingerprint
-          ? "retired"
-          : "transport",
+        current() ? "transport" : "retired",
         errorMessage(error),
         failedTransaction.id,
       );
@@ -774,12 +958,7 @@ export class TransmissionService {
         : result.response
           ? profileProbe!.interpret(result.response)
           : null;
-    if (
-      connectionId !== this.ports.connection().getTransport().connectionId ||
-      session.fingerprint !== fingerprint ||
-      session.selection !== selection ||
-      session.geometryRevision !== geometryRevision
-    )
+    if (!current())
       throw new ProbeStageError(
         "retired",
         "The probe belongs to a retired connection or changed target.",

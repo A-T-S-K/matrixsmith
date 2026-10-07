@@ -9,10 +9,14 @@ import { createBrowserEnvironment } from "../../src/adapters/presentation/browse
 import { experimentalRegistry } from "../../src/dev/experimental-registry";
 import { TraceRecorder } from "../../src/diagnostics/trace";
 import type { ExecutionResult } from "../../src/app/executor";
+import type { ApplicationExecutionResult } from "../../src/application/services/transmission-service";
 import type { PreparedTransmission } from "../../src/core/transmission";
 import * as image from "../../src/render/image";
 
-const result = (patch: Partial<ExecutionResult> = {}): ExecutionResult => ({
+const result = (
+  patch: Partial<ExecutionResult> = {},
+): ApplicationExecutionResult => ({
+  transactionId: "transaction:send-fixture",
   planId: "test",
   receipts: [],
   packetTimings: [],
@@ -217,7 +221,7 @@ it.each(
       },
       { wakeLock },
     );
-    let complete!: (value: ExecutionResult) => void;
+    let complete!: (value: ApplicationExecutionResult) => void;
     let fail!: (error: Error) => void;
     let oldProgress!: NonNullable<
       Parameters<ApplicationRuntime["sendPersistentContent"]>[1]
@@ -242,7 +246,7 @@ it.each(
       });
     } else current = b.runtime;
     expect(owner.getSendAttempt()).toBeNull();
-    let nextComplete!: (value: ExecutionResult) => void;
+    let nextComplete!: (value: ApplicationExecutionResult) => void;
     vi.spyOn(current, "sendPersistentContent").mockImplementation(
       (_plan, options) => {
         options?.onProgress?.({
