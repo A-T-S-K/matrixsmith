@@ -30,7 +30,7 @@ Atomic claim resolution lives below derived static-strategy assessment, eliminat
 - Notice owns operation IDs, the active-operation collection, and workspace-bound errors per operation. Completion or harmless editing cannot erase an unrelated hardware/persistence failure; retired-workspace failures are suppressed.
 - Content editor owns files/previews and latest-selection generations, including profile identity and geometry. Stale work cannot replace a newer preview or cross workspace boundaries. Retained image geometry is checked before planning a send.
 - Guided controller exclusively owns mutable guided UI flow. Pure domain transitions and read-only projections remain separate from that ownership.
-- Snapshot owns publication and subscriptions. `useMatrixSnapshot` / `useSyncExternalStore` is the single UI bridge; disposal suppresses later publications.
+- Snapshot owns publication and subscriptions. `useMatrixSnapshot` / `useSyncExternalStore` is the single UI bridge; disposal suppresses later publications. Trace-only changes share one scheduled publication per task. Connection, authority, workspace and recovery changes publish immediately, and `getSnapshot` reconciles settled canonical evidence before returning. Queued work belongs to its workspace and is cancelled on replacement or disposal. Observer failures are supervised individually in bounded local diagnostics; they cannot interrupt protocol evidence or other subscribers. Local publication counts support qualification without persisting timing or device identifiers.
 - Editor/send owners each keep one content-cache entry per computation. Workspace/profile identity, geometry, and actual text/render inputs invalidate it; notices, trace events, report options, image settings, and brightness do not regenerate unchanged text or demo frames. Replacement/disposal releases these entries and decoded content. Safety assessments and transmission gates are recomputed independently.
 - Projection owns a bounded saved-history display cache. Initialization, successful save/forget, Home navigation, explicit review, and an injected cross-tab storage subscription refresh it. Cold and warm Home use the same display-summary reader. Resume reads authoritative storage again and validates/demotes history; a cached summary cannot authorize a send.
 
@@ -43,6 +43,17 @@ Browser environment construction occurs in adapters invoked by bootstrap. Featur
 The native TypeScript compiler resolves imports, re-exports, and dynamic imports for architecture verification. The gate rejects runtime cycles, concrete-driver imports in generic layers, browser-adapter imports in application/presentation services, and implementation inheritance in services/controllers.
 
 Runtime disposal disconnects owned transports and releases subscriptions. Presentation disposal releases routing, Wake Lock, previews, snapshots, and owned workspaces. State transitions retain the existing target/digest, quarantine, evidence-demotion, and notification-correlation invariants.
+
+TransmissionExecutor privately copies the complete authorized command before
+calling any observer or transport. It validates one complete digest at entry,
+then checks current target authority at each dispatch boundary. Transport,
+trace, progress and driver callbacks receive independently owned data. Actual
+attempts, receipts and measured timing are captured at execution boundaries;
+planned packets do not stand in for dispatched history. A failure preserves its
+original Error and cause. The optional failure-evidence callback receives a
+defensive snapshot for that invocation; the compatibility Error lookup refuses
+ambiguous reused Error identities. Neither path accepts serialized evidence as
+current execution authority.
 
 ## Files and updates
 

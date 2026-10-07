@@ -38,6 +38,16 @@ Stored-program uploads replace the display's stored content; MatrixSmith never p
 
 Execution results keep three claims separate: browser/host acceptance, a matching protocol notification, and independently verified device state. Brightness echo establishes protocol acceptance; a following device-info readback can establish the resulting raw brightness.
 
+Failure evidence records only actual transport attempts and accepted receipts.
+A retired generation's late receipt stays separate from current success;
+indeterminate writes retain their original quarantine and cannot be retried on
+that uninterrupted connection. Original Error identity is preserved, while
+invocation-specific evidence prevents reused transport errors from attributing
+another command's attempts. Imported legacy timestamps never imply acceptance.
+Physical render latency requires complete retained links and the final TX's
+measured host acceptance for the last relevant persistent upload. Missing or
+evicted links remain explicitly unavailable.
+
 Raster scrolling is preflighted before BLE. MatrixSmith may increase pixel step and proportional frame delay, but blocks a send that still exceeds the conservative 48-frame / 16 KiB-decoded-per-tile source-derived budget. This is a software guard, not a claimed physical iLedHat limit. Persistent sends never retry automatically; a partial failure makes panel state unknown and leaves retry as an explicit action.
 
 For write-without-response content, “host accepted” means only that the browser/Bluetooth stack accepted every write. Create reports “Upload sent.” with “Check the display. Its appearance was not confirmed.” Protocol response timeouts remain visible; optional Send details distinguish acknowledgement from device readback and never claim physical rendering, firmware acceptance, or retention. Preflight rejections do not claim an upload; execution failures preserve uncertainty and accepted-packet progress where known. Quarantined writes require explicit disconnect/reconnect and draft review before a fresh plan can be sent; recovery neither resends nor reuses confirmation. Transactions record host, protocol, and device-state results separately. Screen Wake Lock is best effort and never changes transfer success.

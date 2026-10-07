@@ -5,14 +5,15 @@ import {
   symlinkSync,
   readFileSync,
   writeFileSync,
-  rmSync,
   statSync,
 } from "node:fs";
-import { tmpdir } from "node:os";
 import { join, resolve, extname, sep } from "node:path";
 import { execFileSync } from "node:child_process";
+import { prepareQualificationRun } from "../tests/helpers/qualification-paths.ts";
 
-const temporary = mkdtempSync(join(tmpdir(), "matrixsmith-release-tests-"));
+const run = prepareQualificationRun();
+const temporary = mkdtempSync(join(run.root, "release-fixtures-"));
+console.log(`Production qualification fixtures: ${temporary}`);
 const source = join(temporary, "source");
 for (const path of [
   "src",
@@ -117,13 +118,11 @@ const server = createServer((request, response) => {
 server.listen(Number(process.env.MATRIXSMITH_TEST_PORT ?? 4174), "127.0.0.1");
 const close = () =>
   server.close(() => {
-    rmSync(temporary, { recursive: true, force: true });
     process.exit(0);
   });
 process.on("SIGTERM", close);
 process.on("SIGINT", close);
 server.on("error", (error) => {
   console.error(error);
-  rmSync(temporary, { recursive: true, force: true });
   process.exit(1);
 });

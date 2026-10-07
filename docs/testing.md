@@ -14,11 +14,35 @@ Linux image baselines are reviewed in the pinned Playwright Ubuntu container use
 
 Browser tests own their local servers and fail on port collisions. The simulator suite uses port 4187 and production fixtures use 4174. Stop only the conflicting test server or configure an isolated run; never reuse an unrelated application's server.
 
+Qualification runs can keep execution evidence outside the checkout:
+
+```sh
+npm run test:coverage -- --run-root /absolute/evidence/coverage-run
+MATRIXSMITH_QUALIFICATION_RUN_ROOT=/absolute/evidence/offline-run npm run test:e2e:offline
+MATRIXSMITH_QUALIFICATION_EVIDENCE_ROOT=/absolute/evidence npm run verify
+```
+
+Use a fresh run path for each coverage or browser invocation. The helper marks
+owned directories and shares one authenticated run identity with child processes;
+it refuses foreign, stale, unsafe or symlinked roots. It never recursively deletes
+an environment-provided path. Coverage requires both unit and browser stages
+before merging the unchanged production inventory and thresholds. Reporter JSON,
+failure traces, screenshots and coverage live under the selected run. Screenshot
+artifacts use `qualificationArtifactPath`; assertion baselines keep their reviewed
+repository locations. A focused browser run does not qualify the complete matrix.
+
 ## Regression evidence
 
 Preserve the byte-level fixtures under `tests/fixtures/` and their source provenance. Do not regenerate golden packets or visual baselines merely to make a refactor pass. CoolLEDUX conformance regeneration remains documented in `research/coolledux-sources.md` against the pinned reference commit.
 
 Coverage includes target/digest authorization, imported/historical trust boundaries, current-session isolation, timeouts and quarantine, reconnect/notification lifecycle, brightness restoration, claim/strategy agreement, Bundle V3 validation, and scoped reports.
+
+Executor regressions exercise mutations at caller, trace, progress and transport
+boundaries, actual accepted prefixes, shared Error identities, measured pacing,
+and late settlement after quarantine. Report regressions require the final
+persistent upload's final TX host-acceptance timestamp before deriving render
+latency, and distinguish empty references from evicted or missing transactions.
+These checks establish software evidence, never physical rendering or retention.
 
 Release-specific tests exercise pre-decode limits, malformed files, unavailable storage, runtime disposal, repeated offline workspace replacement, retained live connections, update failure/retry, and identifier redaction inside structured diagnostics. The opt-in QA bundle generator remains skipped unless `QA_BUNDLE_PATH` is set.
 
