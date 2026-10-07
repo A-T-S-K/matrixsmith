@@ -18,6 +18,31 @@ chunk, and reference/schema JSON before those features are first executed. Lazy
 execution and installation cost are separate measurements; gzip sums are artifact
 estimates, not actual transfer bytes or cache storage.
 
+The emitted service worker is minified with the existing Vite/Rolldown toolchain
+after its build identity and complete asset manifest are substituted. It remains
+part of the total JavaScript gate, even though it is fetched separately from the
+cached shell/manifest inventory. This does not remove assets from offline
+installation.
+
+An isolated pinned Node 24.20.0 build comparison on the `db54927` runtime source
+measured 245,739 total JavaScript gzip bytes before worker minification and
+245,074 afterward (665 bytes saved). Initial JavaScript measured 14,168 and
+14,173 bytes respectively; config-derived build identity changes also rename
+dependent assets. Combining investigation/workbench views instead increased
+both total gzip and their route closures, so that grouping was rejected.
+Disabling the existing compressor's statement sequencing or variable joining
+also increased gzip and was rejected. These are bounded comparisons, not final
+startup-repair or mobile acceptance. The enforced ceilings remain unchanged.
+
+Module recovery groups the shared advisory UI with the application runtime so
+feature retries preserve its owner-scoped state. Knowledge data and its loader
+remain lazy. The emitted shell contains a finite import map for one explicit
+recovery attempt; its exact SHA256 source is added to both generated CSP policies.
+The map is HTML data, not a second JavaScript graph. Measure its actual raw/gzip
+size, the generated headers, route closures and installed inventory alongside
+the unchanged recursive JavaScript gate. Build/static validation of this design
+does not establish native retry, offline behavior or mobile performance.
+
 ## Historical slice measurements
 
 Knowledge JSON is a separate asset capped at 256 KiB with a strict schema and

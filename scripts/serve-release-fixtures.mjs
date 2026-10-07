@@ -105,8 +105,19 @@ const server = createServer((request, response) => {
   }
   try {
     if (!statSync(path).isFile()) throw new Error("Not a file");
+    // Exercise the production policy from this exact build as well as its
+    // HTML meta policy; Pages applies the global section to every response.
+    const globalHeaders = readFileSync(join(root, "_headers"), "utf8")
+      .split(/\n\s*\n/)[0]
+      .split("\n")
+      .slice(1)
+      .map((line) => line.trim().split(/:\s(.*)/s))
+      .filter(([name, value]) => name && value);
     response
       .writeHead(200, {
+        ...Object.fromEntries(
+          globalHeaders.map(([name, value]) => [name, value]),
+        ),
         "Content-Type": types[extname(path)] ?? "application/octet-stream",
         "Cache-Control": "no-store",
       })
