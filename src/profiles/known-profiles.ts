@@ -51,9 +51,39 @@ export interface KnownProfileVerdict {
   readonly contradictions: readonly string[];
 }
 
-/** Little-endian company id as it appears at the head of manufacturer data. */
-function companyPrefix(companyId: number): string {
-  return `${(companyId & 0xff).toString(16).padStart(2, "0")}${((companyId >> 8) & 0xff).toString(16).padStart(2, "0")}`.toUpperCase();
+/** Company fields are observations, never permission/request parameters.
+ * Browser map keys already carry the company id; their payload has no prefix.
+ */
+export function observedManufacturerCompanies(fingerprint: DeviceFingerprint): {
+  readonly legacy: number | null;
+  readonly structured: readonly number[];
+} {
+  const hex = fingerprint.manufacturerDataHex?.trim();
+  const legacy =
+    hex && /^[0-9a-f]{4}(?:[0-9a-f]{2})*$/i.test(hex)
+      ? Number.parseInt(hex.slice(2, 4) + hex.slice(0, 2), 16)
+      : null;
+  const structured = [
+    ...new Set(
+      (fingerprint.advertisementObservation?.manufacturerData ?? [])
+        .map(({ companyId }) => companyId)
+        .filter((id) => Number.isInteger(id) && id >= 0 && id <= 0xffff),
+    ),
+  ].sort((a, b) => a - b);
+  return { legacy, structured };
+}
+
+export function evaluateManufacturerCompany(
+  fingerprint: DeviceFingerprint,
+  companyId: number,
+): "absent" | "consistent" | "contradictory" {
+  const { legacy, structured } = observedManufacturerCompanies(fingerprint);
+  if (legacy !== null && legacy !== companyId) return "contradictory";
+  // Multiple entries do not establish a unique company. An expected entry
+  // corroborates the signature; unrelated entries do not override that entry.
+  if (structured.length && !structured.includes(companyId))
+    return "contradictory";
+  return legacy !== null || structured.length ? "consistent" : "absent";
 }
 
 /**
@@ -91,46 +121,57 @@ export function evaluateKnownProfile(
 
   // The name is the entry condition. Without it this is simply a different
   // display that happens to share a transport, and nothing below applies.
-  if (fingerprint.name?.trim().toLowerCase() !== signature.name) {
+  if (
+    fingerprint.name?.trim().toLowerCase() !==
+    signature.name.trim().toLowerCase()
+  ) {
     return { signature, matched: false, reasons: [], contradictions: [] };
   }
   reasons.push(`exact observed device name "${fingerprint.name}"`);
 
   const service = fingerprint.services.find(
-    ({ uuid }) => normalizeUuid(uuid) === signature.serviceUuid,
+    ({ uuid }) => normalizeUuid(uuid) === normalizeUuid(signature.serviceUuid),
   );
   const characteristic = service?.characteristics.find(
-    ({ uuid }) => normalizeUuid(uuid) === signature.characteristicUuid,
+    ({ uuid }) =>
+      normalizeUuid(uuid) === normalizeUuid(signature.characteristicUuid),
   );
-  if (!service || !characteristic) {
-    // Not a contradiction: the browser may not have granted the service yet.
-    // It is simply not enough to recognize the profile.
-    return { signature, matched: false, reasons, contradictions };
+  if (characteristic) {
+    const { read, notify, writeWithoutResponse } = characteristic.properties;
+    if (!read || !notify || !writeWithoutResponse) {
+      contradictions.push(
+        "the FFF1 characteristic does not expose READ + NOTIFY + WRITE WITHOUT RESPONSE as the characterized profile does",
+      );
+    } else {
+      reasons.push(
+        "exact FFF0/FFF1 GATT shape with READ + NOTIFY + WRITE WITHOUT RESPONSE",
+      );
+    }
   }
-  const { read, notify, writeWithoutResponse } = characteristic.properties;
-  if (!read || !notify || !writeWithoutResponse) {
+  const advertisedName = fingerprint.advertisementObservation?.name;
+  if (
+    advertisedName &&
+    advertisedName.trim().toLowerCase() !== signature.name.trim().toLowerCase()
+  )
     contradictions.push(
-      "the FFF1 characteristic does not expose READ + NOTIFY + WRITE WITHOUT RESPONSE as the characterized profile does",
+      "the observed advertisement name contradicts the characterized profile",
     );
-  } else {
-    reasons.push(
-      "exact FFF0/FFF1 GATT shape with READ + NOTIFY + WRITE WITHOUT RESPONSE",
-    );
-  }
 
   // Manufacturer data and geometry are corroborating when present and
   // disqualifying when they disagree. Absence proves nothing either way.
-  const manufacturer = fingerprint.manufacturerDataHex?.toUpperCase();
-  if (manufacturer && signature.companyId !== null) {
-    if (manufacturer.startsWith(companyPrefix(signature.companyId))) {
+  if (signature.companyId !== null) {
+    const company = evaluateManufacturerCompany(
+      fingerprint,
+      signature.companyId,
+    );
+    if (company === "consistent")
       reasons.push(
         `observed manufacturer company field 0x${signature.companyId.toString(16).toUpperCase()}`,
       );
-    } else {
+    if (company === "contradictory")
       contradictions.push(
         `the observed manufacturer company field contradicts 0x${signature.companyId.toString(16).toUpperCase()}`,
       );
-    }
   }
   const geometry = fingerprint.manuallyConfirmedGeometry;
   if (geometry) {
@@ -147,7 +188,7 @@ export function evaluateKnownProfile(
   }
   return {
     signature,
-    matched: contradictions.length === 0,
+    matched: Boolean(service && characteristic) && contradictions.length === 0,
     reasons,
     contradictions,
   };

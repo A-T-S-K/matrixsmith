@@ -1,4 +1,4 @@
-import type { DeviceFingerprint } from "../core/device";
+import { normalizeUuid, type DeviceFingerprint } from "../core/device";
 
 /**
  * Physical device/session identity boundary for investigations. An
@@ -27,18 +27,38 @@ export function fingerprintIdentityKey(fingerprint: DeviceFingerprint): string {
   const services = fingerprint.services
     .map(
       (service) =>
-        `${service.uuid}:${service.characteristics
-          .map((characteristic) => characteristic.uuid)
+        `${normalizeUuid(service.uuid)}:${service.characteristics
+          .map((characteristic) => normalizeUuid(characteristic.uuid))
           .sort()
           .join(",")}`,
     )
     .sort()
     .join(";");
+  const manufacturer = new Set<string>();
+  if (fingerprint.manufacturerDataHex)
+    manufacturer.add(fingerprint.manufacturerDataHex.trim().toUpperCase());
+  for (const { companyId, dataHex } of fingerprint.advertisementObservation
+    ?.manufacturerData ?? []) {
+    if (!Number.isInteger(companyId) || companyId < 0 || companyId > 0xffff)
+      continue;
+    // Only reconstruct the opaque comparison key, never a raw advertisement
+    // capture or unique hardware identifier. The browser payload excludes id.
+    const prefix =
+      (companyId & 0xff).toString(16).padStart(2, "0") +
+      ((companyId >> 8) & 0xff).toString(16).padStart(2, "0");
+    manufacturer.add((prefix + dataHex).toUpperCase());
+  }
+  const advertisedServices = new Set(
+    [
+      ...fingerprint.advertisedServices,
+      ...(fingerprint.advertisementObservation?.advertisedServiceUuids ?? []),
+    ].map(normalizeUuid),
+  );
   return [
     fingerprint.transportKind,
     fingerprint.name ?? "",
-    [...fingerprint.advertisedServices].sort().join(","),
-    fingerprint.manufacturerDataHex ?? "",
+    [...advertisedServices].sort().join(","),
+    [...manufacturer].sort().join(","),
     services,
   ].join("|");
 }

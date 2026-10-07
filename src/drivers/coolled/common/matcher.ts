@@ -1,4 +1,5 @@
 import type { DeviceFingerprint } from "../../../core/device";
+import { evaluateManufacturerCompany } from "../../../profiles/known-profiles";
 import { normalizeUuid } from "../../../core/device";
 import type { DriverMatch, MatchConfidence } from "../../types";
 import { COOLLED_IO_UUID, COOLLED_SERVICE_UUID } from "./gatt";
@@ -30,10 +31,13 @@ export function matchCoolLedGatt(
     score += 10;
     reasons.push("observed advertisement includes FFF0");
   }
-  if (fingerprint.manufacturerDataHex?.toUpperCase().startsWith("AE31")) {
+  const company = evaluateManufacturerCompany(fingerprint, 0x31ae);
+  if (company === "consistent") {
     score += 25;
     reasons.push("observed manufacturer company field is 0x31AE");
   }
+  if (company === "contradictory")
+    contradictions.push("observed manufacturer company contradicts 0x31AE");
   if (service) {
     score += 15;
     reasons.push("accessible GATT includes FFF0");
