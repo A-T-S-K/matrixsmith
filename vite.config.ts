@@ -182,7 +182,7 @@ export default defineConfig(({ mode }) => {
                 // Shared advisory UI retains state across feature routes. Keep
                 // it in the successful application graph during view recovery.
                 name: "application-runtime",
-                test: /\/src\/(?:application-bootstrap\.tsx|ui\/components\/AdvisoryKnowledge\.tsx)$/,
+                test: /\/src\/(?:presentation\/store\.ts|ui\/components\/AdvisoryKnowledge\.tsx)$/,
                 includeDependenciesRecursively: false,
               },
               {

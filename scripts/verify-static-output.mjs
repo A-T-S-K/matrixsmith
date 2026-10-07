@@ -4,6 +4,7 @@ import validateKnowledge from "../src/knowledge/generated/knowledge-validator.js
 import { validateKnowledgeReferences } from "../src/knowledge/validation.ts";
 import { gzipSync } from "node:zlib";
 import { createHash } from "node:crypto";
+import { spawnSync } from "node:child_process";
 
 const root = resolve(process.argv[2] ?? "dist");
 const required = [
@@ -47,6 +48,29 @@ if (existsSync(root)) {
     /\.(?:html|js|css|json|webmanifest)$/.test(file),
   );
   const javascript = output.filter((file) => file.endsWith(".js"));
+  // Parse without evaluation or linking. --check alone misses undeclared
+  // export bindings in Node; the native module constructor rejects them.
+  const syntax = spawnSync(
+    process.execPath,
+    [
+      "--experimental-vm-modules",
+      "--input-type=module",
+      "-e",
+      `
+    import { SourceTextModule } from "node:vm";
+    import { readFileSync } from "node:fs";
+    for (const file of JSON.parse(readFileSync(0, "utf8"))) {
+      try { new SourceTextModule(readFileSync(file, "utf8"), { identifier: file }); }
+      catch (error) { console.error(file + ": " + error.message); process.exitCode = 1; }
+    }
+  `,
+    ],
+    { input: JSON.stringify(javascript), encoding: "utf8" },
+  );
+  if (syntax.status !== 0)
+    failures.push(
+      `Invalid emitted JavaScript: ${syntax.error ?? syntax.stderr}`,
+    );
   const totalJsGzip = javascript.reduce(
     (total, file) => total + gzipSync(readFileSync(file)).byteLength,
     0,
