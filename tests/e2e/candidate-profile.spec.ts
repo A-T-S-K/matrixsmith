@@ -1,6 +1,7 @@
+import { qualificationArtifactPath } from "../helpers/qualification-paths";
 import { test, expect } from "./fixtures";
 import type { Page } from "@playwright/test";
-import { mkdirSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import AxeBuilder from "@axe-core/playwright";
 
 async function setup(page: Page) {
@@ -81,11 +82,8 @@ async function capture(page: Page, name: string) {
   );
   if (await review.count())
     await expect(review).toMatchAriaSnapshot({ name: `${name}.aria.yml` });
-  mkdirSync("/tmp/matrixsmith-candidate-review/screenshots", {
-    recursive: true,
-  });
   await page.screenshot({
-    path: `/tmp/matrixsmith-candidate-review/screenshots/${name}.png`,
+    path: qualificationArtifactPath(test.info(), `${name}.png`),
     fullPage: true,
   });
 }

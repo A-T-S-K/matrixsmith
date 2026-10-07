@@ -1,3 +1,4 @@
+import { qualificationArtifactPath } from "../helpers/qualification-paths";
 import { expect, test } from "./fixtures";
 import type { PresentationStore } from "../../src/presentation/store";
 import type { SimulatedIledHatTransport } from "../../src/dev/simulated-device";
@@ -41,7 +42,9 @@ for (const width of [1280, 390]) {
     ).toBeVisible();
     await details.press("Enter");
     await send.scrollIntoViewIfNeeded();
-    await page.screenshot({ path: `/private/tmp/send-result-${width}.png` });
+    await page.screenshot({
+      path: qualificationArtifactPath(test.info(), `send-result-${width}.png`),
+    });
     await page.evaluate(() => {
       const globals = globalThis as unknown as {
         matrixsmithTransport: SimulatedIledHatTransport;
@@ -90,7 +93,10 @@ for (const width of [1280, 390]) {
     });
     expect(unobstructed).toBe(true);
     await page.screenshot({
-      path: `/private/tmp/send-recovery-${width}.png`,
+      path: qualificationArtifactPath(
+        test.info(),
+        `send-recovery-${width}.png`,
+      ),
     });
     const before = await page.evaluate(() => {
       const store = (

@@ -22,7 +22,10 @@ import {
 
 // Regression scratch data stays inside this run's approved evidence directory.
 const parentRun = process.env.MATRIXSMITH_QUALIFICATION_RUN_ROOT;
-const scratchParent = parentRun ?? resolve("coverage", "path-regressions");
+const scratchParent =
+  parentRun ??
+  process.env.MATRIXSMITH_QUALIFICATION_EVIDENCE_ROOT ??
+  resolve("coverage", "path-regressions");
 let scratch: string;
 beforeEach(() => {
   mkdirSync(scratchParent, { recursive: true });

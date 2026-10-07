@@ -1,7 +1,7 @@
+import { qualificationArtifactPath } from "../helpers/qualification-paths";
 import { test, expect } from "./fixtures";
 import AxeBuilder from "@axe-core/playwright";
 import type { Page } from "@playwright/test";
-import { mkdirSync } from "node:fs";
 
 async function connect(page: Page, mode = "discovery") {
   await page.goto(`/?sim=${mode}#/home`);
@@ -23,9 +23,8 @@ async function evidence(page: Page, name: string) {
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
   ).toBe(true);
-  mkdirSync("/tmp/matrixsmith-discovery-review", { recursive: true });
   await page.screenshot({
-    path: `/tmp/matrixsmith-discovery-review/${name}.png`,
+    path: qualificationArtifactPath(test.info(), `${name}.png`),
     fullPage: true,
   });
 }

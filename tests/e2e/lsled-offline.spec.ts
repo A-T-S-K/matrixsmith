@@ -1,3 +1,4 @@
+import { qualificationArtifactPath } from "../helpers/qualification-paths";
 import { expect, test } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 test("offline lazy entry recovers from a module load failure", async ({
@@ -171,14 +172,20 @@ for (const width of [1280, 390]) {
     const accessibility = await new AxeBuilder({ page }).analyze();
     expect(accessibility.violations).toEqual([]);
     await page.screenshot({
-      path: `/tmp/lsled-offline-${width}-sources.png`,
+      path: qualificationArtifactPath(
+        test.info(),
+        `lsled-offline-${width}-sources.png`,
+      ),
       fullPage: true,
     });
     await page
       .getByText("Reference, sources and firmware limitations", { exact: true })
       .click();
     await page.screenshot({
-      path: `/tmp/lsled-offline-${width}.png`,
+      path: qualificationArtifactPath(
+        test.info(),
+        `lsled-offline-${width}.png`,
+      ),
       fullPage: true,
     });
     await page.getByRole("link", { name: "MatrixSmith home" }).click();

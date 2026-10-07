@@ -1,3 +1,4 @@
+import { qualificationArtifactPath } from "../helpers/qualification-paths";
 import { writeFileSync } from "node:fs";
 import { expect, test } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
@@ -91,11 +92,17 @@ for (const width of [390, 1280]) {
       ),
     ).toBe(true);
     writeFileSync(
-      `/tmp/matrixsmith-wave-merkury-${width}.aria.yml`,
+      qualificationArtifactPath(
+        test.info(),
+        `matrixsmith-wave-merkury-${width}.aria.yml`,
+      ),
       await page.locator("main").ariaSnapshot(),
     );
     await page.screenshot({
-      path: `/tmp/matrixsmith-wave-merkury-${width}.png`,
+      path: qualificationArtifactPath(
+        test.info(),
+        `matrixsmith-wave-merkury-${width}.png`,
+      ),
       fullPage: true,
     });
     await page

@@ -1,3 +1,4 @@
+import { qualificationArtifactPath } from "../helpers/qualification-paths";
 import { readFileSync } from "node:fs";
 import { expect, test } from "./fixtures";
 
@@ -34,7 +35,9 @@ test("workbench sections follow URLs and browser history", async ({ page }) => {
   await page.getByRole("button", { name: "Device actions" }).click();
   await page.getByRole("button", { name: "Developer tools" }).click();
   await expect(page).toHaveURL(/#\/device\/develop\/raw$/);
-  await page.screenshot({ path: "/private/tmp/workbench-navigation.png" });
+  await page.screenshot({
+    path: qualificationArtifactPath(test.info(), "workbench-navigation.png"),
+  });
 });
 
 test("direct links request missing context without connecting", async ({
@@ -157,7 +160,7 @@ test("offline-only explicit connection retains both contexts, drafts, URLs, moda
   await section(page, "Transactions");
   await expect(page.getByRole("searchbox")).toHaveValue("offline search");
   await page.screenshot({
-    path: "/private/tmp/continuity-offline.png",
+    path: qualificationArtifactPath(test.info(), "continuity-offline.png"),
     fullPage: true,
   });
   await page.getByRole("button", { name: /Return to live display/ }).click();
@@ -191,7 +194,7 @@ test("offline-only explicit connection retains both contexts, drafts, URLs, moda
     }),
   ).toBe(true);
   await page.screenshot({
-    path: "/private/tmp/continuity-live.png",
+    path: qualificationArtifactPath(test.info(), "continuity-live.png"),
     fullPage: true,
   });
   // Ordinary updates keep editing focus.
@@ -284,7 +287,7 @@ test("cancellation retries without reload and a retained live disconnect updates
     page.getByRole("textbox", { name: "Unsaved review note" }),
   ).toHaveValue("keep after cancellation");
   await page.screenshot({
-    path: "/private/tmp/continuity-disconnected.png",
+    path: qualificationArtifactPath(test.info(), "continuity-disconnected.png"),
     fullPage: true,
   });
   await page.getByRole("button", { name: /Return to live display/ }).click();

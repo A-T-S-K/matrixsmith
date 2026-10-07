@@ -1,3 +1,4 @@
+import { qualificationArtifactPath } from "../helpers/qualification-paths";
 import { expect, test } from "./fixtures";
 import AxeBuilder from "@axe-core/playwright";
 import { reviewTransaction } from "../helpers/review-fixtures";
@@ -242,7 +243,10 @@ for (const width of [320, 390, 1280])
         .getByRole("button", { name: "Next" }),
     ).toBeVisible();
     await page.screenshot({
-      path: `/tmp/transaction-review-detail-${width}.png`,
+      path: qualificationArtifactPath(
+        test.info(),
+        `transaction-review-detail-${width}.png`,
+      ),
     });
     const overflow = await page.evaluate(() =>
       [...document.querySelectorAll("*")]
@@ -264,7 +268,10 @@ for (const width of [320, 390, 1280])
       JSON.stringify(overflow),
     ).toBe(true);
     await page.screenshot({
-      path: `/tmp/transaction-review-detail-${width}-full.png`,
+      path: qualificationArtifactPath(
+        test.info(),
+        `transaction-review-detail-${width}-full.png`,
+      ),
       fullPage: true,
     });
     await section(page, "Raw events");
@@ -274,7 +281,10 @@ for (const width of [320, 390, 1280])
       ),
     ).toBe(true);
     await page.screenshot({
-      path: `/tmp/transaction-review-raw-${width}.png`,
+      path: qualificationArtifactPath(
+        test.info(),
+        `transaction-review-raw-${width}.png`,
+      ),
       fullPage: true,
     });
   });

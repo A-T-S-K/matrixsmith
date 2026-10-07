@@ -1,3 +1,4 @@
+import { qualificationArtifactPath } from "../helpers/qualification-paths";
 import { expect, test } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 
@@ -90,7 +91,10 @@ for (const width of [390, 1280]) {
       ),
     ).toBe(true);
     await page.screenshot({
-      path: `/tmp/microbit-offline-${width}.png`,
+      path: qualificationArtifactPath(
+        test.info(),
+        `microbit-offline-${width}.png`,
+      ),
       fullPage: true,
     });
     await page
@@ -106,7 +110,10 @@ for (const width of [390, 1280]) {
       ),
     ).toBe(true);
     await page.screenshot({
-      path: `/tmp/microbit-offline-${width}-sources.png`,
+      path: qualificationArtifactPath(
+        test.info(),
+        `microbit-offline-${width}-sources.png`,
+      ),
       fullPage: true,
     });
   });

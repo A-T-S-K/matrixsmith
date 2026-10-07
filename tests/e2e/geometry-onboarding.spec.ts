@@ -1,6 +1,6 @@
+import { qualificationArtifactPath } from "../helpers/qualification-paths";
 import AxeBuilder from "@axe-core/playwright";
 import { test, expect } from "./fixtures";
-import { mkdirSync } from "node:fs";
 import type { Page } from "@playwright/test";
 
 async function liveStore(page: Page, action: "unlock" | "import" | "return") {
@@ -28,10 +28,9 @@ async function checkLayout(page: Page, label: string, width: number) {
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
   ).toBe(true);
-  mkdirSync("/tmp/matrixsmith-geometry-review", { recursive: true });
   await page.evaluate(() => scrollTo(0, 0));
   await page.screenshot({
-    path: `/tmp/matrixsmith-geometry-review/${label}-${width}.png`,
+    path: qualificationArtifactPath(test.info(), `${label}-${width}.png`),
     fullPage: true,
   });
 }
