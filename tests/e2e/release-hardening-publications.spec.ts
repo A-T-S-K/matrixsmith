@@ -1,6 +1,5 @@
 import { test, expect } from "./fixtures";
 import type { PresentationStore } from "../../src/presentation/store";
-import type { FakeTransport } from "../../src/transport/fake";
 
 type PublicationWindow = Window & { matrixsmithStore: PresentationStore };
 
@@ -146,7 +145,7 @@ test("subscribed trace burst preserves review position, focus and preview, then 
       publications,
     };
     store.returnToLiveWorkspace();
-    (store.transport as FakeTransport).unexpectedDisconnect();
+    await store.transport.disconnect();
     return {
       ...result,
       retainedLive: store.controller === live,
