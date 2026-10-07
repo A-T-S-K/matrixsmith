@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { expect, test, type Page } from "@playwright/test";
+import type { WorkspaceStore } from "../../src/presentation/state/workspace-store";
 
 // Observe the production bootstrap at its initialization boundary without adding
 // a shipped test hook. Match the emitted operation before modifying the fixture.
@@ -17,7 +18,7 @@ async function observeWorkspace(page: Page): Promise<void> {
 }
 
 type ObservedStore = {
-  workspaceStore: { getController: () => object; getTransport: () => object };
+  workspaceStore: Pick<WorkspaceStore, "getController" | "getTransport">;
   snapshotStore: object;
   subscribe: object;
 };
@@ -34,6 +35,23 @@ function currentIdentity() {
     snapshot: store.snapshotStore,
     subscribe: store.subscribe,
     constructions: stores.length,
+  };
+}
+
+function captureSafety() {
+  const observed = window as unknown as Window & {
+    observedWorkspaces: ObservedStore[];
+    observedWriteCount: () => number;
+  };
+  const controller =
+    observed.observedWorkspaces[0]!.workspaceStore.getController();
+  return {
+    source: controller.session.source,
+    authority: controller.session.identityAuthorityRevision,
+    experimental: controller.session.experimentalTxEnabled,
+    confirmation: controller.session.confirmedPlanDigest,
+    transactions: controller.transactions.map((transaction) => transaction.id),
+    writes: observed.observedWriteCount(),
   };
 }
 
@@ -154,6 +172,42 @@ for (const failedChunk of ["DevelopView"]) {
       .getByRole("textbox", { name: "Goal / question" })
       .fill("Retain this unsaved recovery goal");
     await page.getByRole("button", { name: "Close report" }).click();
+    await page.evaluate(() => {
+      const observed = window as unknown as Window & {
+        observedWorkspaces: ObservedStore[];
+        observedWriteCount: () => number;
+      };
+      const transport =
+        observed.observedWorkspaces[0]!.workspaceStore.getTransport();
+      const write = transport.write.bind(transport);
+      let calls = 0;
+      transport.write = (...args) => {
+        calls++;
+        return write(...args);
+      };
+      observed.observedWriteCount = () => calls;
+    });
+    const safety = await page.evaluate(captureSafety);
+    expect(safety.source).toBe("imported");
+    expect(safety.experimental).toBe(false);
+    expect(safety.confirmation).toBeNull();
+    expect(safety.writes).toBe(0);
+    await page
+      .getByRole("complementary")
+      .getByRole("button", { name: /Investigate/ })
+      .click();
+    await expect(
+      page.getByRole("heading", { name: "Reopen diagnostic report" }),
+    ).toHaveCount(0);
+    await expect(page).toHaveURL(/#\/device\/investigate$/);
+    await page.getByRole("button", { name: "Device actions" }).click();
+    await page
+      .getByRole("button", { name: "Developer tools", exact: true })
+      .click();
+    await expect(
+      page.getByRole("heading", { name: "Protocol workbench unavailable" }),
+    ).toBeVisible();
+    expect(downloads).toBe(1);
     await page.unroute(chunk);
     await page
       .getByRole("button", { name: "Retry Protocol workbench", exact: true })
@@ -162,6 +216,37 @@ for (const failedChunk of ["DevelopView"]) {
       page.getByRole("navigation", { name: "Protocol workbench sections" }),
     ).toBeVisible();
     await expect(page.locator(".transaction-row").first()).toBeVisible();
+    await page.locator(".transaction-row").first().click();
+    await expect(
+      page.getByRole("heading", { name: "Transaction detail" }),
+    ).toBeVisible();
+    await page.goBack();
+    await expect(page.locator(".transaction-row").first()).toBeVisible();
+    await page.goForward();
+    await expect(
+      page.getByRole("heading", { name: "Transaction detail" }),
+    ).toBeVisible();
+    await page.getByRole("button", { name: "Return to transactions" }).click();
+    await page
+      .getByRole("complementary")
+      .getByRole("button", { name: /Investigate/ })
+      .click();
+    await expect(page).toHaveURL(/#\/device\/investigate$/);
+    await expect(
+      page.getByRole("heading", { name: "Reopen diagnostic report" }),
+    ).toHaveCount(0);
+    await page.getByRole("button", { name: "Device actions" }).click();
+    await page
+      .getByRole("button", { name: "Developer tools", exact: true })
+      .click();
+    await expect(page.locator(".transaction-row").first()).toBeVisible();
+    await page
+      .getByRole("button", { name: /back to MatrixSmith home/ })
+      .click();
+    await expect(page).toHaveURL(/#\/home$/);
+    await page.goBack();
+    await expect(page.locator(".transaction-row").first()).toBeVisible();
+    expect(await page.evaluate(captureSafety)).toEqual(safety);
     // Recovery must re-request the failed resource and preserve the existing store.
     expect(downloads).toBeGreaterThanOrEqual(2);
     expect(
