@@ -1,5 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { mkdtemp, mkdir, readFile, rm, symlink } from "node:fs/promises";
+import {
+  mkdtemp,
+  mkdir,
+  readFile,
+  realpath,
+  rm,
+  symlink,
+} from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
@@ -32,8 +39,13 @@ afterEach(async () => {
     await rm(path, { recursive: true, force: true });
 });
 async function scratch() {
-  const parent = process.env.MATRIXSMITH_QUALIFICATION_TEST_ROOT ?? tmpdir();
-  const path = await mkdtemp(resolve(parent, "qualification-test-"));
+  const parent =
+    process.env.MATRIXSMITH_QUALIFICATION_TEST_ROOT ??
+    process.env.EVIDENCE_ROOT ??
+    tmpdir();
+  const path = await realpath(
+    await mkdtemp(resolve(parent, "qualification-test-")),
+  );
   directories.push(path);
   return path;
 }
