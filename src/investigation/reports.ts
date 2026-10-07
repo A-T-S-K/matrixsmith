@@ -686,14 +686,18 @@ function physicalTimingText(
   const relevant = transactions.filter((transaction) =>
     completed.transactionIds.includes(transaction.id),
   );
+  const upload = relevant
+    .filter((transaction) => transaction.safety.persistence === "persistent")
+    .at(-1);
+  const retainedIds = new Set(relevant.map((transaction) => transaction.id));
+  const completeHistory = completed.transactionIds.every((id) =>
+    retainedIds.has(id),
+  );
   const finalWrite =
-    relevant
-      .flatMap((transaction) =>
-        transaction.packets.filter((packet) => packet.direction === "TX"),
-      )
-      .map((packet) => packet.hostAcceptedAt ?? packet.timestamp)
-      .sort()
-      .at(-1) ?? null;
+    completeHistory && upload?.hostAccepted
+      ? (upload.packets.filter((packet) => packet.direction === "TX").at(-1)
+          ?.hostAcceptedAt ?? null)
+      : null;
   const attempts = completed.attempts ?? [];
   const invalid = attempts.filter((attempt) => attempt.validity !== "valid");
   return [
@@ -718,9 +722,14 @@ function physicalTimingText(
       : []),
     "",
     "**Derived**",
-    ...(t1 !== null
+    ...(t1 !== null && finalWrite !== null
       ? [
           `- Render latency (T1 − T0): ${approximateSeconds(t1)} (exact ${formatDuration(t1)})`,
+        ]
+      : []),
+    ...(finalWrite === null
+      ? [
+          "- Render latency relative to T0 is unavailable: complete upload host-acceptance timing was not captured. A write-start timestamp or an accepted prefix does not establish the final write's acceptance.",
         ]
       : []),
     ...(t1 !== null && t2 !== null
@@ -738,7 +747,9 @@ function physicalTimingText(
     // a person watching a panel and tapping a phone; reporting them to the
     // millisecond as though a sensor caught the transition would overstate
     // what was actually measured.
-    "- Measurement basis: T0 is the final host-accepted transport write, measured automatically. T1 and T2 are human observations and carry human reaction delay — the approximate values are the honest reading, and the exact marks are retained for forensic use. Per-packet transport timing lives in the transactions/forensic appendix.",
+    finalWrite !== null
+      ? "- Measurement basis: T0 is the final host-accepted transport write, measured automatically. T1 and T2 are human observations and carry human reaction delay — the approximate values are the honest reading, and the exact marks are retained for forensic use. Per-packet transport timing lives in the transactions/forensic appendix."
+      : "- Measurement basis: T0 is unavailable. T1 and T2 are retained human observations and carry human reaction delay; they do not establish latency from an unmeasured final write. Per-packet evidence remains in the transactions/forensic appendix.",
     ...(attempts.length > 0
       ? [
           "",
@@ -1223,8 +1234,13 @@ function transactionSummaryText(
           relevantIds.includes(transaction.id),
         )
       : [];
-  if (relevant.length === 0) return "No transactions referenced.";
-  return relevant
+  if (relevantIds.length === 0) return "No transactions referenced.";
+  const retainedIds = new Set(relevant.map((transaction) => transaction.id));
+  const missing = new Set(relevantIds.filter((id) => !retainedIds.has(id)));
+  const unavailable = missing.size
+    ? `Unavailable retained history: ${missing.size} referenced transaction(s) were evicted or not supplied. Their contents and outcomes cannot be reconstructed.`
+    : null;
+  const summary = relevant
     .map((transaction) => {
       const tx = transaction.packets.filter(
         (packet) => packet.direction === "TX",
@@ -1235,6 +1251,7 @@ function transactionSummaryText(
       return `- ${transaction.startedAt} ${transaction.operation}: ${tx.length} TX / ${rx.length} RX packet(s); host=${transaction.hostAccepted}; duration ${transaction.durationMs} ms${transaction.error ? `; error=${transaction.error}` : ""} (id ${transaction.id})`;
     })
     .join("\n");
+  return [summary, unavailable].filter(Boolean).join("\n");
 }
 
 /** A few representative packets, never the full stream: announce, first data chunk, and first receipts. */
