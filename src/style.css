@@ -1451,7 +1451,8 @@ main {
   .content-editor {
     padding-bottom: 6rem;
   }
-  .primary.send {
+  .primary.send,
+  .content-editor .notice button {
     scroll-margin-bottom: 7rem;
   }
 }
