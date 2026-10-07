@@ -1,3 +1,4 @@
+import { stillTests } from "./still-tests";
 import type { CorePlan } from "../../investigation/core-plan";
 import type { DeviceProfile } from "../../core/device";
 import {
@@ -6,7 +7,10 @@ import {
   type ClaimId,
 } from "../../investigation/claims";
 import { evaluateStaticViability } from "../../investigation/static-viability";
-import { ILEDHAT_PROFILE_ID } from "../../profiles/iledhat-31ae-32x16";
+import {
+  ILEDHAT_PROFILE_ID,
+  isReviewedIledHat,
+} from "../../profiles/iledhat-31ae-32x16";
 
 /**
  * The bounded core plan for iLedHat characterization.
@@ -141,5 +145,21 @@ export const ILEDHAT_CORE_PLAN: CorePlan = {
 };
 
 export function coolLedUxCorePlan(profile: DeviceProfile): CorePlan | null {
-  return profile.id === ILEDHAT_PROFILE_ID ? ILEDHAT_CORE_PLAN : null;
+  if (isReviewedIledHat(profile)) return ILEDHAT_CORE_PLAN;
+  const tests = stillTests(profile);
+  return tests.length
+    ? {
+        id: "coolledux-still-goal",
+        profileId: profile.id,
+        title: "Verify one still-image route",
+        steps: tests.map((test, index) => ({
+          id: test.id,
+          ordinal: index + 1,
+          title: test.title,
+          purpose: test.about.question,
+          testIds: [test.id],
+          satisfiedBy: test.targetClaims,
+        })),
+      }
+    : null;
 }

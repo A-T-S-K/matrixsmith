@@ -1,0 +1,137 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "documentVersion",
+    "namespace",
+    "id",
+    "revision",
+    "implementation",
+    "label",
+    "matching",
+    "contradictions",
+    "dimensions",
+    "parameters",
+    "templates",
+    "limitations",
+    "sources"
+  ],
+  "properties": {
+    "documentVersion": {
+      "const": 1
+    },
+    "namespace": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+    },
+    "revision": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+    },
+    "implementation": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+    },
+    "label": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512
+    },
+    "matching": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "serviceUuid",
+        "characteristicUuid",
+        "requiredProperties"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "serviceUuid": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "characteristicUuid": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "requiredProperties": {
+          "const": ["read", "notify", "writeWithoutResponse"]
+        }
+      }
+    },
+    "contradictions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["companyId", "geometry"],
+      "properties": {
+        "companyId": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 65535
+        },
+        "geometry": {
+          "const": true
+        }
+      }
+    },
+    "dimensions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["width", "height"],
+      "properties": {
+        "width": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 128
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 128
+        }
+      }
+    },
+    "parameters": {
+      "const": {
+        "brightness": {
+          "min": 0,
+          "max": 255
+        }
+      }
+    },
+    "templates": {
+      "const": ["coolledux-source-v1"]
+    },
+    "limitations": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 16,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 512
+      }
+    },
+    "sources": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 16,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 512
+      }
+    }
+  }
+}

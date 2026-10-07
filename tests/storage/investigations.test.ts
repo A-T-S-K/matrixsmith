@@ -1,5 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  INVESTIGATIONS_KEY,
+  INVESTIGATION_HISTORY_BYTE_LIMIT,
   forgetInvestigationHistory,
   latestInvestigationFor,
   loadInvestigationHistory,
@@ -10,6 +12,8 @@ import {
   createInvestigation,
   recordCompletedTest,
 } from "../../src/investigation/investigation";
+import * as serialization from "../../src/investigation/serialization";
+import { readStoredInvestigationSummary } from "../../src/storage/history-summary";
 import type { KeyValueStorage } from "../../src/storage/repository";
 
 function memoryStorage(): KeyValueStorage {
@@ -62,7 +66,56 @@ function sampleInvestigation(profileId = "iledhat-31ae-32x16") {
   return investigation;
 }
 
+afterEach(() => vi.restoreAllMocks());
+
 describe("local investigation history", () => {
+  it.each([0, 1])(
+    "enforces the UTF-8 byte limit before parsing at limit + %i bytes",
+    (excess) => {
+      const storage = memoryStorage();
+      const investigation = { ...sampleInvestigation(), deviceName: "Léd 😀" };
+      expect(saveInvestigation(investigation, storage).ok).toBe(true);
+      const original = storage.getItem(INVESTIGATIONS_KEY)!;
+      const padded =
+        original +
+        " ".repeat(
+          INVESTIGATION_HISTORY_BYTE_LIMIT -
+            new TextEncoder().encode(original).byteLength +
+            excess,
+        );
+      expect(new TextEncoder().encode(padded).byteLength).toBe(
+        INVESTIGATION_HISTORY_BYTE_LIMIT + excess,
+      );
+      // Trailing whitespace is valid JSON; the Unicode name also distinguishes bytes from string length.
+      expect(padded.length).toBeLessThanOrEqual(
+        INVESTIGATION_HISTORY_BYTE_LIMIT,
+      );
+      expect(JSON.parse(padded).investigations[0].investigation.id).toBe(
+        investigation.id,
+      );
+      storage.setItem(INVESTIGATIONS_KEY, padded);
+      const parse = vi.spyOn(JSON, "parse");
+      const sanitize = vi.spyOn(serialization, "sanitizeInvestigation");
+      const history = loadInvestigationHistory(storage);
+      expect(parse).toHaveBeenCalledTimes(excess ? 0 : 1);
+      expect(sanitize).toHaveBeenCalledTimes(excess ? 0 : 1);
+      if (excess) {
+        expect(history).toEqual([]);
+        expect(latestInvestigationFor(null, storage)).toBeNull();
+        expect(readStoredInvestigationSummary(storage)).toBeNull();
+        expect(parse.mock.calls.length).toBe(0);
+        expect(sanitize.mock.calls.length).toBe(0);
+      } else {
+        expect(history).toHaveLength(1);
+        const historical = toHistoricalInvestigation(history[0]!.investigation);
+        expect(historical.claimEvidence).toHaveLength(1);
+        expect(historical.claimEvidence[0]!.scope).toBe(
+          "previous-local-session",
+        );
+      }
+      expect(storage.getItem(INVESTIGATIONS_KEY)).toBe(padded);
+    },
+  );
   it("persists and reloads investigations", () => {
     const storage = memoryStorage();
     const investigation = sampleInvestigation();

@@ -1,9 +1,10 @@
+import { normalizeUuid } from "../../core/device";
 import type { TransmissionAuthorization } from "../../app/transmission-authorization";
 import type { DeviceFingerprint } from "../../core/device";
 import type { GattEndpoint } from "../../core/device";
 import type { TargetBinding } from "../../core/transmission";
 import type { MatrixDriver } from "../../drivers/types";
-import { packetHex } from "../../core/transmission";
+import { definitionDigest, packetHex } from "../../core/transmission";
 import { transactionId } from "../../diagnostics/transactions";
 import { fingerprintIdentityKey } from "../../investigation/device-identity";
 import {
@@ -31,7 +32,10 @@ import type { ProtocolEvidenceService } from "./protocol-evidence-service";
 interface Ports {
   identification(): Pick<
     IdentificationService,
-    "getRegistry" | "applyFingerprint" | "deviceTarget"
+    | "getRegistry"
+    | "applyFingerprint"
+    | "deviceTarget"
+    | "reconcileAdvertisement"
   >;
   investigation(): Pick<
     InvestigationService,
@@ -52,6 +56,7 @@ export class ConnectionService {
     string,
     () => Promise<void>
   >();
+  private readonly _notificationStarts = new Map<string, Promise<void>>();
   private readonly _desiredNotificationEndpoints = new Map<
     string,
     GattEndpoint
@@ -61,7 +66,17 @@ export class ConnectionService {
   private _connectionState: ApplicationConnectionState =
     INITIAL_CONNECTION_STATE;
   private _connectionEpoch = 0;
+  private _lifetimeGeneration = 0;
   private readonly transport: MatrixTransport;
+  private readonly pendingReads = new Map<object, number>();
+  get pendingGattOperation(): boolean {
+    return (
+      this._notificationStarts.size > 0 ||
+      [...this.pendingReads.values()].some(
+        (generation) => generation === this._lifetimeGeneration,
+      )
+    );
+  }
   private disposed = false;
   private disposal: Promise<void> | null = null;
   private unsubscribeTransport: (() => void) | undefined;
@@ -105,6 +120,12 @@ export class ConnectionService {
   setConnectionEpoch(value: ConnectionService["_connectionEpoch"]): void {
     this._connectionEpoch = value;
   }
+  getConnectionGeneration() {
+    return this._lifetimeGeneration;
+  }
+  getIdentityAuthorityRevision(): number {
+    return this.session.identityAuthorityRevision;
+  }
   getConnectionEpoch() {
     return this._connectionEpoch;
   }
@@ -113,6 +134,13 @@ export class ConnectionService {
     serviceHints: readonly BluetoothServiceUUID[] = [],
   ): Promise<DeviceFingerprint> {
     if (this.disposed) throw new Error("This workspace has been disposed.");
+    if (this.transport.state !== "idle" && this.transport.state !== "error")
+      throw new Error(
+        `Cannot connect while transport is ${this.transport.state}.`,
+      );
+    const epoch = ++this._lifetimeGeneration;
+    this._notificationSubscriptions.clear();
+    this._notificationStarts.clear();
     this._connectionState = transitionConnection(this._connectionState, {
       type: "SELECT",
       mode,
@@ -129,6 +157,7 @@ export class ConnectionService {
         serviceHints,
       });
     } catch (error) {
+      if (epoch !== this._lifetimeGeneration) throw error;
       this._connectionState = recoverConnection(
         transitionConnection(this._connectionState, {
           type: "FAILED",
@@ -142,13 +171,30 @@ export class ConnectionService {
       );
       throw error;
     }
+    if (epoch !== this._lifetimeGeneration)
+      throw new Error("The connection attempt was retired.");
     if (this.disposed) {
       await this.transport.disconnect();
       throw new Error("This workspace was disposed while connecting.");
     }
     this.session.clearConnection();
-    this.patchSession({ source: "live" });
-    this.ports.identification().applyFingerprint(fingerprint, "live");
+    if (!this.transport.connectionId)
+      throw new Error("Connected transport has no generation identity.");
+    const source = this.transport.kind === "replay" ? "replay" : "live";
+    const router = this.ports.protocolEvidence().getNotificationRouter();
+    if (source === "live")
+      router.beginConnection({
+        connectionId: this.transport.connectionId,
+        generation: epoch,
+      });
+    else router.reset();
+    this.patchSession({ source });
+    this.ports.identification().applyFingerprint(fingerprint, source);
+    // Profile-free connections still establish a routable live workspace.
+    this.ports
+      .protocolEvidence()
+      .getTrace()
+      .record("gatt.connected", { generation: epoch, source });
     const target = this.ports.identification().deviceTarget();
     if (target)
       this._connectionState = transitionConnection(this._connectionState, {
@@ -158,6 +204,10 @@ export class ConnectionService {
       });
     this._enrichAdvertisementEvidence();
     await this._restoreNotificationSubscriptions();
+    if (epoch !== this._lifetimeGeneration)
+      throw new Error(
+        "The connection attempt was retired during notification restoration.",
+      );
     return fingerprint;
   }
   async reconnectAuthorized(deviceId: string): Promise<DeviceFingerprint> {
@@ -166,6 +216,13 @@ export class ConnectionService {
       throw new Error(
         "This transport cannot reconnect without the device chooser.",
       );
+    if (this.transport.state !== "idle" && this.transport.state !== "error")
+      throw new Error(
+        `Cannot connect while transport is ${this.transport.state}.`,
+      );
+    const epoch = ++this._lifetimeGeneration;
+    this._notificationSubscriptions.clear();
+    this._notificationStarts.clear();
     this._connectionState = transitionConnection(this._connectionState, {
       type: "SELECT",
       mode: "registered",
@@ -178,13 +235,30 @@ export class ConnectionService {
       mode: "registered",
       hints: this.ports.identification().getRegistry().discoveryHints(),
     });
+    if (epoch !== this._lifetimeGeneration)
+      throw new Error("The connection attempt was retired.");
     if (this.disposed) {
       await this.transport.disconnect();
       throw new Error("This workspace was disposed while connecting.");
     }
     this.session.clearConnection();
-    this.patchSession({ source: "live" });
-    this.ports.identification().applyFingerprint(fingerprint, "live");
+    if (!this.transport.connectionId)
+      throw new Error("Connected transport has no generation identity.");
+    const source = this.transport.kind === "replay" ? "replay" : "live";
+    const router = this.ports.protocolEvidence().getNotificationRouter();
+    if (source === "live")
+      router.beginConnection({
+        connectionId: this.transport.connectionId,
+        generation: epoch,
+      });
+    else router.reset();
+    this.patchSession({ source });
+    this.ports.identification().applyFingerprint(fingerprint, source);
+    // Profile-free connections still establish a routable live workspace.
+    this.ports
+      .protocolEvidence()
+      .getTrace()
+      .record("gatt.connected", { generation: epoch, source });
     const target = this.ports.identification().deviceTarget();
     if (target)
       this._connectionState = transitionConnection(this._connectionState, {
@@ -194,6 +268,10 @@ export class ConnectionService {
       });
     this._enrichAdvertisementEvidence();
     await this._restoreNotificationSubscriptions();
+    if (epoch !== this._lifetimeGeneration)
+      throw new Error(
+        "The connection attempt was retired during notification restoration.",
+      );
     return fingerprint;
   }
   _enrichAdvertisementEvidence(): void {
@@ -201,19 +279,32 @@ export class ConnectionService {
     if (!observe) return;
     const connectionId = this.transport.connectionId;
     const browserDeviceId = this.transport.fingerprint?.browserDeviceId ?? null;
+    const generation = this._lifetimeGeneration;
     void observe()
       .then((observation) => {
         if (this.disposed || !observation) return;
         if (
           !connectionId ||
+          generation !== this._lifetimeGeneration ||
+          this.transport.state !== "connected" ||
           this.transport.connectionId !== connectionId ||
           (this.transport.fingerprint?.browserDeviceId ?? null) !==
             browserDeviceId
         )
           return;
-        const updated = this.transport.fingerprint;
-        if (updated && this.session.source === "live")
-          this.patchSession({ fingerprint: updated });
+        if (
+          this.session.source !== "live" ||
+          !this.session.fingerprint ||
+          (this.session.fingerprint.browserDeviceId ?? null) !== browserDeviceId
+        )
+          return;
+        const withdrawn = this.ports
+          .identification()
+          .reconcileAdvertisement(observation);
+        if (withdrawn) this.ports.investigation().setStagedPanelProgram(null);
+        const target = this.ports.identification().deviceTarget();
+        if (target && this._connectionState.value === "connected")
+          this._connectionState = { ...this._connectionState, target };
       })
       .catch(() => undefined);
   }
@@ -231,16 +322,18 @@ export class ConnectionService {
       type: "DISCONNECT",
     });
     try {
-      await Promise.all(
-        [...this._notificationSubscriptions.values()].map((unsubscribe) =>
-          unsubscribe().catch(() => undefined),
-        ),
-      );
+      const epoch = ++this._lifetimeGeneration;
+      const subscriptions = [...this._notificationSubscriptions.values()];
       this._notificationSubscriptions.clear();
+      this._notificationStarts.clear();
+      // Local invalidation is immediate; an obsolete browser stop may never settle.
+      for (const unsubscribe of subscriptions)
+        void unsubscribe().catch(() => undefined);
       this._desiredNotificationEndpoints.clear();
       this.ports.protocolEvidence().getNotificationRouter().reset();
-      await this.transport.disconnect();
       this.session.clearConnection();
+      await this.transport.disconnect();
+      if (epoch !== this._lifetimeGeneration) return;
       this._connectionState = transitionConnection(this._connectionState, {
         type: "DISCONNECTED",
         unexpected: false,
@@ -249,22 +342,43 @@ export class ConnectionService {
       this._explicitDisconnect = false;
     }
   }
-  async read(endpoint: GattEndpoint): Promise<Uint8Array> {
+  async read(
+    endpoint: GattEndpoint,
+    reviewed?: {
+      readonly transactionId: string;
+      readonly driverId: string;
+      readonly findings: readonly string[];
+    },
+  ): Promise<Uint8Array> {
     if (this.disposed) throw new Error("This workspace has been disposed.");
+    // Capture before browser work: a late result belongs to the original session.
+    endpoint = { ...endpoint };
+    const sessionSource = this.session.source;
+    const driverId =
+      reviewed?.driverId ?? this.session.selection?.selected?.id ?? null;
+    const profileId = this.session.profile?.id ?? null;
+    const id = reviewed?.transactionId ?? transactionId("read");
+    const context = [
+      `Original connection: ${this.transport.connectionId}; generation: ${this._lifetimeGeneration}.`,
+      `Original target: ${this.session.fingerprint ? definitionDigest({ connection: this.transport.connectionId, fingerprint: fingerprintIdentityKey(this.session.fingerprint) }) : "none"}.`,
+      ...(reviewed?.findings ?? []),
+    ];
     const startedAt = new Date().toISOString();
+    const readOwner = {};
+    this.pendingReads.set(readOwner, this._lifetimeGeneration);
     try {
       const bytes = await this.transport.read(endpoint);
       const completedAt = new Date().toISOString();
       this.ports.protocolEvidence().editTransactions((value) =>
         value.push({
-          id: transactionId("read"),
+          id,
           startedAt,
           completedAt,
           durationMs: duration(startedAt, completedAt),
-          sessionSource: this.session.source,
+          sessionSource,
           source: "gatt-read",
-          driverId: this.session.selection?.selected?.id ?? null,
-          profileId: this.session.profile?.id ?? null,
+          driverId,
+          profileId,
           operation: "GATT Read",
           safety: {
             risk: "read-only",
@@ -276,7 +390,7 @@ export class ConnectionService {
             {
               timestamp: completedAt,
               direction: "RX",
-              hex: packetHex(bytes),
+              hex: packetHex(bytes.subarray(0, 512)),
               endpoint,
             },
           ],
@@ -286,7 +400,11 @@ export class ConnectionService {
           deviceStateVerified: false,
           responseTimedOut: false,
           error: null,
-          findings: ["Characteristic read completed; raw bytes preserved."],
+          findings: [
+            ...context,
+            `Characteristic read completed; received ${bytes.length} bytes. Evidence capped at 512 bytes.`,
+            "Read value received; physical appearance unconfirmed.",
+          ],
           observationIds: [],
           diagnosticRunId: null,
         }),
@@ -297,14 +415,14 @@ export class ConnectionService {
       const completedAt = new Date().toISOString();
       this.ports.protocolEvidence().editTransactions((value) =>
         value.push({
-          id: transactionId("read"),
+          id,
           startedAt,
           completedAt,
           durationMs: duration(startedAt, completedAt),
-          sessionSource: this.session.source,
+          sessionSource,
           source: "gatt-read",
-          driverId: this.session.selection?.selected?.id ?? null,
-          profileId: this.session.profile?.id ?? null,
+          driverId,
+          profileId,
           operation: "GATT Read",
           safety: {
             risk: "read-only",
@@ -319,37 +437,76 @@ export class ConnectionService {
           deviceStateVerified: false,
           responseTimedOut: false,
           error: errorMessage(error),
-          findings: [],
+          findings: [
+            ...context,
+            "Failure stage: GATT read. Browser error does not identify pairing/security cause or protocol support.",
+          ],
           observationIds: [],
           diagnosticRunId: null,
         }),
       );
       this.ports.protocolEvidence()._trimTransactions();
       throw error;
+    } finally {
+      this.pendingReads.delete(readOwner);
     }
   }
+  isNotificationActive(endpoint: GattEndpoint): boolean {
+    return (
+      this.session.source === "live" &&
+      this.transport.state === "connected" &&
+      this._notificationSubscriptions.has(notificationKey(endpoint))
+    );
+  }
   async enableNotifications(endpoint: GattEndpoint): Promise<void> {
-    const key = `${endpoint.serviceUuid.toLowerCase()}/${endpoint.characteristicUuid.toLowerCase()}`;
+    if (this.disposed) throw new Error("This workspace has been disposed.");
+    endpoint = {
+      serviceUuid: normalizeUuid(endpoint.serviceUuid),
+      characteristicUuid: normalizeUuid(endpoint.characteristicUuid),
+    };
+    const key = notificationKey(endpoint);
     this._desiredNotificationEndpoints.set(key, endpoint);
-    if (this._notificationSubscriptions.has(key)) return;
+    if (this.isNotificationActive(endpoint)) return;
+    const existing = this._notificationStarts.get(key);
+    if (existing) return existing;
     const connectionId = this.transport.connectionId;
-    const unsubscribe = await this.transport.subscribe(endpoint, (packet) => {
-      if (connectionId && this.transport.connectionId === connectionId)
-        this.ports.protocolEvidence()._recordIncoming(packet, true, endpoint);
-    });
-    if (
-      !connectionId ||
-      this.transport.connectionId !== connectionId ||
-      this.transport.state !== "connected"
-    ) {
-      await unsubscribe().catch(() => undefined);
-      return;
+    const epoch = this._lifetimeGeneration;
+    const current = () =>
+      epoch === this._lifetimeGeneration &&
+      !!connectionId &&
+      connectionId === this.transport.connectionId &&
+      this.transport.state === "connected" &&
+      !this.disposed;
+    const startup = (async () => {
+      const unsubscribe = await this.transport.subscribe(endpoint, (packet) => {
+        if (current())
+          this.ports
+            .protocolEvidence()
+            ._recordIncoming(packet, true, endpoint, undefined, {
+              connectionId: connectionId!,
+              generation: epoch,
+            });
+      });
+      if (!current()) {
+        void unsubscribe().catch(() => undefined);
+        throw new Error(
+          "Notification startup belonged to a retired connection.",
+        );
+      }
+      this._notificationSubscriptions.set(key, unsubscribe);
+    })();
+    this._notificationStarts.set(key, startup);
+    try {
+      await startup;
+    } finally {
+      if (this._notificationStarts.get(key) === startup)
+        this._notificationStarts.delete(key);
     }
-    this._notificationSubscriptions.set(key, unsubscribe);
   }
   async enableDriverNotifications(
     driver = this.session.selection?.selected ?? null,
   ): Promise<void> {
+    const epoch = this._lifetimeGeneration;
     const fingerprint = this.session.fingerprint;
     if (!fingerprint) throw new Error("No fingerprint is connected.");
     const drivers = driver
@@ -371,19 +528,28 @@ export class ConnectionService {
         : candidateEndpoints(fingerprint).filter((endpoint) =>
             endpointNotifies(fingerprint, endpoint),
           );
-      for (const endpoint of available)
+      for (const endpoint of available) {
+        if (!endpointNotifies(fingerprint, endpoint)) continue;
         endpoints.set(
           `${endpoint.serviceUuid}/${endpoint.characteristicUuid}`,
           endpoint,
         );
+      }
     }
-    for (const endpoint of endpoints.values())
+    for (const endpoint of endpoints.values()) {
+      if (epoch !== this._lifetimeGeneration)
+        throw new Error("The notification connection was retired.");
       await this.enableNotifications(endpoint);
+    }
   }
   async _restoreNotificationSubscriptions(): Promise<void> {
     if (this.transport.state !== "connected") return;
-    for (const endpoint of this._desiredNotificationEndpoints.values())
+    const epoch = this._lifetimeGeneration;
+    for (const endpoint of this._desiredNotificationEndpoints.values()) {
+      if (epoch !== this._lifetimeGeneration)
+        throw new Error("The notification connection was retired.");
       await this.enableNotifications(endpoint);
+    }
   }
   _handleTransportState(
     state: import("../ports/transport").ConnectionState,
@@ -397,6 +563,7 @@ export class ConnectionService {
     )
       return;
     this._notificationSubscriptions.clear();
+    this._notificationStarts.clear();
     this.ports
       .protocolEvidence()
       .getNotificationRouter()
@@ -413,6 +580,7 @@ export class ConnectionService {
       unexpected: true,
     });
     this._connectionEpoch += 1;
+    this._lifetimeGeneration += 1;
     this.ports
       .protocolEvidence()
       .getTrace()
@@ -421,12 +589,21 @@ export class ConnectionService {
       });
   }
   _currentTargetBinding(): TargetBinding | null {
-    const fingerprint = this.transport.fingerprint;
+    const fingerprint = this.session.fingerprint;
     const connectionId = this.transport.connectionId;
-    if (!fingerprint || !connectionId) return null;
+    if (
+      this.session.source !== "live" ||
+      !this.session.fingerprint ||
+      !fingerprint ||
+      !connectionId
+    )
+      return null;
     return {
       connectionId,
-      fingerprintKey: fingerprintIdentityKey(fingerprint),
+      // Advertisement enrichment changes observations on the same connection.
+      // Executable trust changes only through reconciliation's authority revision;
+      // geometry has its own revision. Keep harmless enrichment from retiring work.
+      fingerprintKey: `${fingerprintIdentityKey({ ...fingerprint, advertisementObservation: undefined })}|geometry-revision:${this.session.geometryRevision}|identity-authority-revision:${this.session.identityAuthorityRevision}`,
       browserDeviceId: fingerprint.browserDeviceId ?? null,
     };
   }
@@ -441,4 +618,8 @@ export class ConnectionService {
   get connectionState(): ApplicationConnectionState {
     return this._connectionState;
   }
+}
+
+function notificationKey(endpoint: GattEndpoint): string {
+  return `${normalizeUuid(endpoint.serviceUuid)}/${normalizeUuid(endpoint.characteristicUuid)}`;
 }

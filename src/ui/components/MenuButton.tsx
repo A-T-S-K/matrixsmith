@@ -60,6 +60,7 @@ export function MenuButton({
               type="button"
               class={item.destructive ? "destructive" : undefined}
               onClick={() => {
+                buttonRef.current?.focus();
                 setOpen(false);
                 item.onSelect();
               }}

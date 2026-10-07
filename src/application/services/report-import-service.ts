@@ -3,7 +3,9 @@ import type { ManualObservation } from "../../core/evidence";
 import {
   createDiagnosticBundle,
   notificationPacketsFromBundle,
-  parseDiagnosticBundle,
+  prepareDiagnosticBundleImport,
+  readPreparedDiagnosticBundle,
+  type PreparedDiagnosticBundleImport,
   serializeDiagnosticBundle,
   type BundlePrivacy,
   type DiagnosticBundle,
@@ -54,6 +56,7 @@ interface Ports {
     ProtocolEvidenceService,
     | "getContentCompilations"
     | "getTransactions"
+    | "getNotificationRouter"
     | "_notificationDecoder"
     | "getObservations"
     | "editObservations"
@@ -80,6 +83,8 @@ export class ReportImportService {
   _deviceReportContext(): import("../../investigation/reports").DeviceReportContext {
     const session = this.ports.connection().getSession();
     return {
+      privacyContext:
+        this.ports.investigation().getInvestigation() ?? undefined,
       fingerprint: session.fingerprint,
       profile: session.profile,
       matrixsmithVersion: MATRIXSMITH_VERSION,
@@ -88,7 +93,7 @@ export class ReportImportService {
         this.ports.connection().getTransport().state === "connected",
     };
   }
-  testReportMarkdown(testId: string): string {
+  testReportMarkdown(testId: string, includeIdentifiers = false): string {
     const investigation = this.ports.investigation().getInvestigation();
     const completed = [...(investigation?.completedTests ?? [])]
       .reverse()
@@ -109,62 +114,73 @@ export class ReportImportService {
             record.transactionId !== undefined &&
             completed.transactionIds.includes(record.transactionId),
         ) ?? null;
-    return generateTestReport({
-      device: this._deviceReportContext(),
-      test,
-      completed,
-      priorEvidence,
-      why: test.about.whyRelevant,
-      transactions: this.ports.protocolEvidence().getTransactions(),
-      compilation,
-      decoder: this.ports.protocolEvidence()._notificationDecoder(),
-      nextRecommendation:
-        this.ports.guidedTestCatalog().recommendations()[0] ?? null,
-      regions: this.ports.guidedTestCatalog().guidedTestRegions(testId),
-    });
+    return generateTestReport(
+      {
+        device: this._deviceReportContext(),
+        test,
+        completed,
+        priorEvidence,
+        why: test.about.whyRelevant,
+        transactions: this.ports.protocolEvidence().getTransactions(),
+        compilation,
+        decoder: this.ports.protocolEvidence()._notificationDecoder(),
+        nextRecommendation:
+          this.ports.guidedTestCatalog().recommendations()[0] ?? null,
+        regions: this.ports.guidedTestCatalog().guidedTestRegions(testId),
+      },
+      includeIdentifiers,
+    );
   }
-  investigationReportMarkdown(): string {
+  investigationReportMarkdown(includeIdentifiers = false): string {
     const session = this.ports.connection().getSession();
-    return generateInvestigationReport({
-      device: this._deviceReportContext(),
-      investigation: this.ports.investigation().getInvestigation(),
-      baselineEvidence: this.ports.investigation().baselineClaimEvidence(),
-      tests: this.ports.guidedTestCatalog().guidedTestDefinitions(),
-      transactions: this.ports.protocolEvidence().getTransactions(),
-      compilations: this.ports.protocolEvidence().getContentCompilations(),
-      nextRecommendation:
-        this.ports.guidedTestCatalog().recommendations()[0] ?? null,
-      driverCandidates: session.selection?.matches ?? [],
-      regionsByTest: new Map(
-        this.ports
-          .guidedTestCatalog()
-          .guidedTestDefinitions()
-          .map((test) => [
-            test.id,
-            this.ports.guidedTestCatalog().guidedTestRegions(test.id),
-          ]),
-      ),
-      coreProgress: this.ports.guidedOrchestration().corePlanProgress(),
-      experiments: this.ports.investigation().orchestration.experiments,
-      transfers: this.ports.investigation().orchestration.transfers,
-      cycleDetail: this.ports.investigation().orchestration.cycleVerdict.cycling
-        ? this.ports.investigation().orchestration.cycleVerdict.detail
-        : null,
-      panelProgram: this.ports.investigation().panelProgram(),
-      liveSession:
-        session.source === "live" &&
-        this.ports.connection().getTransport().state === "connected",
-      recommendationTrail:
-        this.ports.investigation().orchestration.recommendationTrail,
-    });
+    return generateInvestigationReport(
+      {
+        device: this._deviceReportContext(),
+        investigation: this.ports.investigation().getInvestigation(),
+        baselineEvidence: this.ports.investigation().baselineClaimEvidence(),
+        tests: this.ports.guidedTestCatalog().guidedTestDefinitions(),
+        transactions: this.ports.protocolEvidence().getTransactions(),
+        compilations: this.ports.protocolEvidence().getContentCompilations(),
+        nextRecommendation:
+          this.ports.guidedTestCatalog().recommendations()[0] ?? null,
+        driverCandidates: session.selection?.matches ?? [],
+        regionsByTest: new Map(
+          this.ports
+            .guidedTestCatalog()
+            .guidedTestDefinitions()
+            .map((test) => [
+              test.id,
+              this.ports.guidedTestCatalog().guidedTestRegions(test.id),
+            ]),
+        ),
+        coreProgress: this.ports.guidedOrchestration().corePlanProgress(),
+        experiments: this.ports.investigation().orchestration.experiments,
+        transfers: this.ports.investigation().orchestration.transfers,
+        cycleDetail: this.ports.investigation().orchestration.cycleVerdict
+          .cycling
+          ? this.ports.investigation().orchestration.cycleVerdict.detail
+          : null,
+        panelProgram: this.ports.investigation().panelProgram(),
+        liveSession:
+          session.source === "live" &&
+          this.ports.connection().getTransport().state === "connected",
+        recommendationTrail:
+          this.ports.investigation().orchestration.recommendationTrail,
+      },
+      includeIdentifiers,
+    );
   }
-  forensicReportMarkdown(): string {
-    return generateForensicAppendix({
-      base: this.investigationReportMarkdown(),
-      transactions: this.ports.protocolEvidence().getTransactions(),
-      decoder: this.ports.protocolEvidence()._notificationDecoder(),
-      compilations: this.ports.protocolEvidence().getContentCompilations(),
-    });
+  forensicReportMarkdown(includeIdentifiers = false): string {
+    return generateForensicAppendix(
+      {
+        device: this._deviceReportContext(),
+        base: this.investigationReportMarkdown(includeIdentifiers),
+        transactions: this.ports.protocolEvidence().getTransactions(),
+        decoder: this.ports.protocolEvidence()._notificationDecoder(),
+        compilations: this.ports.protocolEvidence().getContentCompilations(),
+      },
+      includeIdentifiers,
+    );
   }
   recordObservation(
     summary: string,
@@ -195,8 +211,14 @@ export class ReportImportService {
     const bundle = createDiagnosticBundle({
       fingerprint,
       driverMatches: session.selection?.matches ?? [],
-      selectedDriver: driver?.id ?? null,
+      selectedDriver:
+        driver?.id ??
+        (session.source === "imported" ? profile?.driverId : null) ??
+        null,
       selectedProfile: profile?.id ?? null,
+      ...(profile?.id.startsWith("provisional:")
+        ? { provisionalProfile: profile }
+        : {}),
       capabilities: driver && profile ? driver.capabilities(profile) : [],
       trace: this.ports.protocolEvidence().getTrace().events,
       observations: this.ports.protocolEvidence().getObservations(),
@@ -216,22 +238,100 @@ export class ReportImportService {
     return serializeDiagnosticBundle(bundle);
   }
   importBundle(json: string): DiagnosticBundle {
+    return this.adoptPreparedBundle(prepareDiagnosticBundleImport(json));
+  }
+  adoptPreparedBundle(
+    prepared: PreparedDiagnosticBundleImport,
+  ): DiagnosticBundle {
+    const bundle = readPreparedDiagnosticBundle(prepared);
+    // Own only the data populated into editable runtime collections. The immutable
+    // source can safely be reused without another parse, validation or whole-bundle copy.
+    const fingerprint = structuredClone(bundle.fingerprint);
+    const profile = bundle.provisionalProfile
+      ? structuredClone(bundle.provisionalProfile)
+      : null;
+    const observations = structuredClone(bundle.observations);
+    const transactions = structuredClone(bundle.transactions ?? []);
+    const diagnosticRuns = structuredClone(bundle.diagnosticRuns ?? []);
+    const compilations = structuredClone(bundle.contentCompilations ?? []);
+    const importedEvidence = structuredClone(bundle.importedEvidence ?? []);
+    const investigation = bundle.investigation
+      ? structuredClone(bundle.investigation)
+      : null;
     const session = this.ports.connection().getSession();
-    const bundle = parseDiagnosticBundle(json);
-    session.clearConnection();
     this.ports
-      .identification()
-      .applyFingerprint(bundle.fingerprint, "imported");
-    this.ports.protocolEvidence().getTrace().importSerialized(bundle.trace);
-    for (const packet of notificationPacketsFromBundle(bundle))
-      this.ports.protocolEvidence()._recordIncoming(packet, false, null);
+      .protocolEvidence()
+      .getNotificationRouter()
+      .reset("Live response context was retired by historical import.");
+    session.clearConnection();
+    this.ports.identification().applyFingerprint(fingerprint, "imported");
+    if (profile) {
+      const driver = this.ports
+        .identification()
+        .getRegistry()
+        .drivers.find((candidate) => candidate.id === profile.driverId);
+      this.ports.connection().patchSession({
+        profile: {
+          ...profile,
+          metadata: { ...profile.metadata, historical: true },
+        },
+      });
+      if (driver)
+        this.ports.connection().patchSession({
+          selection: this.ports
+            .identification()
+            .getRegistry()
+            .resolve(
+              driver.id,
+              fingerprint,
+              "Historical imported geometry; no live authority.",
+            ),
+          profile: {
+            ...profile,
+            metadata: { ...profile.metadata, historical: true },
+          },
+          protocolResolution: {
+            driverId: driver.id,
+            probeId: "imported-geometry",
+            summary:
+              "Historical imported family and geometry; identify again on a live connection.",
+            source: "replay",
+          },
+        });
+    }
+    this.ports
+      .protocolEvidence()
+      .getTrace()
+      // The recorder owns retained metadata and decoded bytes. Do not allocate
+      // editable copies for valid records that bulk retention will discard.
+      .importSerialized(bundle.trace);
+    const captures = bundle.trace.filter(
+      (event) =>
+        event.type === "notification.raw" && typeof event.rawHex === "string",
+    );
+    for (const [index, packet] of notificationPacketsFromBundle(
+      bundle,
+    ).entries())
+      this.ports
+        .protocolEvidence()
+        ._recordIncoming(
+          packet,
+          false,
+          null,
+          captures[index]?.timestamp as string,
+        );
+    this.ports
+      .protocolEvidence()
+      .editObservations((value) =>
+        value.splice(0, value.length, ...observations),
+      );
     this.ports
       .protocolEvidence()
       .editTransactions((value) =>
         value.splice(
           0,
           this.ports.protocolEvidence().getTransactions().length,
-          ...(bundle.transactions ?? []),
+          ...transactions,
         ),
       );
     this.ports
@@ -240,7 +340,7 @@ export class ReportImportService {
         value.splice(
           0,
           this.ports.diagnostics().getDiagnosticRuns().length,
-          ...(bundle.diagnosticRuns ?? []),
+          ...diagnosticRuns,
         ),
       );
     this.ports
@@ -249,7 +349,7 @@ export class ReportImportService {
         value.splice(
           0,
           this.ports.protocolEvidence().getContentCompilations().length,
-          ...(bundle.contentCompilations ?? []),
+          ...compilations,
         ),
       );
     this.ports
@@ -258,7 +358,7 @@ export class ReportImportService {
         value.splice(
           0,
           this.ports.protocolEvidence().getImportedEvidence().length,
-          ...(bundle.importedEvidence ?? []),
+          ...importedEvidence,
         ),
       );
     // An imported investigation is external historical evidence in its
@@ -266,11 +366,8 @@ export class ReportImportService {
     this.ports
       .investigation()
       .setInvestigation(
-        bundle.investigation
-          ? demoteInvestigationEvidence(
-              bundle.investigation,
-              "imported-external",
-            )
+        investigation
+          ? demoteInvestigationEvidence(investigation, "imported-external")
           : null,
       );
     this.ports
@@ -296,6 +393,10 @@ export class ReportImportService {
     const liveSessionActive =
       session.source === "live" && session.fingerprint !== null;
     if (!liveSessionActive) {
+      this.ports
+        .protocolEvidence()
+        .getNotificationRouter()
+        .reset("Live response context was retired by historical import.");
       session.clearConnection();
       if (evidence.fingerprint)
         this.ports

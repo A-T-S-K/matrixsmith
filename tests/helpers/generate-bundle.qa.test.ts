@@ -1,3 +1,4 @@
+import { COOLLEDX_ENDPOINT } from "../../src/drivers/coolledx/gatt";
 import { it } from "vitest";
 import { writeFileSync } from "node:fs";
 import { ApplicationRuntime } from "../../src/application/runtime";
@@ -15,6 +16,7 @@ it.runIf(Boolean(process.env.QA_BUNDLE_PATH))(
     const transport = new ScriptedCoolLedUxDevice(knownIledHatFingerprint());
     const controller = new ApplicationRuntime(transport, new TraceRecorder());
     await controller.connect();
+    transport.notificationOnWriteEndpoint = COOLLEDX_ENDPOINT;
     transport.notificationOnWrite = parseHexBytes(infoFixture.rxHex);
     await controller.probe();
     transport.notificationOnWrite = null;

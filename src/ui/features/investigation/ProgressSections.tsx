@@ -1,52 +1,222 @@
 import type { JSX } from "preact";
-import { useState } from "preact/hooks";
+
 import type {
   AppSnapshot,
   PresentationStore,
 } from "../../../presentation/store";
+function focusGeometry(id: string): void {
+  requestAnimationFrame(() => {
+    const element = document.getElementById(id);
+    element?.focus({ preventScroll: true });
+    element?.scrollIntoView({ block: "center" });
+  });
+}
+
 export function GeometrySetup({
   store,
+  snapshot,
 }: {
   store: PresentationStore;
+  snapshot: AppSnapshot;
 }): JSX.Element {
-  const [width, setWidth] = useState(32);
-  const [height, setHeight] = useState(16);
+  const { width, height, errors } = snapshot.geometryDraft;
   return (
     <section class="next-action" aria-labelledby="geometry-title">
       <p class="panel-kicker">ONE DETAIL NEEDED</p>
-      <h2 id="geometry-title">Confirm the display size</h2>
+      <h2 id="geometry-title">Establish the display size</h2>
       <p>
-        The protocol family is identified, but MatrixSmith will not inherit
-        geometry from another product profile.
+        The family is identified. Dimensions create a provisional target; they
+        do not verify a model or physical rendering.
       </p>
-      <div class="inline-form">
-        <label class="field">
-          <span>Width</span>
+      <ReportedGeometry snapshot={snapshot} store={store} />
+      <h3>Enter dimensions manually</h3>
+      <p id="geometry-help">
+        Use pixel columns for width and pixel rows for height. Check the product
+        specification, label, seller documentation, or count the LEDs. Do not
+        guess.
+      </p>
+      <form
+        class="inline-form"
+        noValidate
+        onSubmit={(event) => {
+          event.preventDefault();
+          store.submitGeometryDraft();
+          if (Object.keys(store.getSnapshot().geometryDraft.errors).length)
+            focusGeometry(
+              store.getSnapshot().geometryDraft.errors.width
+                ? "geometry-width"
+                : "geometry-height",
+            );
+          else focusGeometry("geometry-status");
+        }}
+      >
+        <label class="field" for="geometry-width">
+          <span>Width (pixels)</span>
           <input
-            type="number"
-            min="1"
-            max="512"
+            id="geometry-width"
+            type="text"
+            inputMode="numeric"
             value={width}
-            onInput={(event) => setWidth(Number(event.currentTarget.value))}
+            aria-invalid={Boolean(errors.width || errors.budget)}
+            aria-describedby={`geometry-help${errors.width ? " geometry-width-error" : ""}${errors.budget ? " geometry-budget-error" : ""}`}
+            onInput={(event) =>
+              store.updateGeometryDraft("width", event.currentTarget.value)
+            }
           />
+          {errors.width && (
+            <span id="geometry-width-error">{errors.width}</span>
+          )}
         </label>
-        <label class="field">
-          <span>Height</span>
+        <label class="field" for="geometry-height">
+          <span>Height (pixels)</span>
           <input
-            type="number"
-            min="1"
-            max="512"
+            id="geometry-height"
+            type="text"
+            inputMode="numeric"
             value={height}
-            onInput={(event) => setHeight(Number(event.currentTarget.value))}
+            aria-invalid={Boolean(errors.height || errors.budget)}
+            aria-describedby={`geometry-help${errors.height ? " geometry-height-error" : ""}${errors.budget ? " geometry-budget-error" : ""}`}
+            onInput={(event) =>
+              store.updateGeometryDraft("height", event.currentTarget.value)
+            }
           />
+          {errors.height && (
+            <span id="geometry-height-error">{errors.height}</span>
+          )}
         </label>
         <button
           class="primary"
-          onClick={() => store.confirmProvisionalGeometry(width, height)}
+          type="submit"
+          disabled={snapshot.busy !== null || !snapshot.liveConnected}
         >
-          Use {width}×{height}
+          Use these dimensions
         </button>
-      </div>
+        {errors.budget && (
+          <p id="geometry-budget-error" role="alert">
+            {errors.budget}
+          </p>
+        )}
+      </form>
+    </section>
+  );
+}
+
+export function ReportedGeometry({
+  snapshot,
+  store,
+}: {
+  snapshot: AppSnapshot;
+  store: PresentationStore;
+}): JSX.Element {
+  const proposal = snapshot.geometryProposal;
+  if (!proposal) return <></>;
+  const profile = snapshot.geometryProfile;
+  const reviewed = profile && !profile.id.startsWith("provisional:");
+  const conflict =
+    profile &&
+    (profile.width !== proposal.width || profile.height !== proposal.height);
+  return (
+    <section aria-label="Reported display size">
+      <p>
+        <strong>
+          Display reported {proposal.width}×{proposal.height} pixels.
+        </strong>
+      </p>
+      <p>
+        Source: {proposal.driverId} identification response,{" "}
+        {proposal.recordedAt}.
+      </p>
+      {reviewed ? (
+        <p>
+          {conflict
+            ? "This conflicts with reviewed profile geometry."
+            : "This agrees with reviewed profile geometry."}{" "}
+          The reviewed profile remains intact. Inspect the response in Protocol
+          workbench before drawing conclusions.
+        </p>
+      ) : (
+        <button
+          class="secondary"
+          disabled={snapshot.busy !== null}
+          onClick={() => {
+            store.useReportedGeometry(proposal.id);
+            focusGeometry("geometry-status");
+          }}
+        >
+          Use reported size
+        </button>
+      )}
+      <details>
+        <summary>Response and interpretation details</summary>
+        <p>{proposal.rationale}</p>
+        <p>
+          Transaction: {proposal.transactionId}. Connection:{" "}
+          {proposal.connectionId}.
+        </p>
+        <button onClick={() => store.setView("develop")}>
+          Open Protocol workbench
+        </button>
+      </details>
+    </section>
+  );
+}
+
+export function GeometryOutcome({
+  snapshot,
+  store,
+}: {
+  snapshot: AppSnapshot;
+  store: PresentationStore;
+}): JSX.Element {
+  const profile = snapshot.geometryProfile;
+  if (!profile?.metadata.provisional)
+    return <ReportedGeometry snapshot={snapshot} store={store} />;
+  return (
+    <section class="know-strip" aria-labelledby="geometry-status">
+      <h2 id="geometry-status" tabIndex={-1}>
+        {profile.width}×{profile.height} pixels · provisional
+      </h2>
+      <p>
+        Source:{" "}
+        {profile.metadata.geometrySource === "device-info"
+          ? "display identification response"
+          : "manual owner entry (user-confirmed)"}
+        .
+        {profile.metadata.geometryRecordedAt && (
+          <>
+            {" "}
+            Recorded {profile.metadata.geometryRecordedAt} by {profile.driverId}
+            .
+          </>
+        )}
+        {snapshot.source === "imported" && (
+          <> Historical imported geometry; no live authority.</>
+        )}
+      </p>
+      <p>
+        Reviewed model match and physical rendering remain unconfirmed. Geometry
+        grants no capability evidence, experimental permission, or content-send
+        authorization.
+      </p>
+      <ul>
+        {Object.values(snapshot.assessment.capabilities)
+          .filter((capability) =>
+            ["device-info", "brightness", "static-frame"].includes(
+              capability.id,
+            ),
+          )
+          .map((capability) => (
+            <li key={capability.id}>
+              {capability.label}: {capability.availability}. {capability.reason}
+            </li>
+          ))}
+      </ul>
+      {snapshot.source !== "imported" && (
+        <details>
+          <summary>Change dimensions</summary>
+          <GeometrySetup snapshot={snapshot} store={store} />
+        </details>
+      )}
     </section>
   );
 }
@@ -171,6 +341,8 @@ export function CoreComplete({
         {strategy ? (
           <>
             This display can show still images via <strong>{strategy}</strong>.
+            {snapshot.coreProgress?.title === "Verify one still-image route" &&
+              " Verified for this session only. Text and images remain experimental and each replacement needs exact-send confirmation. Other operations remain separately gated."}
           </>
         ) : (
           <>
@@ -181,9 +353,21 @@ export function CoreComplete({
         )}
       </p>
       <div class="next-action-cta">
-        <button class="primary" onClick={() => store.stopInvestigation()}>
-          Finish
-        </button>
+        {strategy ? (
+          <button
+            class="primary"
+            onClick={() => {
+              store.stopInvestigation();
+              store.setView("control");
+            }}
+          >
+            Create content
+          </button>
+        ) : (
+          <button class="primary" onClick={() => store.stopInvestigation()}>
+            Finish
+          </button>
+        )}
         <button
           class="secondary"
           onClick={() => void store.copyInvestigationReport()}

@@ -1,3 +1,10 @@
+import { guidedExecutionClass } from "./tests";
+import {
+  projectReportPrivacy,
+  reportPrivacyLabel,
+  REPORT_REVIEW_WARNING,
+} from "../diagnostics/report-privacy";
+import { gifProvenanceText } from "../diagnostics/content-evidence";
 import type { DeviceFingerprint, DeviceProfile } from "../core/device";
 import type { ProtocolTransaction } from "../diagnostics/transactions";
 import type { ContentCompilationRecord } from "../diagnostics/content-evidence";
@@ -52,6 +59,7 @@ import {
  */
 
 export interface DeviceReportContext {
+  readonly privacyContext?: import("../diagnostics/report-privacy").ReportPrivacyContext;
   readonly fingerprint: DeviceFingerprint | null;
   readonly profile: DeviceProfile | null;
   readonly matrixsmithVersion: string;
@@ -81,9 +89,19 @@ const SCOPE_LABEL: Readonly<Record<ClaimEvidence["scope"], string>> = {
   "source-reference": "source/reference evidence",
 };
 
-export function generateTestReport(input: TestReportInput): string {
+export function generateTestReport(
+  input: TestReportInput,
+  includeIdentifiers = false,
+): string {
+  input = projectReportPrivacy(input, includeIdentifiers);
   const { device, test, completed } = input;
-  const lines: string[] = ["# MatrixSmith Hardware Test Report", ""];
+  const lines: string[] = [
+    "# MatrixSmith Hardware Test Report",
+    "",
+    reportPrivacyLabel(includeIdentifiers),
+    REPORT_REVIEW_WARNING,
+    "",
+  ];
   const section = (title: string, body: string): void => {
     lines.push(`## ${title}`, "", body, "");
   };
@@ -214,7 +232,9 @@ export interface InvestigationReportInput {
 
 export function generateInvestigationReport(
   input: InvestigationReportInput,
+  includeIdentifiers = false,
 ): string {
+  input = projectReportPrivacy(input, includeIdentifiers);
   const { device, investigation } = input;
   const allEvidence = [
     ...input.baselineEvidence,
@@ -222,7 +242,13 @@ export function generateInvestigationReport(
   ];
   const claims = resolveClaims(allEvidence);
   const byId = new Map(claims.map((claim) => [claim.id, claim]));
-  const lines: string[] = ["# MatrixSmith Hardware Investigation Report", ""];
+  const lines: string[] = [
+    "# MatrixSmith Hardware Investigation Report",
+    "",
+    reportPrivacyLabel(includeIdentifiers),
+    REPORT_REVIEW_WARNING,
+    "",
+  ];
   const section = (title: string, body: string): void => {
     lines.push(`## ${title}`, "", body, "");
   };
@@ -267,7 +293,7 @@ export function generateInvestigationReport(
   if (input.transfers && input.transfers.length > 0)
     section(
       "Diagnostic transfer summary",
-      transferSummaryText(input.transfers),
+      transferSummaryText(input.transfers, input.transactions),
     );
   if (input.recommendationTrail && input.recommendationTrail.length > 0) {
     section(
@@ -428,6 +454,7 @@ export function generateInvestigationReport(
 }
 
 export interface ForensicReportInput {
+  readonly device?: DeviceReportContext;
   readonly base: string;
   readonly transactions: readonly ProtocolTransaction[];
   readonly decoder: NotificationDecoder | null;
@@ -435,9 +462,15 @@ export interface ForensicReportInput {
 }
 
 /** Full-detail appendix: every packet with real timestamps and timing analysis. */
-export function generateForensicAppendix(input: ForensicReportInput): string {
+export function generateForensicAppendix(
+  input: ForensicReportInput,
+  includeIdentifiers = false,
+): string {
+  input = projectReportPrivacy(input, includeIdentifiers);
   const lines: string[] = [
     "# MatrixSmith Forensic Appendix",
+    reportPrivacyLabel(includeIdentifiers),
+    REPORT_REVIEW_WARNING,
     "",
     "All packets, receipts, and measured timing. Timestamps are actual per-write times, never planned pacing.",
     "",
@@ -447,6 +480,11 @@ export function generateForensicAppendix(input: ForensicReportInput): string {
     lines.push(
       `- ${transaction.startedAt} → ${transaction.completedAt} (${transaction.durationMs} ms); host=${transaction.hostAccepted}; protocol=${String(transaction.protocolAcknowledged)}; error=${transaction.error ?? "none"}`,
     );
+    const compilation = input.compilations.find(
+      (record) => record.transactionId === transaction.id,
+    );
+    if (compilation?.originalContent === "gif")
+      lines.push(compilationText(compilation));
     const chunkCount = compilationChunkCount(
       input.compilations,
       transaction.id,
@@ -648,14 +686,18 @@ function physicalTimingText(
   const relevant = transactions.filter((transaction) =>
     completed.transactionIds.includes(transaction.id),
   );
+  const upload = relevant
+    .filter((transaction) => transaction.safety.persistence === "persistent")
+    .at(-1);
+  const retainedIds = new Set(relevant.map((transaction) => transaction.id));
+  const completeHistory = completed.transactionIds.every((id) =>
+    retainedIds.has(id),
+  );
   const finalWrite =
-    relevant
-      .flatMap((transaction) =>
-        transaction.packets.filter((packet) => packet.direction === "TX"),
-      )
-      .map((packet) => packet.hostAcceptedAt ?? packet.timestamp)
-      .sort()
-      .at(-1) ?? null;
+    completeHistory && upload?.hostAccepted
+      ? (upload.packets.filter((packet) => packet.direction === "TX").at(-1)
+          ?.hostAcceptedAt ?? null)
+      : null;
   const attempts = completed.attempts ?? [];
   const invalid = attempts.filter((attempt) => attempt.validity !== "valid");
   return [
@@ -680,9 +722,14 @@ function physicalTimingText(
       : []),
     "",
     "**Derived**",
-    ...(t1 !== null
+    ...(t1 !== null && finalWrite !== null
       ? [
           `- Render latency (T1 − T0): ${approximateSeconds(t1)} (exact ${formatDuration(t1)})`,
+        ]
+      : []),
+    ...(finalWrite === null
+      ? [
+          "- Render latency relative to T0 is unavailable: complete upload host-acceptance timing was not captured. A write-start timestamp or an accepted prefix does not establish the final write's acceptance.",
         ]
       : []),
     ...(t1 !== null && t2 !== null
@@ -700,7 +747,9 @@ function physicalTimingText(
     // a person watching a panel and tapping a phone; reporting them to the
     // millisecond as though a sensor caught the transition would overstate
     // what was actually measured.
-    "- Measurement basis: T0 is the final host-accepted transport write, measured automatically. T1 and T2 are human observations and carry human reaction delay — the approximate values are the honest reading, and the exact marks are retained for forensic use. Per-packet transport timing lives in the transactions/forensic appendix.",
+    finalWrite !== null
+      ? "- Measurement basis: T0 is the final host-accepted transport write, measured automatically. T1 and T2 are human observations and carry human reaction delay — the approximate values are the honest reading, and the exact marks are retained for forensic use. Per-packet transport timing lives in the transactions/forensic appendix."
+      : "- Measurement basis: T0 is unavailable. T1 and T2 are retained human observations and carry human reaction delay; they do not establish latency from an unmeasured final write. Per-packet evidence remains in the transactions/forensic appendix.",
     ...(attempts.length > 0
       ? [
           "",
@@ -897,9 +946,36 @@ function recommendationTrailText(
  * again, so a repeat is only flagged when its stated reason claims novelty the
  * bytes contradict.
  */
-function transferSummaryText(transfers: readonly TransferRecord[]): string {
+function transferSummaryText(
+  records: readonly TransferRecord[],
+  transactions: readonly ProtocolTransaction[],
+): string {
+  const queries = records.filter((record) => {
+    const linked = transactions.filter(({ id }) =>
+      record.transactionIds.includes(id),
+    );
+    return (
+      linked.length > 0 &&
+      linked.every(
+        ({ safety }) => guidedExecutionClass(safety) === "read-only-query",
+      )
+    );
+  });
+  const transfers = records.filter((record) => !queries.includes(record));
+  const queryLines = queries.length
+    ? [
+        `Read-only query executions: ${queries.length}. No stored program upload or physical observation is inferred.`,
+        ...queries.map(
+          (query) =>
+            `- \`${query.fingerprint.testId}\`: ${query.transactionIds.length} query transaction(s)${query.failureReason ? ` — FAILED: ${query.failureReason}` : " — execution evidence recorded"}.`,
+        ),
+        "",
+      ]
+    : [];
+  if (!transfers.length) return queryLines.join("\n");
   const summary = classifyTransfers(transfers);
   const lines: string[] = [
+    ...queryLines,
     `Total diagnostic transfers: ${summary.total}${summary.failed > 0 ? ` (${summary.failed} failed)` : ""}`,
     "",
   ];
@@ -955,6 +1031,17 @@ function deviceText(device: DeviceReportContext): string {
   return [
     `- Name: ${device.fingerprint?.name ?? "unknown"}`,
     `- Profile: ${profile ? `${profile.id} (${profile.width}×${profile.height}, driver ${profile.driverId})` : "unresolved"}`,
+    ...(profile?.metadata.provisional
+      ? [
+          `- Geometry source: ${profile.metadata.geometrySource} (provisional; ${device.liveConnected ? "current session" : "historical, non-authorizing"})`,
+          ...(profile.metadata.geometryTransactionId
+            ? [
+                `- Geometry response: ${profile.metadata.geometryTransactionId}, recorded ${profile.metadata.geometryRecordedAt}; driver ${profile.driverId}`,
+              ]
+            : []),
+          "- Geometry does not establish a reviewed model match, physical rendering or send authorization.",
+        ]
+      : []),
     `- Session: ${device.liveConnected ? "live physical connection" : "not live"}`,
     ...(profile?.quirks
       ? [
@@ -1037,11 +1124,14 @@ function gattText(fingerprint: DeviceFingerprint | null): string {
 function compilationText(record: ContentCompilationRecord | null): string {
   if (!record) return "No compiled program is associated with this test.";
   return [
+    ...gifProvenanceText(record),
     `- Program: ${record.width}×${record.height}, ${record.tileCount} tile(s) of width ${record.tileWidth}, ${record.programBytes} bytes uncompressed`,
     `- CRC32 (custom): 0x${record.crc32.toString(16).padStart(8, "0").toUpperCase()}; compressed ${record.compressedBytes} bytes (${record.compression})`,
     `- Transmission: 1 announce + ${record.chunkCount} chunk packet(s), ${record.pacingMs} ms requested pacing`,
     ...(record.frameCount !== undefined
-      ? [`- Frames: ${record.frameCount}`]
+      ? [
+          `- Frames: ${record.frameCount}${record.frameDelaysMs ? `; delays ${record.frameDelaysMs.join("/")} ms` : ""}`,
+        ]
       : []),
   ].join("\n");
 }
@@ -1144,8 +1234,13 @@ function transactionSummaryText(
           relevantIds.includes(transaction.id),
         )
       : [];
-  if (relevant.length === 0) return "No transactions referenced.";
-  return relevant
+  if (relevantIds.length === 0) return "No transactions referenced.";
+  const retainedIds = new Set(relevant.map((transaction) => transaction.id));
+  const missing = new Set(relevantIds.filter((id) => !retainedIds.has(id)));
+  const unavailable = missing.size
+    ? `Unavailable retained history: ${missing.size} referenced transaction(s) were evicted or not supplied. Their contents and outcomes cannot be reconstructed.`
+    : null;
+  const summary = relevant
     .map((transaction) => {
       const tx = transaction.packets.filter(
         (packet) => packet.direction === "TX",
@@ -1156,6 +1251,7 @@ function transactionSummaryText(
       return `- ${transaction.startedAt} ${transaction.operation}: ${tx.length} TX / ${rx.length} RX packet(s); host=${transaction.hostAccepted}; duration ${transaction.durationMs} ms${transaction.error ? `; error=${transaction.error}` : ""} (id ${transaction.id})`;
     })
     .join("\n");
+  return [summary, unavailable].filter(Boolean).join("\n");
 }
 
 /** A few representative packets, never the full stream: announce, first data chunk, and first receipts. */

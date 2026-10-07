@@ -7,6 +7,12 @@ import type { TransferWakeLock } from "../app/wake-lock";
 import type { HashRouter } from "./app/routes";
 
 export interface PresentationEnvironment {
+  createLiveWorkspace(
+    registry?: import("../drivers/registry").DriverRegistry,
+  ): {
+    controller: ApplicationRuntime;
+    transport: MatrixTransport;
+  };
   createOfflineWorkspace(fingerprint: DeviceFingerprint): {
     controller: ApplicationRuntime;
     transport: MatrixTransport;
@@ -21,7 +27,12 @@ export interface PresentationEnvironment {
   readonly bluetoothSupported: boolean;
   authorizedDevices(): Promise<readonly { id: string; name: string }[]>;
   signalTimingStart(): void;
+  onHistoryChange?(listener: () => void): () => void;
   onBack(listener: () => void): () => void;
   pushOverlay(kind: string): void;
   back(): void;
+  readonly fileActivity?: {
+    readonly active: boolean;
+    subscribe?(listener: () => void): () => void;
+  };
 }

@@ -1,3 +1,4 @@
+import { COOLLEDX_ENDPOINT } from "../../src/drivers/coolledx/gatt";
 import { describe, expect, it } from "vitest";
 import { ApplicationRuntime } from "../../src/application/runtime";
 import { claimState } from "../../src/investigation/claims";
@@ -14,6 +15,7 @@ async function connectedController(): Promise<ApplicationRuntime> {
   const transport = new ScriptedCoolLedUxDevice(knownIledHatFingerprint());
   const controller = new ApplicationRuntime(transport, new TraceRecorder());
   await controller.connect();
+  transport.notificationOnWriteEndpoint = COOLLEDX_ENDPOINT;
   transport.notificationOnWrite = parseHexBytes(infoFixture.rxHex);
   await controller.probe();
   transport.notificationOnWrite = null;

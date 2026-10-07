@@ -1,0 +1,206 @@
+import { syntheticDriver } from "../helpers/synthetic-driver";
+import { describe, expect, it } from "vitest";
+import data from "../../src/profiles/data/authored-ux-banner.json";
+import {
+  parseProfileDocument,
+  profileCompatibility,
+} from "../../src/profiles/document";
+import { acceptLocalProfile } from "../../src/profiles/registration";
+import {
+  reviewLocalProfile,
+  registryWithLocalProfile,
+} from "../../src/profiles/local-catalog";
+import { builtInDrivers, DriverRegistry } from "../../src/drivers/registry";
+import {
+  iledHat31aeProfile,
+  ILEDHAT_DOCUMENT,
+} from "../../src/profiles/iledhat-31ae-32x16";
+import { coolLedUxDriver } from "../../src/drivers/coolledux";
+import { knownIledHatFingerprint } from "../helpers/fixtures";
+import {
+  definitionDigest,
+  prepareTransmission,
+  transmissionDigest,
+} from "../../src/core/transmission";
+
+describe("bounded local profile registration", () => {
+  const parse = (value: unknown) => parseProfileDocument(JSON.stringify(value));
+  it.each(["provisional", "protocol-candidate"])(
+    "keeps reserved runtime namespace %s inspectable but rejects review and direct acceptance",
+    (namespace) => {
+      const document = parse({ ...data, namespace });
+      const registry = new DriverRegistry(builtInDrivers);
+      expect(document.namespace).toBe(namespace);
+      expect(reviewLocalProfile(document, registry).join(" ")).toContain(
+        `Runtime namespace ${namespace} is reserved`,
+      );
+      expect(() => acceptLocalProfile(document)).toThrow("reserved");
+      expect(() => registryWithLocalProfile(document, registry)).toThrow(
+        "reserved",
+      );
+      expect(registry.acceptedProfiles).toEqual([]);
+      expect(registry.drivers[1]!.profiles()).toEqual([iledHat31aeProfile]);
+    },
+  );
+  it("rejects malformed, oversized, deep, unsupported and forged documents", () => {
+    for (const text of [
+      "{",
+      " ".repeat(16385),
+      JSON.stringify({ ...data, label: "x".repeat(2049) }),
+      JSON.stringify(Array.from({ length: 514 }, () => "x")),
+      "[".repeat(9) + "0" + "]".repeat(9),
+    ])
+      expect(() => parseProfileDocument(text)).toThrow();
+    for (const extra of [
+      { opcode: 4 },
+      { validation: "verified" },
+      { trustedScopes: ["built-in-profile"] },
+      { callback: "()=>true" },
+      { origin: "built-in" },
+    ])
+      expect(() => parse({ ...data, ...extra })).toThrow();
+    expect(
+      profileCompatibility(parse({ ...data, implementation: "unknown" })),
+    ).toContain("Implementation unknown is not installed.");
+    expect(() => acceptLocalProfile(parse(ILEDHAT_DOCUMENT))).toThrow(
+      "reserved",
+    );
+  });
+  it("copies, freezes and exports accepted source-only definitions", () => {
+    const input = parse(data),
+      accepted = acceptLocalProfile(input);
+    expect(Object.isFrozen(accepted.profile.quirks?.channelMap)).toBe(true);
+    expect(accepted.document).not.toBe(input);
+    expect(() =>
+      Object.assign(accepted.document.dimensions, { width: 8 }),
+    ).toThrow();
+    expect(
+      acceptLocalProfile(parse(accepted.document)).definitionIdentity,
+    ).toBe(accepted.definitionIdentity);
+    expect(coolLedUxDriver.guidedTests?.(accepted.profile)).toEqual([]);
+    expect(
+      coolLedUxDriver
+        .capabilities(accepted.profile)
+        .find((capability) => capability.id === "device-info")
+        ?.evidenceConfidence,
+    ).toBe("inferred");
+    expect(
+      coolLedUxDriver
+        .claimEvidence?.(accepted.profile)
+        .some((e) => e.scope === "built-in-profile"),
+    ).toBe(false);
+  });
+  it("rejects duplicates atomically and preserves the original registry", () => {
+    const registry = new DriverRegistry(builtInDrivers);
+    expect(() =>
+      registryWithLocalProfile(
+        parse(data),
+        new DriverRegistry([syntheticDriver]),
+      ),
+    ).toThrow("not registered");
+    expect(
+      () => new DriverRegistry([coolLedUxDriver, coolLedUxDriver]),
+    ).toThrow("Duplicate");
+    const next = registryWithLocalProfile(parse(data), registry);
+    expect(registry.drivers[1]!.profiles()).toEqual([iledHat31aeProfile]);
+    expect(() => registryWithLocalProfile(parse(data), next)).toThrow(
+      "Duplicate",
+    );
+    expect(() =>
+      registryWithLocalProfile(
+        parse({ ...data, implementation: "unknown" }),
+        registry,
+      ),
+    ).toThrow("not installed");
+    expect(() =>
+      registryWithLocalProfile(
+        parse({ ...data, id: "duplicate-matcher", label: "Different label" }),
+        next,
+      ),
+    ).toThrow("collides");
+    expect(() =>
+      registryWithLocalProfile(
+        parse({
+          ...data,
+          id: "forged-builtin",
+          matching: { ...data.matching, name: "iledhat" },
+        }),
+        registry,
+      ),
+    ).toThrow("collides");
+    const injected = registryWithLocalProfile(
+      parse({
+        ...data,
+        contradictions: { ...data.contradictions, companyId: 65535 },
+      }),
+      new DriverRegistry([...builtInDrivers, syntheticDriver]),
+    );
+    expect(injected.drivers.map((driver) => driver.id)).toContain(
+      syntheticDriver.id,
+    );
+    expect(injected.discoveryHints().optionalManufacturerData).toContain(65535);
+    expect(Object.isFrozen(next.drivers)).toBe(true);
+  });
+  it("copied built-in identity cannot inherit assessment, tests or plan assurance", () => {
+    const forged = { ...iledHat31aeProfile };
+    expect(
+      coolLedUxDriver
+        .claimEvidence?.(forged)
+        .some((e) => e.scope === "built-in-profile"),
+    ).toBe(false);
+    expect(
+      coolLedUxDriver.guidedTests?.(forged)?.map((test) => test.id),
+    ).toEqual([
+      "coolledux-still-bootstrap",
+      "coolledux-still-channels",
+      "coolledux-still-encoder",
+    ]); // Application-owned experiments only; no inherited iLedHat suite/evidence.
+    expect(
+      coolLedUxDriver.capabilities(forged).find((c) => c.id === "brightness")
+        ?.validation,
+    ).toBe("experimental");
+    const plan = coolLedUxDriver.plan(
+      { type: "SetBrightness", raw: 64 },
+      {
+        profile: forged,
+        fingerprint: knownIledHatFingerprint(),
+        source: "live",
+      },
+    );
+    expect(plan.validation).toBe("experimental");
+  });
+  it("definition provenance is part of the protected digest", () => {
+    const raw = coolLedUxDriver.plan(
+      { type: "GetDeviceInfo" },
+      {
+        profile: iledHat31aeProfile,
+        fingerprint: knownIledHatFingerprint(),
+        source: "live",
+      },
+    );
+    const binding = {
+      connectionId: "test",
+      fingerprintKey: "test",
+      browserDeviceId: null,
+    };
+    const prepared = prepareTransmission(
+      {
+        ...raw,
+        metadata: {
+          ...raw.metadata,
+          definitionIdentity: definitionDigest(ILEDHAT_DOCUMENT),
+        },
+      },
+      binding,
+    );
+    expect(
+      transmissionDigest(
+        {
+          ...prepared,
+          metadata: { ...prepared.metadata, definitionIdentity: "replaced" },
+        },
+        binding,
+      ),
+    ).not.toBe(prepared.digest);
+  });
+});

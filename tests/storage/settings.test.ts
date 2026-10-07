@@ -66,3 +66,18 @@ describe("content settings persistence", () => {
     );
   });
 });
+
+it("recovers over-cap saved text to defaults rather than truncating it", () => {
+  const storage = memoryStorage();
+  storage.setItem(
+    "matrixsmith:v2:content-settings",
+    JSON.stringify({ ...DEFAULT_CONTENT_SETTINGS, text: "X".repeat(513) }),
+  );
+  expect(loadContentSettings(storage)).toEqual(DEFAULT_CONTENT_SETTINGS);
+  expect(
+    saveContentSettings(
+      { ...DEFAULT_CONTENT_SETTINGS, text: "X".repeat(513) },
+      storage,
+    ).ok,
+  ).toBe(false);
+});

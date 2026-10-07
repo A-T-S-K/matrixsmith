@@ -38,6 +38,11 @@ it("retains a live connection across offline reports and retires replaced worksp
   const disposeSecond = vi.spyOn(second, "dispose");
   store.returnToLiveWorkspace();
   expect(store.controller).toBe(runtime);
+  expect(disposeSecond).not.toHaveBeenCalled();
+  store.returnToOfflineWorkspace();
+  expect(store.controller).toBe(second);
+  store.returnToLiveWorkspace();
+  store.closeOfflineWorkspace();
   expect(disposeSecond).toHaveBeenCalledOnce();
   expect(transport.state).toBe("connected");
   const changed = vi.fn();

@@ -5,14 +5,15 @@ import {
   symlinkSync,
   readFileSync,
   writeFileSync,
-  rmSync,
   statSync,
 } from "node:fs";
-import { tmpdir } from "node:os";
 import { join, resolve, extname, sep } from "node:path";
 import { execFileSync } from "node:child_process";
+import { prepareQualificationRun } from "../tests/helpers/qualification-paths.ts";
 
-const temporary = mkdtempSync(join(tmpdir(), "matrixsmith-release-tests-"));
+const run = prepareQualificationRun();
+const temporary = mkdtempSync(join(run.root, "release-fixtures-"));
+console.log(`Production qualification fixtures: ${temporary}`);
 const source = join(temporary, "source");
 for (const path of [
   "src",
@@ -104,8 +105,19 @@ const server = createServer((request, response) => {
   }
   try {
     if (!statSync(path).isFile()) throw new Error("Not a file");
+    // Exercise the production policy from this exact build as well as its
+    // HTML meta policy; Pages applies the global section to every response.
+    const globalHeaders = readFileSync(join(root, "_headers"), "utf8")
+      .split(/\n\s*\n/)[0]
+      .split("\n")
+      .slice(1)
+      .map((line) => line.trim().split(/:\s(.*)/s))
+      .filter(([name, value]) => name && value);
     response
       .writeHead(200, {
+        ...Object.fromEntries(
+          globalHeaders.map(([name, value]) => [name, value]),
+        ),
         "Content-Type": types[extname(path)] ?? "application/octet-stream",
         "Cache-Control": "no-store",
       })
@@ -114,16 +126,14 @@ const server = createServer((request, response) => {
     response.writeHead(404).end();
   }
 });
-server.listen(4174, "127.0.0.1");
+server.listen(Number(process.env.MATRIXSMITH_TEST_PORT ?? 4174), "127.0.0.1");
 const close = () =>
   server.close(() => {
-    rmSync(temporary, { recursive: true, force: true });
     process.exit(0);
   });
 process.on("SIGTERM", close);
 process.on("SIGINT", close);
 server.on("error", (error) => {
   console.error(error);
-  rmSync(temporary, { recursive: true, force: true });
   process.exit(1);
 });

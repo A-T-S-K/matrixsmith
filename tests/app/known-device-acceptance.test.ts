@@ -76,15 +76,18 @@ describe("a fresh session on the known iLedHat is immediately usable", () => {
     expect(controller.profileReady()).toBe(true);
   });
 
-  it("opens the image, text and animation gates from shipped evidence", async () => {
+  it("opens the image, text, animation and local GIF gates from shipped evidence", async () => {
     const { controller } = await freshKnownDevice();
     expect(controller.contentGate("image").allowed).toBe(true);
     expect(controller.contentGate("text").allowed).toBe(true);
     expect(controller.contentGate("animation").allowed).toBe(true);
-    // GIF depends on a decoder this panel has never been observed running.
-    expect(controller.contentGate("gif").allowed).toBe(false);
-    expect(controller.contentGate("gif").missingClaims).toContain(
+    // Local GIF conversion uses animation trust; native decoding stays distinct.
+    expect(controller.contentGate("gif").allowed).toBe(true);
+    expect(controller.assessment().capabilities.gif.missingClaims).toContain(
       "gif.playback",
+    );
+    expect(controller.assessment().capabilities.gif.safety.assurance).toBe(
+      "experimental",
     );
   });
 
@@ -160,7 +163,8 @@ describe("a fresh session on the known iLedHat is immediately usable", () => {
     });
     expect(store.getSnapshot().error).toBeNull();
     expect(store.getSnapshot().pendingSend).toBeNull();
-    expect(store.getSnapshot().info).toBe("Display updated.");
+    expect(store.getSnapshot().sendAttempt?.evidence?.hostAccepted).toBe(true);
+    expect(store.getSnapshot().info).toBeNull();
     expect(transport.writes.length).toBeGreaterThan(0);
     expect(controller.transactions.length).toBeGreaterThan(0);
   });

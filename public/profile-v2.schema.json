@@ -1,0 +1,268 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "documentVersion",
+    "namespace",
+    "id",
+    "revision",
+    "implementation",
+    "label",
+    "matching",
+    "contradictions",
+    "dimensions",
+    "parameters",
+    "templates",
+    "limitations",
+    "sources",
+    "candidate"
+  ],
+  "properties": {
+    "documentVersion": {
+      "const": 2
+    },
+    "namespace": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+    },
+    "revision": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+    },
+    "implementation": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+    },
+    "label": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512
+    },
+    "matching": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "serviceUuid",
+        "characteristicUuid",
+        "requiredProperties"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "serviceUuid": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "characteristicUuid": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "requiredProperties": {
+          "const": ["read", "notify", "writeWithoutResponse"]
+        }
+      }
+    },
+    "contradictions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["companyId", "geometry"],
+      "properties": {
+        "companyId": {
+          "type": ["integer", "null"],
+          "minimum": 0,
+          "maximum": 65535
+        },
+        "geometry": {
+          "const": true
+        }
+      }
+    },
+    "dimensions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["width", "height"],
+      "properties": {
+        "width": {
+          "type": "integer",
+          "minimum": 16,
+          "maximum": 64,
+          "multipleOf": 8
+        },
+        "height": {
+          "const": 16
+        }
+      }
+    },
+    "parameters": {
+      "const": {
+        "brightness": {
+          "min": 0,
+          "max": 255
+        }
+      }
+    },
+    "templates": {
+      "const": ["coolledux-source-v1"]
+    },
+    "limitations": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 16,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 512
+      }
+    },
+    "sources": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 16,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 512
+      }
+    },
+    "candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "assumptions", "identity", "history"],
+      "properties": {
+        "kind": {
+          "const": "revalidation-required"
+        },
+        "assumptions": {
+          "const": {
+            "pixelFormat": "RGB444",
+            "rowStride": 16,
+            "tileWidth": 8,
+            "channelMap": ["r", "g", "b"]
+          }
+        },
+        "identity": {
+          "const": {
+            "manufacturer": null,
+            "firmware": null,
+            "model": null,
+            "chip": null
+          }
+        },
+        "recommendation": {
+          "const": "animation-single-frame"
+        },
+        "history": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "createdAt",
+            "definitionIdentity",
+            "evidenceDigest",
+            "testIds"
+          ],
+          "properties": {
+            "status": {
+              "enum": ["incomplete", "locally-verified"]
+            },
+            "createdAt": {
+              "type": "string",
+              "maxLength": 64,
+              "minLength": 1,
+              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$"
+            },
+            "definitionIdentity": {
+              "type": "string",
+              "maxLength": 128,
+              "minLength": 1
+            },
+            "evidenceDigest": {
+              "type": "string",
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^sha256:[0-9a-f]{64}$"
+            },
+            "testIds": {
+              "type": "array",
+              "maxItems": 3,
+              "uniqueItems": true,
+              "items": {
+                "enum": [
+                  "coolledux-still-bootstrap",
+                  "coolledux-still-channels",
+                  "coolledux-still-encoder"
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "candidate": {
+            "properties": {
+              "history": {
+                "properties": {
+                  "status": {
+                    "const": "incomplete"
+                  }
+                },
+                "type": "object"
+              }
+            },
+            "type": "object"
+          }
+        },
+        "type": "object"
+      },
+      "then": {
+        "properties": {
+          "candidate": {
+            "not": {
+              "required": ["recommendation"],
+              "type": "object"
+            },
+            "type": "object"
+          }
+        },
+        "type": "object"
+      },
+      "else": {
+        "type": "object",
+        "properties": {
+          "candidate": {
+            "type": "object",
+            "required": ["recommendation"],
+            "properties": {
+              "history": {
+                "type": "object",
+                "properties": {
+                  "testIds": {
+                    "const": [
+                      "coolledux-still-bootstrap",
+                      "coolledux-still-channels",
+                      "coolledux-still-encoder"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

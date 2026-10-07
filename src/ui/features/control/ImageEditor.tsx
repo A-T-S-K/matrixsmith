@@ -47,6 +47,7 @@ export function ImageEditor({
                 <option value="artwork">Artwork</option>
                 <option value="photo">Photo</option>
                 <option value="pixel-art">Pixel Art</option>
+                <option value="legacy">Legacy / Smooth</option>
               </select>
             </label>
             <label class="field">
@@ -69,15 +70,18 @@ export function ImageEditor({
           </div>
           {content.image.processed && (
             <p class="notice">
-              {content.image.processed.analysis.likelyMode ===
-              content.image.processed.resolvedMode
-                ? `${labelMode(content.image.processed.resolvedMode)} · ${content.image.processed.analysis.confidence} confidence`
-                : `Auto used ${labelMode(content.image.processed.resolvedMode)}-safe processing · uncertain content type`}
+              {settings.imageMode !== "auto"
+                ? `${labelMode(settings.imageMode)} · manually selected`
+                : content.image.processed.analysis.likelyMode ===
+                    content.image.processed.resolvedMode
+                  ? `Auto: ${labelMode(content.image.processed.resolvedMode)} · ${content.image.processed.analysis.confidence} confidence`
+                  : `Auto used ${labelMode(content.image.processed.resolvedMode)}-safe processing · uncertain content type`}
             </p>
           )}
           <p class="fineprint">
-            32×16 · {content.image.processed?.resolvedMode ?? "Legacy / Smooth"}{" "}
-            · {content.image.processed?.outputColorCount ?? "—"} colors · static
+            {content.image.preview.width}×{content.image.preview.height} ·{" "}
+            {content.image.processed?.resolvedMode ?? "Legacy / Smooth"} ·{" "}
+            {content.image.processed?.outputColorCount ?? "—"} colors · static
             delivery uses the selected device profile strategy.
           </p>
           {content.image.processed?.warnings.map((warning) => (
@@ -166,13 +170,17 @@ export function ImageEditor({
           Choose a local image to see how it will look on the display.
         </p>
       )}
+      <p class="fineprint">
+        Replaces the display’s stored content. Previous content cannot be
+        restored automatically.
+      </p>
       <UnavailableAction
         class="primary send"
         available={canSend && Boolean(content.image)}
         reason={!content.image ? "Choose an image before sending." : sendTitle}
         onClick={() => store.requestSendImage()}
       >
-        Display it
+        Send to display
       </UnavailableAction>
     </>
   );

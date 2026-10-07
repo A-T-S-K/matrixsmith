@@ -1,3 +1,4 @@
+import { DiscoveryInterview, showDiscovery } from "./DiscoveryInterview";
 import type { JSX } from "preact";
 import type {
   AppSnapshot,
@@ -12,7 +13,13 @@ export function NextAction({
   snapshot: AppSnapshot;
   store: PresentationStore;
 }): JSX.Element {
+  if (showDiscovery(snapshot)) return <></>;
+  if (snapshot.recommended.action === "identify" && snapshot.liveConnected)
+    return <DiscoveryInterview snapshot={snapshot} store={store} />;
   const next = snapshot.nextTest;
+  const identify = snapshot.diagnosticTools.find(
+    (tool) => tool.kind === "identify",
+  );
   // An unanswered measurement on the current milestone outranks the engine's
   // next suggestion. Advancing past a question nobody answered would read as
   // though the short measurement had counted.
@@ -38,7 +45,9 @@ export function NextAction({
             }
             onClick={() => store.startGuidedTest(next.testId)}
           >
-            Run test
+            {next.testId === "coolledux-still-bootstrap"
+              ? "Verify a still image"
+              : "Run test"}
           </UnavailableAction>
           <small>
             {next.estimatedObservationTime}
@@ -55,22 +64,63 @@ export function NextAction({
       <p>{snapshot.recommended.description}</p>
       <div class="next-action-cta">
         {snapshot.recommended.action === "identify" && (
-          <button
+          <UnavailableAction
             class="primary"
             onClick={() => void store.identify()}
-            disabled={snapshot.busy !== null}
+            available={
+              snapshot.busy === null &&
+              snapshot.liveConnected &&
+              Boolean(identify?.available)
+            }
+            reason={
+              snapshot.busy ??
+              identify?.unavailableReason ??
+              "No bounded identification probe is contributed for this display. Use Protocol workbench to inspect the evidence."
+            }
           >
-            Run safe identification
-          </button>
+            Set up this display
+          </UnavailableAction>
         )}
-        {snapshot.recommended.action === "checks" && (
-          <button
-            class="primary"
-            onClick={() => void store.refreshInfo()}
-            disabled={snapshot.busy !== null}
-          >
-            Refresh device info
-          </button>
+        {snapshot.recommended.action === "checks" &&
+          snapshot.diagnosticTools.some(
+            (tool) => tool.available && tool.workflow === "refresh-device-info",
+          ) && (
+            <button
+              class="primary"
+              onClick={() => void store.refreshInfo()}
+              disabled={snapshot.busy !== null}
+            >
+              Refresh device info
+            </button>
+          )}
+        {(snapshot.recommended.action === "checks" ||
+          (snapshot.recommended.action === "identify" &&
+            !identify?.available)) && (
+          <>
+            <p>
+              {snapshot.guidedTests.length === 0
+                ? "This family contributes no applicable bounded tests for these dimensions. CoolLEDUX still verification requires height 16 and width 16–64 divisible by eight; other strides and layouts are not reviewed."
+                : "No further applicable test is recommended. Review the available tests and their restrictions."}{" "}
+              Protocol workbench and reports can help investigate the remaining
+              limits.
+            </p>
+            <button
+              class={
+                snapshot.diagnosticTools.some(
+                  (tool) =>
+                    tool.available && tool.workflow === "refresh-device-info",
+                )
+                  ? "secondary"
+                  : "primary"
+              }
+              onClick={() => store.setView("develop")}
+            >
+              Open Protocol workbench
+            </button>
+            <button class="secondary" onClick={() => store.openReport()}>
+              Open report
+            </button>
+          </>
         )}
       </div>
     </section>
@@ -105,10 +155,15 @@ export function MeasureAgain({
           ? `TEST ${step.position} OF ${progress.total}`
           : "NEXT"}
       </p>
-      <h2 id="next-action-title">Not enough observation time</h2>
+      <h2 id="next-action-title">
+        {testId.startsWith("coolledux-still-")
+          ? "Still-image verification is incomplete"
+          : "Not enough observation time"}
+      </h2>
       <p>
-        The last measurement stopped before it had watched for long enough to
-        answer this step. Nothing about the display was concluded from it.
+        {testId.startsWith("coolledux-still-")
+          ? "Required physical answers or measured hold are missing or unsure. The partial evidence is saved; no usable route is established. Review and explicitly retry this experiment, or stop for now."
+          : "The last measurement stopped before it had watched for long enough to answer this step. Nothing about the display was concluded from it."}
       </p>
       <div class="next-action-cta">
         <UnavailableAction
@@ -175,10 +230,7 @@ export function WhatWeKnow({
             <strong>{snapshot.rasterStrategyLabel}</strong>.
           </>
         ) : (
-          <>
-            No working way to show a still image yet — that is what these tests
-            determine.
-          </>
+          <>Physical still-image rendering has not been established.</>
         )}
       </p>
     </section>

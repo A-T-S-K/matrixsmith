@@ -1,3 +1,4 @@
+import { stillTests } from "./still-tests";
 import type { DeviceProfile } from "../../core/device";
 import type {
   ObservationFieldSpec,
@@ -14,7 +15,7 @@ import {
   type GuidedTestTimer,
 } from "../../investigation/tests";
 import { operationalTrust } from "../../investigation/claims";
-import { ILEDHAT_PROFILE_ID } from "../../profiles/iledhat-31ae-32x16";
+import { isReviewedIledHat } from "../../profiles/iledhat-31ae-32x16";
 import { formatDuration } from "../../investigation/observations";
 import { approximateSeconds } from "../../investigation/timing";
 import {
@@ -1709,13 +1710,12 @@ export const ILEDHAT_GUIDED_TESTS: readonly GuidedTestDefinition[] =
     normalImageSmokeTest,
   ]);
 
-/** Generic CoolLEDUX tests applicable to any profile of the family. None exist yet. */
-export const COOLLEDUX_GENERIC_GUIDED_TESTS: readonly GuidedTestDefinition[] =
-  Object.freeze([]);
+/** Generic tests resolve their questions from the explicit codec geometry. */
+export const COOLLEDUX_GENERIC_GUIDED_TESTS = stillTests;
 
 /** Declarative applicability: which profiles each suite applies to. */
 function appliesToIledHat(profile: DeviceProfile): boolean {
-  return profile.id === ILEDHAT_PROFILE_ID;
+  return isReviewedIledHat(profile);
 }
 
 export function coolLedUxGuidedTests(
@@ -1723,6 +1723,6 @@ export function coolLedUxGuidedTests(
 ): readonly GuidedTestDefinition[] {
   if (profile.driverId !== "coolledux") return [];
   return appliesToIledHat(profile)
-    ? [...ILEDHAT_GUIDED_TESTS, ...COOLLEDUX_GENERIC_GUIDED_TESTS]
-    : [...COOLLEDUX_GENERIC_GUIDED_TESTS];
+    ? [...ILEDHAT_GUIDED_TESTS]
+    : COOLLEDUX_GENERIC_GUIDED_TESTS(profile);
 }

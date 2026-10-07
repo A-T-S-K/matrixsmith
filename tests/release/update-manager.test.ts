@@ -46,3 +46,31 @@ it("releases the update subscription once on disposal", () => {
   manager.dispose();
   expect(unsubscribe).toHaveBeenCalledOnce();
 });
+
+it("holds bootstrap ownership independently of the workspace blocker", async () => {
+  const { manager, port } = setup();
+  const release = manager.beginActivity("Opening workspace");
+  manager.setBlocker(() => null);
+  expect(manager.blockingReason).toBe("Opening workspace");
+  await manager.applyUpdate();
+  expect(port.activate).not.toHaveBeenCalled();
+  release();
+  release();
+  expect(manager.blockingReason).toBeNull();
+  await manager.applyUpdate();
+  expect(port.activate).toHaveBeenCalledOnce();
+});
+
+it("refuses a new chooser while another tab has reserved activation", () => {
+  const { manager } = setup();
+  manager.setActivationLock(true);
+  expect(() => manager.beginActivity("Opening workspace")).toThrow(
+    /update is being applied/,
+  );
+  expect(manager.blockingReason).toBeNull();
+  manager.setActivationLock(false);
+  const release = manager.beginActivity("Opening workspace");
+  release();
+  manager.dispose();
+  expect(() => manager.beginActivity("Opening workspace")).toThrow();
+});

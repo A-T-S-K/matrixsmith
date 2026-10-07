@@ -138,7 +138,11 @@ function FailedStage({
 }): JSX.Element {
   return (
     <div class="guided-failure" role="alert">
-      <h2>Test transfer did not complete</h2>
+      <h2>
+        {flow.executionClass === "read-only-query"
+          ? "Query did not complete"
+          : "Test transfer did not complete"}
+      </h2>
       <p>
         {flow.failure?.message ?? "The diagnostic could not be transferred."}
       </p>
@@ -152,7 +156,9 @@ function FailedStage({
             class="primary"
             onClick={() => void store.retryFailedGuidedTransfer()}
           >
-            Retry transfer
+            {flow.executionClass === "read-only-query"
+              ? "Retry query"
+              : "Retry transfer"}
           </button>
         )}
         <button class="secondary" onClick={() => store.closeGuidedTest()}>
@@ -187,16 +193,24 @@ function AboutStage({
           <FramePreview
             frame={frame}
             scale={8}
-            label="The image this test will show"
+            label="Intended diagnostic pattern; physical result unknown"
           />
           <small>
             {flow.regions.length > 0
-              ? "Zones are labelled once the pattern is on the display."
-              : "What the display will show"}
+              ? "Intended positions only; observe the physical display after transfer."
+              : "Intended pattern; physical appearance is unverified"}
           </small>
         </div>
       )}
       <dl class="about-facts">
+        <div>
+          <dt>Target</dt>
+          <dd>
+            {snapshot.device?.name} ·{" "}
+            {snapshot.device?.profileGeometry || snapshot.device?.liveGeometry}{" "}
+            · {snapshot.device?.protocol}
+          </dd>
+        </div>
         <div>
           <dt>What changes on the display</dt>
           <dd>{flow.about.whatChangesOnDevice}</dd>
@@ -250,10 +264,20 @@ function AboutStage({
           {flow.planSummary && (
             <li>
               <span>
-                Transmission: {flow.planSummary.packetCount} packets (1 announce
-                + {flow.planSummary.chunkCount} chunks),{" "}
-                {flow.planSummary.programBytes} bytes uncompressed, CRC32{" "}
-                {flow.planSummary.crc32}, {flow.planSummary.pacingMs} ms pacing.
+                {flow.executionClass === "read-only-query" ? (
+                  <>
+                    Query execution: {flow.planSummary.packetCount} packets; no
+                    stored program upload.
+                  </>
+                ) : (
+                  <>
+                    Transmission: {flow.planSummary.packetCount} packets (1
+                    announce + {flow.planSummary.chunkCount} chunks),{" "}
+                    {flow.planSummary.programBytes} bytes uncompressed, CRC32{" "}
+                    {flow.planSummary.crc32}, {flow.planSummary.pacingMs} ms
+                    pacing.
+                  </>
+                )}
               </span>
             </li>
           )}
@@ -262,24 +286,39 @@ function AboutStage({
       {flow.about.preTransferNote && (
         <p class="notice warning">{flow.about.preTransferNote}</p>
       )}
-      <p class="notice warning">{flow.consequence}</p>
-      <label class="confirm-check">
-        <input
-          type="checkbox"
-          checked={confirmChecked}
-          onChange={(event) =>
-            setConfirmChecked((event.currentTarget as HTMLInputElement).checked)
-          }
-        />
-        <span>
-          I understand this replaces the stored display content and that
-          automatic restoration is not verified.
-        </span>
-      </label>
+      <p
+        class={
+          flow.executionClass === "read-only-query"
+            ? "notice"
+            : "notice warning"
+        }
+      >
+        {flow.consequence}
+      </p>
+      {flow.executionClass === "persistent-content" && (
+        <label class="confirm-check">
+          <input
+            type="checkbox"
+            checked={confirmChecked}
+            onChange={(event) =>
+              setConfirmChecked(
+                (event.currentTarget as HTMLInputElement).checked,
+              )
+            }
+          />
+          <span>
+            I understand this replaces the stored display content and that
+            automatic restoration is not verified.
+          </span>
+        </label>
+      )}
       <div class="step-nav">
         <button
           class="primary"
-          disabled={!confirmChecked || snapshot.busy !== null}
+          disabled={
+            (flow.executionClass === "persistent-content" && !confirmChecked) ||
+            snapshot.busy !== null
+          }
           onClick={() => void store.confirmGuidedTransfer()}
         >
           {timed ? "I'm ready — run test" : "Run test"}
@@ -303,13 +342,16 @@ function RunningStage({ flow }: { flow: GuidedFlowState }): JSX.Element {
         <p class="watch-now">Watch the display now.</p>
       )}
       <p class="fineprint">
-        This window stays open until the transfer completes — closing it would
-        not cancel the Bluetooth upload.
+        {flow.executionClass === "read-only-query"
+          ? "This window stays open until the query completes."
+          : "This window stays open until the transfer completes — closing it would not cancel the Bluetooth upload."}
       </p>
-      <p class="fineprint">
-        Larger programs can take several seconds to start rendering after the
-        final packet.
-      </p>
+      {flow.executionClass === "persistent-content" && (
+        <p class="fineprint">
+          Larger programs can take several seconds to start rendering after the
+          final packet.
+        </p>
+      )}
     </>
   );
 }
@@ -401,6 +443,18 @@ function RetryConfirmation({
   return (
     <div class="retry-confirm">
       <h2>Retry this observation?</h2>
+      <p>
+        Target: {store.getSnapshot().device?.name} ·{" "}
+        {store.getSnapshot().device?.profileGeometry}
+      </p>
+      {flow.previews[0] && (
+        <FramePreview
+          frame={flow.previews[0]}
+          scale={8}
+          label="Intended retry pattern; physical result unknown"
+        />
+      )}
+      <p class="notice warning">{flow.consequence}</p>
       <p>
         MatrixSmith will send the same diagnostic image again so the timing can
         start over.

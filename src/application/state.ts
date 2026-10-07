@@ -12,6 +12,14 @@ export class ApplicationState {
   profile: DeviceProfile | null = null;
   source: "live" | "imported" | "fake" | "replay" = "live";
   readonly notifications: NotificationRecord[] = [];
+  private selectedDeviceInfo: NotificationRecord | null = null;
+  geometryRevision = 0;
+  /** Monotonic live authority boundary; captured workflows must compare it. */
+  identityAuthorityRevision = 0;
+  /** Explicit contradiction cannot be undone by an absent later advertisement. */
+  identityTrustWithdrawn = false;
+  geometryProposal:
+    import("./services/identification-service").GeometryProposal | null = null;
   protocolResolution: {
     readonly driverId: string;
     readonly probeId: string;
@@ -51,23 +59,50 @@ export class ApplicationState {
     this.authority.consumePersistentConfirmation();
   }
   get latestDeviceInfo(): DecodedNotification | null {
+    return this.latestDeviceInfoRecord?.decoded ?? null;
+  }
+  /** Live state uses only the executor-selected response; history remains inspectable. */
+  get latestDeviceInfoRecord(): NotificationRecord | null {
+    if (this.source === "live") return this.selectedDeviceInfo;
     for (let index = this.notifications.length - 1; index >= 0; index -= 1) {
-      const decoded = this.notifications[index]?.decoded;
-      if (decoded?.kind === "device-info") return decoded;
+      const record = this.notifications[index];
+      if (record?.decoded?.kind === "device-info") return record;
     }
     return null;
+  }
+  recordCorrelatedResponse(record: NotificationRecord | null): void {
+    if (this.source === "live" && record?.decoded?.kind === "device-info")
+      this.selectedDeviceInfo = record;
   }
   recordNotification(record: NotificationRecord): void {
     this.notifications.push(record);
     if (this.notifications.length > INPUT_LIMITS.traceEvents)
       this.notifications.shift();
   }
+  withdrawIdentityTrust(): void {
+    this.identityAuthorityRevision += 1;
+    this.identityTrustWithdrawn = true;
+    this.selection = this.selection
+      ? { ...this.selection, selected: null }
+      : null;
+    this.profile = null;
+    this.selectedDeviceInfo = null;
+    this.protocolResolution = null;
+    this.geometryProposal = null;
+    this.validatedRasterStrategy = null;
+    this.authority.disableExperimentalTx();
+    this.authority.consumePersistentConfirmation();
+  }
   clearConnection(): void {
+    this.identityAuthorityRevision += 1;
+    this.identityTrustWithdrawn = false;
     this.fingerprint = null;
     this.selection = null;
     this.profile = null;
     this.notifications.length = 0;
+    this.selectedDeviceInfo = null;
     this.protocolResolution = null;
+    this.geometryProposal = null;
     this.validatedRasterStrategy = null;
     this.authority.disableExperimentalTx();
     this.authority.consumePersistentConfirmation();

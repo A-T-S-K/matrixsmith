@@ -1,4 +1,4 @@
-import type { GattEndpoint } from "./device";
+import { normalizeUuid, type GattEndpoint } from "./device";
 import type { ValidationStatus } from "./evidence";
 import type { MatrixOperation } from "./operations";
 import type { Persistence, RiskClass } from "./risk";
@@ -9,6 +9,10 @@ export type ResponseExpectation =
   | { readonly type: "none" }
   | {
       readonly type: "notification";
+      /** Reviewed RX endpoints; these need not be the write endpoint. */
+      readonly endpoints: readonly GattEndpoint[];
+      /** Open correlation immediately before dispatching this packet index. */
+      readonly dispatchPacketIndex: number;
       readonly required: boolean;
       readonly timeoutMs: number;
       readonly opcode?: number;
@@ -74,6 +78,39 @@ export interface AuthorizedTransmission {
   readonly policyDecision: "allow";
 }
 
+/** Runtime guard for reviewed response context; absence never means wildcard. */
+export function responseContractProblem(plan: TransmissionPlan): string | null {
+  const expected = plan.responseExpectation;
+  if (expected.type === "none") return null;
+  if (
+    !Array.isArray(expected.endpoints) ||
+    !expected.endpoints.length ||
+    expected.endpoints.some(
+      (endpoint) =>
+        !endpoint ||
+        typeof endpoint.serviceUuid !== "string" ||
+        !endpoint.serviceUuid.trim() ||
+        typeof endpoint.characteristicUuid !== "string" ||
+        !endpoint.characteristicUuid.trim(),
+    )
+  )
+    return "A response requires a nonempty reviewed notification endpoint set.";
+  if (
+    !Number.isInteger(expected.dispatchPacketIndex) ||
+    !plan.packets.some(
+      (packet) => packet.index === expected.dispatchPacketIndex,
+    )
+  )
+    return "The response dispatch packet index is unavailable.";
+  if (
+    !Number.isFinite(expected.timeoutMs) ||
+    expected.timeoutMs < 1 ||
+    expected.timeoutMs > 120_000
+  )
+    return "Response timeout is outside the safe budget.";
+  return null;
+}
+
 export function createPlanId(prefix = "plan"): string {
   const random =
     globalThis.crypto?.randomUUID?.() ??
@@ -125,6 +162,18 @@ export function transmissionDigest(
 ): string {
   const canonical = canonicalJson({
     targetBinding,
+    identity: { driverId: plan.driverId, profileId: plan.profileId },
+    evidenceRefs: plan.evidenceRefs,
+    responseExpectation:
+      plan.responseExpectation.type === "none"
+        ? plan.responseExpectation
+        : {
+            ...plan.responseExpectation,
+            endpoints: plan.responseExpectation.endpoints?.map((endpoint) => ({
+              serviceUuid: normalizeUuid(endpoint.serviceUuid),
+              characteristicUuid: normalizeUuid(endpoint.characteristicUuid),
+            })),
+          },
     safety: {
       risk: plan.risk,
       persistence: plan.persistence,
@@ -135,8 +184,8 @@ export function transmissionDigest(
     packets: plan.packets.map((packet) => ({
       index: packet.index,
       endpoint: {
-        serviceUuid: packet.endpoint.serviceUuid.toLowerCase(),
-        characteristicUuid: packet.endpoint.characteristicUuid.toLowerCase(),
+        serviceUuid: normalizeUuid(packet.endpoint.serviceUuid),
+        characteristicUuid: normalizeUuid(packet.endpoint.characteristicUuid),
       },
       writeMode: packet.writeMode,
       bytes: [...packet.bytes],
@@ -166,7 +215,7 @@ function copyPlan(plan: TransmissionPlan): TransmissionPlan {
         hex: packetHex(bytes),
       };
     }),
-    responseExpectation: { ...plan.responseExpectation },
+    responseExpectation: structuredCloneValue(plan.responseExpectation),
     recoveryNotes: [...plan.recoveryNotes],
     metadata: { ...plan.metadata },
   };
@@ -188,7 +237,7 @@ function structuredCloneValue<T>(value: T): T {
   return value;
 }
 
-function canonicalJson(value: unknown): string {
+export function canonicalJson(value: unknown): string {
   if (value instanceof Uint8Array) return `[${[...value].join(",")}]`;
   if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
   if (value && typeof value === "object") {
@@ -203,6 +252,10 @@ function canonicalJson(value: unknown): string {
 
 // Small synchronous SHA-256 implementation keeps authorization synchronous
 // in browsers while still producing a standard, portable digest.
+export function definitionDigest(value: unknown): string {
+  return `sha256:${sha256(canonicalJson(value))}`;
+}
+
 function sha256(input: string): string {
   const bytes = new TextEncoder().encode(input);
   const bitLength = bytes.length * 8;

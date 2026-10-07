@@ -206,7 +206,7 @@ export function CompletedTests({
           </details>
         ))}
       </div>
-      {investigation.status === "active" && (
+      {snapshot.source !== "imported" && investigation.status === "active" && (
         <button
           class="text-action quiet-action"
           onClick={() => store.stopInvestigation()}

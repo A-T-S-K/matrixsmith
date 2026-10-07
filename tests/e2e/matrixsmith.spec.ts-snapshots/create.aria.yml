@@ -18,11 +18,12 @@
         - tab "Text" [selected]
         - tab "Image"
         - tab "Demo animation"
-        - tab "GIFnot yet verified": GIF●
+        - tab "GIF"
     - tabpanel "Text":
         - text: ""
         - textbox "Text":
             - /placeholder: HELLO
+        - paragraph: 0 / 512 text units. Some symbols use two units. Long scrolling messages may need shortening.
         - text: Display
         - combobox "Display":
             - option "Auto" [selected]
@@ -38,6 +39,7 @@
             - option "Left"
             - option "Center" [selected]
             - option "Right"
-        - button "Display it" [disabled]
+        - paragraph: Replaces the display’s stored content. Previous content cannot be restored automatically.
+        - button "Send to display" [disabled]
         - paragraph: Enter text before sending.
     - group: Brightness and display status

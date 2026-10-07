@@ -76,14 +76,38 @@ describe("path-specific content gating", () => {
     expect(contentPathGate("image", baseline).allowed).toBe(true);
     expect(contentPathGate("text", baseline).allowed).toBe(true);
     expect(contentPathGate("animation", baseline).allowed).toBe(true);
-    // GIF depends on a claim the profile does not verify, and stays shut.
-    expect(contentPathGate("gif", baseline).allowed).toBe(false);
+    // Local GIF conversion uses the trusted animation substrate.
+    expect(contentPathGate("gif", baseline).allowed).toBe(true);
   });
 
-  it("keeps GIF gated on source-only support", () => {
-    const gif = contentPathGate("gif", baseline);
-    expect(gif.allowed).toBe(false);
-    expect(gif.missingClaims).toContain("gif.playback");
+  it("does not use native decoder evidence for product GIF authorization", () => {
+    expect(
+      contentPathGate(
+        "gif",
+        baseline.filter((entry) => entry.claimId !== "gif.playback"),
+      ).allowed,
+    ).toBe(true);
+    expect(
+      contentPathGate("gif", [
+        {
+          claimId: "gif.playback",
+          status: "verified",
+          scope: "built-in-profile",
+          provenance: "observed",
+          summary: "native",
+        },
+      ]).allowed,
+    ).toBe(false);
+    for (const scope of [
+      "imported-external",
+      "previous-local-session",
+    ] as const)
+      expect(
+        contentPathGate(
+          "gif",
+          baseline.map((entry) => ({ ...entry, scope })),
+        ).allowed,
+      ).toBe(false);
   });
 
   it("keeps images gated on a directly asserted static strategy", () => {
@@ -124,8 +148,8 @@ describe("path-specific content gating", () => {
     ];
     expect(contentPathGate("image", evidence).allowed).toBe(true);
     expect(contentPathGate("text", evidence).allowed).toBe(true);
-    // Unrelated paths do not silently unlock.
-    expect(contentPathGate("gif", evidence).allowed).toBe(false);
+    // GIF already has independent animation prerequisites.
+    expect(contentPathGate("gif", evidence).allowed).toBe(true);
   });
 
   it("keeps images gated while the encoder maps logical channels incorrectly", () => {
@@ -217,5 +241,6 @@ describe("path-specific content gating", () => {
       },
     ];
     expect(contentPathGate("animation", evidence).allowed).toBe(false);
+    expect(contentPathGate("gif", evidence).allowed).toBe(false);
   });
 });

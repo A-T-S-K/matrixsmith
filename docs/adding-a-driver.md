@@ -1,16 +1,29 @@
 # Adding a MatrixSmith driver
 
-This workflow is designed so a contributor can add a second device family without reading the entire UI.
+Drivers contribute discovery, matching, codecs, plans, and evidence through typed
+interfaces. Adding a profile and adding a protocol family have different current
+limits; implementing a codec alone does not establish product support.
 
 ## 1. Collect portable evidence
 
-From Home choose **Explore unknown BLE device**; Web Bluetooth permission is established in the browser chooser. The controller accepts suspected service UUID hints for the chooser; a UI field for them is planned. Connect, inspect accessible services/characteristics/properties, perform only explicit safe reads, subscribe explicitly to notifications, label the physical action, add manual observations, and export a diagnostic bundle. Unknown-device mode intentionally has no writer.
+From Home use **Explore unknown BLE** → **Choose device**; Web Bluetooth permission
+is established in the browser chooser. Enter suspected service UUIDs in the
+existing **Optional service UUIDs** field before choosing. Connect, inspect
+accessible services/characteristics/properties, perform only explicit safe reads,
+subscribe explicitly to notifications, label the physical action, add manual
+observations, and export a diagnostic bundle. Unknown-device mode intentionally
+has no arbitrary writer.
 
 Turn the reviewed bundle into `tests/fixtures/devices/<profile>.json`. Preserve raw advertisement/GATT/notification bytes. Separate browser-observable facts from boot strings, physical geometry, labels, teardown observations, and other manual evidence.
 
 ## 2. Define family and profile separately
 
-Add a driver under `src/drivers/<family>/` and add it once to `builtInDrivers`. A driver owns discovery hints, matching, endpoints, semantic probes, codecs, planning, notification decoding, and response matching. Physical profiles live under `src/profiles/`, not under whichever driver was first hypothesized.
+Add a driver under `src/drivers/<family>/`. Exercise it first through an injected
+`DriverRegistry` in `ApplicationRuntime`; add it to `builtInDrivers` only when
+shipping reviewed support. A driver owns discovery hints, matching, endpoints,
+semantic probes, codecs, planning, notification decoding, and response matching.
+Physical profiles live under `src/profiles/`, not under whichever driver was first
+hypothesized. Test-only families must stay outside the production registry.
 
 Never make a profile dimension a global framebuffer constant. Never treat a generic UUID or name substring as protocol identity.
 
@@ -38,13 +51,47 @@ Start new operations dry-run only. Use `FakeTransport` for order/failure/timeout
 
 Contribute named diagnostic tools through the driver contract (kind `identify` / `inspect` / `validate`, semantic workflow, risk, persistence, assurance, and a plain-language explanation). `ApplicationRuntime.runDiagnostic` executes only semantic operations under the safety policy and records serializable steps, transactions, restoration state, and findings. Reversible tests restore and re-verify the original state. If a family has no safe probe, say so rather than inventing one. Capability metadata and atomic evidence feed the canonical `DeviceAssessment` used by every UI and report surface.
 
+Today `DiagnosticTool.workflow` is limited to `family-identification`,
+`refresh-device-info`, and `brightness-round-trip`; it is not an extensible workflow
+runner. The round-trip assumes `brightnessRaw` and an unsigned-byte range. Shared device-info, brightness, and power readiness requires a bound current
+family plus trusted semantic capability evidence. Family identity derives from a
+live probe or a recognized contributed profile; it does not verify arbitrary
+physical capabilities. Historical identity cannot authorize execution.
+`operationRequirements` may add conservative family-specific prerequisites;
+CoolLEDUX keeps `protocol.coolledux` as its own fact. Driver operations can narrow
+canonical assessment, never promote it. Ordinary sends enforce both, then all
+central policy checks, including explicit experimental permission. Probe results
+carry the actual driver/probe identity and a typed match or rejection separately
+from response correlation; UI copy uses the current interpretation.
+Shared claim IDs and Bundle V3 remain unchanged. New family-specific claim
+vocabulary and a general extension framework remain deferred.
+
 ## 8. Validate hardware deliberately
 
 Choose the least risky transient/read-only experiment supported by provenance. Capabilities and explicit plan intent drive policy; do not add driver/opcode/profile special cases. Require deliberate action, raw notification retention, separate host/protocol/state claims, and exported trace. Keep retry count one until safe retry behavior is proven.
 
 After repeated reviewed hardware evidence, promote the specific profile capability from unverified to experimental to verified. Do not promote the entire family or other profiles by association.
 
-Persistent content operations are supported through a dedicated path: declare the plan `persistent`, attach compiler metadata and per-packet `delayAfterMs` pacing (the executor owns timing), and route live sends through `sendPersistentContent`, which enforces a single-use explicit consequence confirmation. Pair each new persistent capability with a guided validation workflow (`src/diagnostics/validation.ts`) so the first hardware run records structured evidence. Destructive, reset, password, storage erase, OTA, and firmware operations remain blocked and require dedicated policy work. MatrixSmith must not acquire an arbitrary live writer as a reverse-engineering shortcut.
+Persistent content operations use `sendPersistentContent`: declare the plan
+`persistent`, attach compiler metadata and per-packet `delayAfterMs` pacing (the
+executor owns timing). Verified routine content uses direct target/digest-bound
+authorization; experimental persistent content requires a single-use exact-plan
+consequence confirmation. Pair a new persistent capability with driver-contributed
+`GuidedTestDefinition`s (`src/investigation/tests.ts`); application catalog,
+orchestration, and observation services own execution and recording. There is no
+`src/diagnostics/validation.ts`. Registered guided execution supports two classes: `read-only` risk with `none`
+persistence, or the existing `persistent` risk with `persistent` persistence.
+The compiled plan must agree with the declaration. Queries execute the fixed
+registered definition through central authorization and retain transactions;
+they never stage a panel program, consume persistent confirmation, or compile
+content evidence. Their deliberate Run action needs no replacement checkbox,
+but experimental permission remains explicit and is never silently enabled.
+Stored-content tests retain exact-plan confirmation, panel replacement, final
+host-write timing, and deliberate resend reasons. Other/transient/unknown guided
+consequences remain unsupported; dedicated reversible diagnostics are separate. Destructive, reset, password,
+storage erase, OTA, and firmware operations remain blocked and require dedicated
+policy work. MatrixSmith must not acquire an arbitrary live writer as a
+reverse-engineering shortcut.
 
 ## 9. Contribute guided tests and claims (2026-08-31 revision)
 
@@ -61,3 +108,48 @@ Additional contracts from the hardening revision:
 - **Evidence-aware operations**: when a test's exact operation depends on established evidence, implement `buildOperation(context)` — the result must still be a fixed diagnostic id with enumerated parameters. Optionally implement `validate(values)` for cross-field coherence; the controller enforces generic structural validation regardless.
 - **Measured timelines**: physical timing uses the multi-phase timer (`GuidedTestTimer.phases`); durations are measured from the final host-accepted write and only MatrixSmith-measured values verify claims. Attach measured quantities as `metrics` and structured outcome facts as `details` on claim updates — `details` is what activates session-resolved behavior (`src/investigation/session-behavior.ts`) and powers report clarity.
 - **Do not write `static.strategy` evidence**: it is derived. Contribute the atomic requirement claims and let `src/investigation/static-viability.ts` decide.
+
+For another profile, contribute separate matching/resolution, geometry, evidence,
+capabilities, quirks, and applicable tests. CoolLEDUX currently scopes characterized
+capabilities, baseline physical claims, and its guided/core suite to the exact
+iLedHat profile ID; adding an entry to `profiles()` alone is insufficient. See
+`tests/drivers/second-profile-contract.test.ts` and
+`tests/drivers/synthetic-family-contract.test.ts` for software-only injection
+examples. Neither fixture is hardware evidence or production support.
+
+## Optional sourced geometry
+
+`interpretGeometry(response)` may return `{ width, height }` in pixels, or `null`.
+Keep field names, units, orientation and documented interpretation in the driver.
+Do not assume every decoder's width/height fields represent pixel dimensions.
+The application calls this only after successful family identification using the
+exact correlated transaction response. It owns dimension/pixel-budget validation,
+connection/device/family eligibility and explicit adoption. Notifications, external
+captures, rejected interpretations and historical transactions cannot seed a live
+proposal. No production driver opts in in this slice; Synthetic Lumen contributes
+authored software vectors solely through the development/test registry.
+
+Reported adoption stores `geometrySource: "device-info"` and transaction/time/driver
+and originating connection/device metadata on the experimental provisional profile.
+Manual entry stores `geometrySource: "user-confirmed"` and only that path populates
+`manuallyConfirmedGeometry`. Neither path establishes physical or capability claims.
+A conflicting response remains inspectable without replacing reviewed geometry.
+
+## Offline independent-family proof
+
+The [LSLED legacy reference](lsled-offline.md) shows a second family through the
+same MatrixDriver and injected DriverRegistry seams. `registry-core.ts` contains
+the matching/registration implementation without live codec imports;
+`registry.ts` retains live built-ins and their existing reviewed identities.
+`compileOfflineFrame` accepts only an explicit registered offline reference,
+uses `source: "offline"` with a null fingerprint, and requires driver-authored
+dry-run-only intent. Its small result is independent of Bundle V3 and
+ContentCompilationRecord. A reference cannot resolve a physical profile, and
+software layout tests do not replace deliberate hardware acceptance.
+
+The [reusable offline catalog](offline-catalog.md) registers both LSLED and the
+[pinned micro:bit LED service](microbit-offline.md). Add a literal lazy loader
+and immutable entry with a registered reference, authored examples, pixel
+policy, delivery/limitations and validated source IDs. Builders and descriptions
+stay in the entry; the shared inspector and bootstrap need no family branch.
+Keep reference drivers out of the default live composition.

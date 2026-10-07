@@ -2,7 +2,13 @@ import type { GattEndpoint } from "../../core/device";
 import type { TransmissionPlan } from "../../core/transmission";
 import type { DecodedNotification } from "../../drivers/types";
 import { type ExecutionResult } from "../../app/executor";
-import { type NotificationRecord } from "../../app/notifications";
+import type { ExecutionEvidence } from "../../app/execution-evidence";
+import {
+  endpointKey,
+  RESPONSE_AMBIGUITY_MESSAGE,
+  type ResponseContext,
+  type NotificationRecord,
+} from "../../app/notifications";
 import { packetHex } from "../../core/transmission";
 import type { TransactionSource } from "../../diagnostics/transactions";
 import { transactionId } from "../../diagnostics/transactions";
@@ -34,6 +40,14 @@ interface Ports {
   >;
 }
 export class ProtocolEvidenceService {
+  private transactionRevision = 0;
+  private compilationRevision = 0;
+  get revisions() {
+    return {
+      transactions: this.transactionRevision,
+      compilations: this.compilationRevision,
+    };
+  }
   private readonly trace: TraceRecorder;
   private readonly _notificationRouter = new NotificationRouter();
   private readonly _observations: ManualObservation[] = [];
@@ -52,7 +66,11 @@ export class ProtocolEvidenceService {
   editTransactions(
     edit: (value: ProtocolEvidenceService["_transactions"]) => unknown,
   ): void {
-    edit(this._transactions);
+    try {
+      edit(this._transactions);
+    } finally {
+      this.transactionRevision++;
+    }
   }
   getTrace() {
     return this.trace;
@@ -81,7 +99,11 @@ export class ProtocolEvidenceService {
   editContentCompilations(
     edit: (value: ProtocolEvidenceService["_contentCompilations"]) => unknown,
   ): void {
-    edit(this._contentCompilations);
+    try {
+      edit(this._contentCompilations);
+    } finally {
+      this.compilationRevision++;
+    }
   }
   editImportedEvidence(
     edit: (value: ProtocolEvidenceService["_importedEvidence"]) => unknown,
@@ -96,52 +118,121 @@ export class ProtocolEvidenceService {
     source: TransactionSource,
     diagnosticRunIdValue: string | null,
     error: string | null,
-  ): void {
+    sessionSource: ProtocolTransaction["sessionSource"] = this.ports
+      .connection()
+      .getSession().source,
+    failureEvidence: ExecutionEvidence | null = null,
+  ): ProtocolTransaction {
     const session = this.ports.connection().getSession();
-    const completedAt = result?.completedAt ?? new Date().toISOString();
-    const endpoint = plan.packets[0]?.endpoint ?? null;
-    const timingByIndex = new Map(
-      (result?.packetTimings ?? []).map((timing) => [timing.index, timing]),
-    );
-    // Real per-write timestamps: every packet keeps its measured write time,
-    // never the transaction's start time or the plan's requested pacing.
-    const tx = plan.packets.map((packet) => {
-      const timing = timingByIndex.get(packet.index);
+    const evidence = result?.evidence ?? failureEvidence;
+    const completedAt =
+      evidence?.settledAt ?? result?.completedAt ?? new Date().toISOString();
+    const endpoint =
+      evidence?.attempts[0]?.endpoint ?? plan.packets[0]?.endpoint ?? null;
+    // Planned bytes never establish TX. These are private dispatch snapshots,
+    // including rejected/indeterminate calls, preserved independently of plans.
+    const tx = (evidence?.attempts ?? []).map((attempt, index, attempts) => {
+      const timing = attempt.timing;
+      const acceptedAt =
+        timing?.hostAcceptedAt ?? attempt.lateReceipt?.acceptedAt;
+      const previous = attempts[index - 1];
+      const gap = previous
+        ? Math.max(
+            0,
+            Date.parse(attempt.writeStartedAt) -
+              Date.parse(previous.writeStartedAt),
+          )
+        : null;
       return {
-        timestamp: timing?.writeStartedAt ?? startedAt,
+        timestamp: attempt.writeStartedAt,
         direction: "TX" as const,
-        hex: packet.hex,
-        endpoint: packet.endpoint,
-        ...(timing
-          ? {
-              hostAcceptedAt: timing.hostAcceptedAt,
-              scheduledDelayMs: timing.scheduledDelayMs,
-            }
-          : {}),
-        ...(timing?.gapSincePreviousTxMs !== null &&
-        timing?.gapSincePreviousTxMs !== undefined
-          ? { gapSincePreviousTxMs: timing.gapSincePreviousTxMs }
-          : {}),
+        hex: attempt.hex,
+        endpoint: { ...attempt.endpoint },
+        ...(acceptedAt ? { hostAcceptedAt: acceptedAt } : {}),
+        ...(timing ? { scheduledDelayMs: timing.scheduledDelayMs } : {}),
+        ...(gap !== null ? { gapSincePreviousTxMs: gap } : {}),
       };
     });
-    const rx = session.notifications.slice(notificationStart).map((record) => ({
+    const records = session.notifications.filter(
+      (record) =>
+        record.receiveSequence !== undefined &&
+        record.receiveSequence > notificationStart,
+    );
+    // The selected record stays attributable even if the bounded UI collection evicts it.
+    const responseRecord = result?.responseRecord ?? evidence?.responseRecord;
+    const responseAmbiguous =
+      evidence?.responseAmbiguous ?? result?.responseAmbiguous ?? false;
+    const retainedResponse =
+      responseRecord &&
+      records.find(
+        (record) =>
+          record === responseRecord ||
+          (record.receiveSequence !== undefined &&
+            record.receiveSequence === responseRecord.receiveSequence &&
+            record.connectionGeneration ===
+              responseRecord.connectionGeneration &&
+            record.timestamp === responseRecord.timestamp &&
+            record.rawHex === responseRecord.rawHex &&
+            record.endpoint &&
+            responseRecord.endpoint &&
+            endpointKey(record.endpoint) ===
+              endpointKey(responseRecord.endpoint)),
+      );
+    if (responseRecord && !retainedResponse) records.push(responseRecord);
+    const correlatedRecord = retainedResponse ?? responseRecord;
+    records.sort((a, b) => (a.receiveSequence ?? 0) - (b.receiveSequence ?? 0));
+    const receiptEndpoints =
+      plan.responseExpectation.type === "notification"
+        ? plan.responseExpectation.endpoints
+        : plan.packets.map((packet) => packet.endpoint);
+    const rx = records.map((record) => ({
       timestamp: record.timestamp,
       direction: "RX" as const,
       hex: record.rawHex,
       ...(record.endpoint ? { endpoint: record.endpoint } : {}),
       relation:
-        result?.response === record.decoded
+        correlatedRecord === record && !responseAmbiguous
           ? ("matched-response" as const)
-          : record.decoded?.kind.includes("receipt")
+          : record.decoded?.kind.includes("receipt") &&
+              record.endpoint &&
+              receiptEndpoints.some(
+                (endpoint) =>
+                  endpointKey(endpoint) === endpointKey(record.endpoint!),
+              )
             ? ("related-receipt" as const)
             : ("unrelated-concurrent" as const),
     }));
-    this._transactions.push({
+    const matchedResponse =
+      responseRecord?.decoded && !responseAmbiguous
+        ? responseRecord.decoded
+        : null;
+    const hostAccepted = Boolean(
+      evidence &&
+      evidence.totalPackets > 0 &&
+      evidence.attempts.length === evidence.totalPackets &&
+      evidence.attempts.every(({ settlement }) => settlement === "accepted"),
+    );
+    const executionFindings = (evidence?.attempts ?? []).flatMap((attempt) =>
+      attempt.lateReceipt
+        ? [
+            `Packet ${attempt.index} received late host acceptance in a retired execution; this is historical evidence only.`,
+          ]
+        : attempt.settlement === "indeterminate"
+          ? [
+              `Packet ${attempt.index} dispatch is indeterminate. Disconnect, reconnect and review before any new send; do not automatically retry.`,
+            ]
+          : attempt.settlement === "failed"
+            ? [
+                `Packet ${attempt.index} dispatch failed; host acceptance was not observed.`,
+              ]
+            : [],
+    );
+    const transaction: ProtocolTransaction = {
       id: transactionId(),
       startedAt,
       completedAt,
       durationMs: duration(startedAt, completedAt),
-      sessionSource: session.source,
+      sessionSource,
       source,
       driverId: plan.driverId,
       profileId: plan.profileId,
@@ -153,29 +244,51 @@ export class ProtocolEvidenceService {
       },
       endpoint,
       packets: [...tx, ...rx],
-      decodedResponse: result?.response ?? null,
-      hostAccepted: result?.hostAccepted ?? false,
-      protocolAcknowledged: result?.protocolAcknowledged ?? null,
-      deviceStateVerified: result?.deviceStateVerified ?? false,
-      responseTimedOut: result?.responseTimedOut ?? false,
+      decodedResponse: responseAmbiguous
+        ? null
+        : (matchedResponse ?? result?.response ?? null),
+      hostAccepted,
+      protocolAcknowledged:
+        plan.responseExpectation.type === "none"
+          ? null
+          : Boolean(matchedResponse),
+      deviceStateVerified: Boolean(
+        matchedResponse &&
+        plan.responseExpectation.type === "notification" &&
+        plan.responseExpectation.fulfillsOperation,
+      ),
+      responseTimedOut:
+        evidence?.responseTimedOut ?? result?.responseTimedOut ?? false,
       error,
-      findings: result?.response ? [result.response.summary] : [],
+      findings: [
+        ...(responseAmbiguous
+          ? [RESPONSE_AMBIGUITY_MESSAGE]
+          : matchedResponse
+            ? [matchedResponse.summary]
+            : []),
+        ...executionFindings,
+      ],
       observationIds: [],
       diagnosticRunId: diagnosticRunIdValue,
-    });
+    };
+    this._transactions.push(transaction);
+    this.transactionRevision++;
     this._trimTransactions();
+    return transaction;
   }
   _recordIncoming(
     packet: Uint8Array,
     recordTrace: boolean,
     endpoint: GattEndpoint | null,
+    recordedAt?: string,
+    liveContext?: ResponseContext,
   ): NotificationRecord {
     const session = this.ports.connection().getSession();
     const raw = packet.slice();
-    if (recordTrace)
-      this.trace.record("notification.raw", { byteLength: raw.length }, raw);
+    const timestamp = recordedAt ?? new Date().toISOString();
     const fingerprint = session.fingerprint;
     const candidates: DecodedNotification[] = [];
+    const familyInterpretations: DecodedNotification[] = [];
     if (fingerprint)
       for (const driver of this.ports.identification().getRegistry().drivers) {
         if (!driver.decodeNotification || driver.match(fingerprint).score <= 0)
@@ -185,19 +298,69 @@ export class ProtocolEvidenceService {
           fingerprint,
           source: session.source,
         });
-        if (decoded) candidates.push(decoded);
+        if (decoded) {
+          candidates.push(decoded);
+          if (
+            !decoded.envelopeError &&
+            (
+              driver.familyProbes?.({
+                fingerprint,
+                endpoints: candidateEndpoints(fingerprint),
+                source: session.source,
+              }) ?? []
+            ).some((probe) => {
+              const meaning = probe.identify(
+                { response: decoded, responseTimedOut: false },
+                {
+                  fingerprint,
+                  endpoints: candidateEndpoints(fingerprint),
+                  source: session.source,
+                },
+              );
+              return meaning.matched || !!meaning.rejection;
+            })
+          )
+            familyInterpretations.push(decoded);
+        }
       }
-    const decoded =
-      candidates.sort((a, b) => decodePriority(b) - decodePriority(a))[0] ??
-      null;
-    const record = {
-      timestamp: new Date().toISOString(),
+    // Only reviewed family interpretations compete for identity. A generic
+    // unmapped envelope decoder is not an alternative family interpretation.
+    // Preserve ordinary control decoding; no global priority may choose between
+    // contradictory reviewed identity interpretations.
+    const distinct = new Map(
+      familyInterpretations.map((candidate) => [
+        JSON.stringify(candidate),
+        candidate,
+      ]),
+    );
+    const interpretationAmbiguous = distinct.size > 1;
+    const decoded = interpretationAmbiguous
+      ? null
+      : ([...distinct.values()][0] ??
+        candidates.sort((a, b) => decodePriority(b) - decodePriority(a))[0] ??
+        null);
+    const incoming = {
+      timestamp,
       raw,
       rawHex: packetHex(raw),
       decoded,
-      ...(endpoint ? { endpoint } : {}),
+      interpretationAmbiguous,
+      ...(interpretationAmbiguous
+        ? { competingInterpretations: [...distinct.values()] }
+        : {}),
+      ...(endpoint ? { endpoint: { ...endpoint } } : {}),
     };
+    const record =
+      liveContext && session.source === "live"
+        ? this._notificationRouter.recordLive(incoming, liveContext)
+        : incoming;
     session.recordNotification(record);
+    // Receive ownership and response settlement must precede observer callbacks.
+    // A slow/throwing presentation observer cannot erase or delay attribution.
+    this._notificationRouter.publish(record);
+    if (decoded) this._resolveReplayEvidence(decoded);
+    if (recordTrace)
+      this.trace.record("notification.raw", { byteLength: raw.length }, raw);
     if (decoded)
       this.trace.record("notification.decoded", {
         family: decoded.family,
@@ -208,8 +371,6 @@ export class ProtocolEvidenceService {
         success: decoded.success ?? null,
         status: decoded.status ?? null,
       });
-    this._notificationRouter.publish(record);
-    if (decoded) this._resolveReplayEvidence(decoded);
     return record;
   }
   _resolveReplayEvidence(notification: DecodedNotification): void {
@@ -288,10 +449,12 @@ export class ProtocolEvidenceService {
       ...(typeof metadata.frameCount === "number"
         ? { frameCount: metadata.frameCount }
         : {}),
-      ...(transactionId ? { transactionId } : {}),
       ...extras,
+      // Caller-authored compilation metadata cannot replace execution ownership.
+      ...(transactionId ? { transactionId } : {}),
     };
     this._contentCompilations.push(record);
+    this.compilationRevision++;
     this.trace.record("content.compiled", {
       operation: plan.operation.type,
       programBytes: record.programBytes,
@@ -313,6 +476,9 @@ export class ProtocolEvidenceService {
   }
   _trimTransactions(): void {
     const overflow = this._transactions.length - INPUT_LIMITS.transactions;
-    if (overflow > 0) this._transactions.splice(0, overflow);
+    if (overflow > 0) {
+      this._transactions.splice(0, overflow);
+      this.transactionRevision++;
+    }
   }
 }

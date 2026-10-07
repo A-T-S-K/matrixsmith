@@ -1,3 +1,12 @@
+import { normalizeUuid } from "../../core/device";
+import { discoveryCatalog, nextDiscoveryStep } from "./discovery-planner";
+import {
+  machineOutcome,
+  ProbeStageError,
+  type MachineOutcomeKind,
+} from "../discovery-outcome";
+import { RESPONSE_AMBIGUITY_MESSAGE } from "../../app/notifications";
+import { SHARED_OPERATIONS } from "../../domain/device/assessment";
 import { TransmissionAuthorization } from "../../app/transmission-authorization";
 import type { MatrixOperation } from "../../core/operations";
 import type {
@@ -11,9 +20,13 @@ import {
 import { type PolicyDecision } from "../../app/safety";
 import {
   isPreparedTransmission,
+  copyPreparedTransmission,
   prepareTransmission,
 } from "../../core/transmission";
-import type { TransactionSource } from "../../diagnostics/transactions";
+import type {
+  ProtocolTransaction,
+  TransactionSource,
+} from "../../diagnostics/transactions";
 import { resolveSessionBehavior } from "../../investigation/session-behavior";
 import { transitionConnection } from "../machines/connection-machine";
 import { candidateEndpoints, errorMessage } from "./runtime-support";
@@ -21,13 +34,101 @@ import { candidateEndpoints, errorMessage } from "./runtime-support";
 import type { ContentCompilationRecord } from "../../diagnostics/content-evidence";
 
 import { TransmissionExecutor } from "../../app/executor";
+import type { ExecutionEvidence } from "../../app/execution-evidence";
 import { SafetyPolicy } from "../../app/safety";
 
 import type { ConnectionService } from "./connection-service";
 import type { ProtocolEvidenceService } from "./protocol-evidence-service";
 import type { InvestigationService } from "./investigation-service";
 import type { IdentificationService } from "./identification-service";
+export type ApplicationExecutionResult = ExecutionResult & {
+  readonly transactionId: string;
+};
+
+export interface ApplicationExecutionRecording {
+  readonly transactionId: string;
+  readonly evidence: ExecutionEvidence | null;
+}
+
+function publishRecording(
+  callback: ((recording: ApplicationExecutionRecording) => void) | undefined,
+  transactionId: string,
+  evidence: ExecutionEvidence | null,
+): void {
+  try {
+    callback?.({
+      transactionId,
+      evidence: evidence ? structuredClone(evidence) : null,
+    });
+  } catch {
+    // An observer cannot change the already settled execution outcome.
+  }
+}
+
+const recordedFailures = new WeakMap<
+  object,
+  {
+    readonly transactionId: string;
+    readonly evidence: ExecutionEvidence | null;
+  } | null
+>();
+
+/** Application-owned linkage; caller/JSON fields never supply execution IDs. */
+export function executionTransactionId(error: unknown): string | null {
+  return error !== null &&
+    (typeof error === "object" || typeof error === "function")
+    ? (recordedFailures.get(error)?.transactionId ?? null)
+    : null;
+}
+
+export function recordedExecutionEvidence(
+  error: unknown,
+): ExecutionEvidence | null {
+  if (
+    error === null ||
+    (typeof error !== "object" && typeof error !== "function")
+  )
+    return null;
+  const evidence = recordedFailures.get(error)?.evidence;
+  return evidence ? structuredClone(evidence) : null;
+}
+
+function recordExecutionFailure(
+  error: unknown,
+  transactionId: string,
+  evidence: ExecutionEvidence | null = null,
+): unknown {
+  const original =
+    error !== null && (typeof error === "object" || typeof error === "function")
+      ? error
+      : new Error(errorMessage(error), { cause: error });
+  recordedFailures.set(
+    original,
+    recordedFailures.has(original)
+      ? null
+      : {
+          transactionId,
+          evidence: evidence ? structuredClone(evidence) : null,
+        },
+  );
+  return original;
+}
+
+export type FamilyProbeExecution = ExecutionResult & {
+  readonly transactionId: string;
+  readonly outcome: MachineOutcomeKind;
+  readonly identification: import("../../drivers/types").IdentificationResult & {
+    readonly driverId: string;
+    readonly probeId: string;
+    readonly family: string;
+  };
+};
+
 interface Ports {
+  guidedTestCatalog(): Pick<
+    import("./guided-test-catalog-service").GuidedTestCatalogService,
+    "guidedTest" | "guidedTests" | "planGuidedTest"
+  >;
   connection(): Pick<
     ConnectionService,
     | "getSession"
@@ -37,10 +138,11 @@ interface Ports {
     | "getTransport"
     | "setConnectionState"
     | "getConnectionState"
+    | "getConnectionGeneration"
+    | "getIdentityAuthorityRevision"
   >;
   protocolEvidence(): Pick<
     ProtocolEvidenceService,
-    | "getTransactions"
     | "_recordCompilation"
     | "getTrace"
     | "_recordTransaction"
@@ -56,7 +158,7 @@ interface Ports {
   >;
   identification(): Pick<
     IdentificationService,
-    "getRegistry" | "_resolveProtocol"
+    "getRegistry" | "_resolveProtocol" | "_proposeGeometry" | "assessment"
   >;
 }
 export class TransmissionService {
@@ -69,10 +171,61 @@ export class TransmissionService {
       this.ports.connection().getTransport(),
       this.ports.protocolEvidence().getTrace(),
       this.ports.protocolEvidence().getNotificationRouter(),
+      () => this.ports.connection()._currentTargetBinding(),
     );
+  }
+  get executionBusy(): boolean {
+    return this._executor.busy;
   }
   getPolicy() {
     return this.policy;
+  }
+  private captureExecutionContext(): () => boolean {
+    const connection = this.ports.connection();
+    const session = connection.getSession();
+    const generation = connection.getConnectionGeneration();
+    const binding = connection._currentTargetBinding();
+    const selected = session.selection?.selected;
+    const profile = session.profile;
+    const protocol = session.protocolResolution;
+    const geometryRevision = session.geometryRevision;
+    const experimental = session.experimentalTxEnabled;
+    const confirmedDigest = session.confirmedPlanDigest;
+    const revision = connection.getIdentityAuthorityRevision();
+    const definition = selected
+      ? this.ports
+          .identification()
+          .getRegistry()
+          .definitionIdentity(selected.id, profile)
+      : null;
+    let retired = false;
+    return () => {
+      const currentBinding = connection._currentTargetBinding();
+      if (
+        session.source !== "live" ||
+        generation !== connection.getConnectionGeneration() ||
+        !binding ||
+        !currentBinding ||
+        binding.connectionId !== currentBinding.connectionId ||
+        binding.fingerprintKey !== currentBinding.fingerprintKey ||
+        binding.browserDeviceId !== currentBinding.browserDeviceId ||
+        revision !== connection.getIdentityAuthorityRevision() ||
+        selected !== session.selection?.selected ||
+        profile !== session.profile ||
+        protocol !== session.protocolResolution ||
+        geometryRevision !== session.geometryRevision ||
+        experimental !== session.experimentalTxEnabled ||
+        confirmedDigest !== session.confirmedPlanDigest ||
+        (selected &&
+          definition !==
+            this.ports
+              .identification()
+              .getRegistry()
+              .definitionIdentity(selected.id, session.profile))
+      )
+        retired = true;
+      return !retired;
+    };
   }
   async sendPersistentContent(
     plan: TransmissionPlan,
@@ -80,8 +233,12 @@ export class TransmissionService {
       readonly confirmedConsequence?: boolean;
       readonly extras?: Partial<ContentCompilationRecord>;
       readonly onProgress?: (progress: ExecutionProgress) => void;
+      readonly onExecutionStarted?: () => void;
+      readonly onTransactionRecorded?: (
+        recording: ApplicationExecutionRecording,
+      ) => void;
     } = {},
-  ): Promise<ExecutionResult> {
+  ): Promise<ApplicationExecutionResult> {
     if (plan.risk !== "persistent" && plan.persistence !== "persistent")
       throw new Error(
         "sendPersistentContent is only for persistent content plans.",
@@ -95,33 +252,61 @@ export class TransmissionService {
       throw new Error(
         "Persistent content must be prepared for the connected target before authorization.",
       );
+    const ownedPlan = copyPreparedTransmission(plan);
+    const connectionId = this.ports.connection().getTransport().connectionId;
+    const generation = this.ports.connection().getConnectionGeneration();
     const experimentalWasEnabled = this.authority.experimentalTxEnabled;
     if (requiresExperimentalConfirmation) this.authority.enableExperimentalTx();
     if (requiresExperimentalConfirmation)
-      this.authority.confirmPlanDigest(plan.digest);
-    const transactionIndex = this.ports
-      .protocolEvidence()
-      .getTransactions().length;
+      this.authority.confirmPlanDigest(ownedPlan.digest);
+    let recording: ApplicationExecutionRecording | null = null;
+    let compilationAttempted = false;
+    const captureRecording = (value: ApplicationExecutionRecording): void => {
+      recording = value;
+      publishRecording(
+        options.onTransactionRecorded,
+        value.transactionId,
+        value.evidence,
+      );
+    };
     try {
       const result = await this._execute(
-        plan,
+        ownedPlan,
         "operation",
         null,
         options.onProgress,
+        options.onExecutionStarted,
+        captureRecording,
       );
+      compilationAttempted = true;
       this.ports
         .protocolEvidence()
-        ._recordCompilation(
-          plan,
-          options.extras,
-          this.ports.protocolEvidence().getTransactions()[transactionIndex]
-            ?.id ?? null,
-        );
+        ._recordCompilation(ownedPlan, options.extras, result.transactionId);
       return result;
+    } catch (error) {
+      const transactionId = (recording as ApplicationExecutionRecording | null)
+        ?.transactionId;
+      if (transactionId && !compilationAttempted) {
+        try {
+          this.ports
+            .protocolEvidence()
+            ._recordCompilation(ownedPlan, options.extras, transactionId);
+        } catch {
+          // Compilation publication cannot replace the execution failure.
+        }
+      }
+      throw error;
     } finally {
-      this.authority.consumePersistentConfirmation();
-      if (requiresExperimentalConfirmation && !experimentalWasEnabled)
-        this.authority.disableExperimentalTx();
+      if (
+        connectionId === this.ports.connection().getTransport().connectionId &&
+        generation === this.ports.connection().getConnectionGeneration() &&
+        (!requiresExperimentalConfirmation ||
+          this.authority.confirmedPlanDigest === ownedPlan.digest)
+      ) {
+        this.authority.consumePersistentConfirmation();
+        if (requiresExperimentalConfirmation && !experimentalWasEnabled)
+          this.authority.disableExperimentalTx();
+      }
     }
   }
   plan(operation: MatrixOperation): PreparedTransmission {
@@ -145,7 +330,16 @@ export class TransmissionService {
       ),
     });
     const plan = prepareTransmission(
-      rawPlan,
+      {
+        ...rawPlan,
+        metadata: {
+          ...rawPlan.metadata,
+          definitionIdentity: this.ports
+            .identification()
+            .getRegistry()
+            .definitionIdentity(driver.id, profile),
+        },
+      },
       this.ports.connection()._requireTargetBinding(),
     );
     this.ports.protocolEvidence().getTrace().record("tx.plan.created", {
@@ -169,7 +363,93 @@ export class TransmissionService {
     return decision;
   }
   evaluate(plan: TransmissionPlan): PolicyDecision {
+    const contentCapabilities = {
+      ShowFrame: "static-frame",
+      ShowText: "text",
+      ShowAnimation: "animation",
+      ShowScrollingText: "animation",
+      ShowGif: "gif",
+    } as const;
+    const capabilityId =
+      SHARED_OPERATIONS[
+        plan.operation.type as keyof typeof SHARED_OPERATIONS
+      ] ??
+      contentCapabilities[
+        plan.operation.type as keyof typeof contentCapabilities
+      ];
+    const readinessReasons: string[] = [];
+    if (
+      plan.operation.type === "ShowDiagnostic" &&
+      plan.operation.diagnosticId.startsWith("still-")
+    ) {
+      const operation = plan.operation;
+      const availability = this.ports
+        .guidedTestCatalog()
+        .guidedTests()
+        .find(
+          ({ test }) =>
+            test.operation.type === "ShowDiagnostic" &&
+            test.operation.diagnosticId === operation.diagnosticId,
+        );
+      if (!availability?.available)
+        readinessReasons.push(
+          availability?.reason ??
+            "This fixed experiment is not registered for the current target.",
+        );
+      if (operation.parameters && Object.keys(operation.parameters).length)
+        readinessReasons.push("This fixed experiment accepts no parameters.");
+    }
+    if (capabilityId) {
+      const assessment = this.ports.identification().assessment();
+      const capability = assessment.capabilities[capabilityId];
+      if (
+        capability.confidence === "experimental" &&
+        !this.authority.experimentalTxEnabled
+      )
+        readinessReasons.push(
+          "Experimental operation availability still requires explicit per-session experimental permission.",
+        );
+      if (capability.availability !== "available")
+        readinessReasons.push(capability.reason);
+      const action = assessment.actions.find(
+        ({ operationId }) => operationId === plan.operation.type,
+      );
+      if (!action || action.availability !== "available")
+        readinessReasons.push(
+          action?.reason ??
+            "The selected driver does not offer this ordinary operation.",
+        );
+    }
+    const decision = this.evaluatePolicy(plan);
+    return readinessReasons.length
+      ? { allowed: false, reasons: [...readinessReasons, ...decision.reasons] }
+      : decision;
+  }
+  private evaluatePolicy(plan: TransmissionPlan): PolicyDecision {
     const session = this.ports.connection().getSession();
+    if (plan.metadata.definitionIdentity !== undefined) {
+      const profile =
+        session.selection?.selected?.id === plan.driverId
+          ? session.profile
+          : session.fingerprint
+            ? (this.ports
+                .identification()
+                .getRegistry()
+                .drivers.find((driver) => driver.id === plan.driverId)
+                ?.resolveProfile(session.fingerprint) ?? null)
+            : null;
+      const currentIdentity = this.ports
+        .identification()
+        .getRegistry()
+        .definitionIdentity(plan.driverId, profile);
+      if (plan.metadata.definitionIdentity !== currentIdentity)
+        return {
+          allowed: false,
+          reasons: [
+            "The accepted profile definition changed; prepare the operation again.",
+          ],
+        };
+    }
     const bestMatch =
       session.selection?.matches.find(
         ({ driverId }) => driverId === plan.driverId,
@@ -186,53 +466,139 @@ export class TransmissionService {
       confirmedPlanDigest: session.confirmedPlanDigest,
     });
   }
-  async send(plan: TransmissionPlan): Promise<ExecutionResult> {
+  async send(plan: TransmissionPlan): Promise<ApplicationExecutionResult> {
     return this._execute(plan, plan.purpose, null);
+  }
+  /** Accepts a registered id, never a caller-supplied plan or test definition. */
+  async sendRegisteredQuery(
+    testId: string,
+    options: {
+      readonly onTransactionRecorded?: (
+        recording: ApplicationExecutionRecording,
+      ) => void;
+    } = {},
+  ): Promise<ApplicationExecutionResult> {
+    const catalog = this.ports.guidedTestCatalog();
+    const availability = catalog
+      .guidedTests()
+      .find(({ test }) => test.id === testId);
+    if (!availability?.available)
+      throw new Error(availability?.reason ?? "Unknown registered test.");
+    const test = catalog.guidedTest(testId);
+    const plan = catalog.planGuidedTest(testId);
+    if (test.risk !== "read-only" || test.persistence !== "none")
+      throw new Error(
+        "Registered query execution requires a read-only, non-persistent test.",
+      );
+    const capabilityId =
+      SHARED_OPERATIONS[plan.operation.type as keyof typeof SHARED_OPERATIONS];
+    if (
+      capabilityId &&
+      this.ports.identification().assessment().capabilities[capabilityId]
+        .confidence === "experimental" &&
+      !this.authority.experimentalTxEnabled
+    )
+      throw new Error(
+        "Registered experimental query execution requires explicit per-session unlock.",
+      );
+    return this.executeAuthorized(
+      "diagnostic",
+      null,
+      this.evaluatePolicy(plan),
+      undefined,
+      undefined,
+      options.onTransactionRecorded,
+    );
   }
   async _execute(
     plan: TransmissionPlan,
     source: TransactionSource,
     diagnosticRunIdValue: string | null,
     onProgress?: (progress: ExecutionProgress) => void,
-  ): Promise<ExecutionResult> {
+    onExecutionStarted?: () => void,
+    onTransactionRecorded?: (recording: ApplicationExecutionRecording) => void,
+  ): Promise<ApplicationExecutionResult> {
+    return this.executeAuthorized(
+      source,
+      diagnosticRunIdValue,
+      this.authorize(plan),
+      onProgress,
+      onExecutionStarted,
+      onTransactionRecorded,
+    );
+  }
+  private async executeAuthorized(
+    source: TransactionSource,
+    diagnosticRunIdValue: string | null,
+    decision: PolicyDecision,
+    onProgress?: (progress: ExecutionProgress) => void,
+    onExecutionStarted?: () => void,
+    onTransactionRecorded?: (recording: ApplicationExecutionRecording) => void,
+  ): Promise<ApplicationExecutionResult> {
     const session = this.ports.connection().getSession();
+    const current = this.captureExecutionContext();
     const startedAt = new Date().toISOString();
-    const notificationStart = session.notifications.length;
-    const decision = this.authorize(plan);
+    const notificationStart = this.ports
+      .protocolEvidence()
+      .getNotificationRouter().receiveSequence;
+    const sessionSource = session.source;
     if (!decision.allowed || !decision.authorized)
       throw new Error(decision.reasons.join(" "));
+    const executionPlan = decision.authorized.plan;
     const driver = this.ports
       .identification()
       .getRegistry()
-      .drivers.find(({ id }) => id === plan.driverId);
-    if (!driver) throw new Error(`Driver ${plan.driverId} is unavailable.`);
+      .drivers.find(({ id }) => id === executionPlan.driverId);
+    if (!driver)
+      throw new Error(`Driver ${executionPlan.driverId} is unavailable.`);
     await this.ports.connection().enableDriverNotifications(driver);
+    if (!current())
+      throw new Error("The connection changed during notification setup.");
     // A stored-program display holds exactly one program. Every persistent
     // write replaces it, so the belief about what is on the panel is settled
     // HERE — the one path all of them go through — rather than in each
     // caller, where "Create → Send image" was silently exempt.
     const replacesStoredProgram =
-      plan.risk === "persistent" || plan.persistence === "persistent";
+      executionPlan.risk === "persistent" ||
+      executionPlan.persistence === "persistent";
     const staged = this.ports.investigation().getStagedPanelProgram();
-    this.ports.investigation().setStagedPanelProgram(null);
+    if (replacesStoredProgram)
+      this.ports.investigation().setStagedPanelProgram(null);
+    let result: ExecutionResult | null = null;
+    let transaction: ProtocolTransaction | null = null;
+    let failureEvidence: ExecutionEvidence | null = null;
     try {
-      const result = await this._executor.execute(
+      onExecutionStarted?.();
+      result = await this._executor.execute(
         decision.authorized,
         driver,
         onProgress,
+        (evidence: ExecutionEvidence) => {
+          failureEvidence = evidence;
+        },
       );
-      this.ports
+      transaction = this.ports
         .protocolEvidence()
         ._recordTransaction(
-          plan,
+          executionPlan,
           result,
           startedAt,
-          notificationStart,
+          current()
+            ? notificationStart
+            : this.ports.protocolEvidence().getNotificationRouter()
+                .receiveSequence,
           source,
           diagnosticRunIdValue,
           null,
+          sessionSource,
         );
-      if (replacesStoredProgram) {
+      publishRecording(
+        onTransactionRecorded,
+        transaction.id,
+        result.evidence ?? null,
+      );
+      if (current()) session.recordCorrelatedResponse(result.responseRecord);
+      if (current() && replacesStoredProgram) {
         // "Written at" is the final host-accepted write, never the moment the
         // transfer began — a report that labels transfer-start as accepted is
         // reporting a time the panel had not yet been changed.
@@ -240,7 +606,7 @@ export class TransmissionService {
           certainty: "known-replaced" as const,
           kind: "ordinary-content" as const,
           fingerprint: null,
-          label: `${plan.operation.type} (${plan.purpose})`,
+          label: `${executionPlan.operation.type} (${executionPlan.purpose})`,
           startedAt,
           writtenAt: null,
           uncertaintyReason: null,
@@ -250,59 +616,116 @@ export class TransmissionService {
           writtenAt: result.finalWriteAcceptedAt ?? new Date().toISOString(),
         });
       }
-      return result;
+      return { ...result, transactionId: transaction.id };
     } catch (error) {
-      if (
-        this.ports.connection().getTransport().state === "quarantined" &&
-        isPreparedTransmission(plan)
-      ) {
-        const value = (error as { packetIndex?: unknown }).packetIndex;
-        this.ports.connection().setConnectionState(
-          transitionConnection(this.ports.connection().getConnectionState(), {
-            type: "WRITE_INDETERMINATE",
-            reason: {
-              planDigest: plan.digest,
-              packetIndex: typeof value === "number" ? value : -1,
-              message: errorMessage(error),
-            },
-          }),
-        );
-      }
-      // A failed persistent write may still have landed packets. What is on
-      // the panel is genuinely unknown, and saying otherwise in either
-      // direction would be a guess.
-      if (replacesStoredProgram) {
+      const evidence = result?.evidence ?? failureEvidence;
+      const recordedTransaction =
+        transaction ??
         this.ports
-          .investigation()
-          ._invalidatePanelProgram(
-            "A persistent write failed part-way; what the display is showing was not established.",
+          .protocolEvidence()
+          ._recordTransaction(
+            executionPlan,
+            result,
+            startedAt,
+            current()
+              ? notificationStart
+              : this.ports.protocolEvidence().getNotificationRouter()
+                  .receiveSequence,
+            source,
+            diagnosticRunIdValue,
+            errorMessage(error),
+            sessionSource,
+            evidence,
           );
-      }
-      this.ports
-        .protocolEvidence()
-        ._recordTransaction(
-          plan,
-          null,
-          startedAt,
-          notificationStart,
-          source,
-          diagnosticRunIdValue,
-          errorMessage(error),
+      if (!transaction)
+        publishRecording(
+          onTransactionRecorded,
+          recordedTransaction.id,
+          evidence,
         );
-      throw error;
+      try {
+        if (
+          current() &&
+          this.ports.connection().getTransport().state === "quarantined" &&
+          isPreparedTransmission(executionPlan)
+        ) {
+          const value = (error as { packetIndex?: unknown }).packetIndex;
+          this.ports.connection().setConnectionState(
+            transitionConnection(this.ports.connection().getConnectionState(), {
+              type: "WRITE_INDETERMINATE",
+              reason: {
+                planDigest: executionPlan.digest,
+                packetIndex: typeof value === "number" ? value : -1,
+                message: errorMessage(error),
+              },
+            }),
+          );
+        }
+        // A failed persistent write may still have landed packets. What is on
+        // the panel is genuinely unknown, and saying otherwise in either
+        // direction would be a guess.
+        if (current() && replacesStoredProgram) {
+          this.ports
+            .investigation()
+            ._invalidatePanelProgram(
+              "A persistent write failed part-way; what the display is showing was not established.",
+            );
+        }
+      } catch {
+        // Ledger ownership is already complete. A secondary presentation
+        // bookkeeping error cannot replace the original execution failure.
+      }
+      throw recordExecutionFailure(error, recordedTransaction.id, evidence);
     }
   }
-  async probe(driverId?: string, probeId?: string): Promise<ExecutionResult> {
+  async probe(
+    driverId?: string,
+    probeId?: string,
+    options: {
+      readonly automatic?: boolean;
+      readonly beforePlan?: () => void;
+      readonly reserve?: (plan: PreparedTransmission) => void;
+      readonly canAdopt?: () => boolean;
+    } = {},
+  ): Promise<FamilyProbeExecution> {
     const session = this.ports.connection().getSession();
     if (session.source !== "live")
       throw new Error(
         "Imported and replay sessions cannot perform live probes.",
       );
+    const connectionId = this.ports.connection().getTransport().connectionId;
     const fingerprint = session.fingerprint;
+    const current = this.captureExecutionContext();
     if (!fingerprint)
       throw new Error(
         "The requested probe driver is not available for this connection.",
       );
+    if (!driverId || !probeId) {
+      const steps = discoveryCatalog(
+        this.ports.identification().getRegistry(),
+        {
+          fingerprint,
+          endpoints: candidateEndpoints(fingerprint),
+          source: session.source,
+        },
+      );
+      const selected = nextDiscoveryStep(
+        steps.filter(
+          (step) =>
+            step.kind === "write-probe" &&
+            (!driverId || step.driverId === driverId),
+        ),
+        new Set(),
+        new Set(steps.map((step) => step.driverId)),
+      );
+      if (!selected || selected.kind !== "write-probe")
+        throw new ProbeStageError(
+          "blocked",
+          "No eligible registered discovery check. Open Protocol workbench or review a profile.",
+        );
+      driverId = selected.driverId;
+      probeId = selected.probeId;
+    }
     const driver = driverId
       ? this.ports
           .identification()
@@ -317,14 +740,19 @@ export class TransmissionService {
       throw new Error(
         "The requested probe driver is not available for this connection.",
       );
-    const profile = driver.resolveProfile(fingerprint);
+    // A repeated probe cannot replace already established reviewed or provisional geometry.
+    const profile =
+      session.selection?.selected?.id === driver.id && session.profile
+        ? session.profile
+        : driver.resolveProfile(fingerprint);
+    session.geometryProposal = null;
     const candidateContext = {
       fingerprint,
       endpoints: candidateEndpoints(fingerprint),
       source: session.source,
     } as const;
     const familyProbes = driver.familyProbes?.(candidateContext) ?? [];
-    const selectedProbeId = probeId ?? familyProbes[0]?.id;
+    const selectedProbeId = probeId;
     const familyProbe = familyProbes.find(({ id }) => id === selectedProbeId);
     const profileContext = profile
       ? ({ profile, fingerprint, source: session.source } as const)
@@ -336,10 +764,49 @@ export class TransmissionService {
       throw new Error(
         `Probe ${selectedProbeId ?? "(none)"} is unavailable for this device candidate.`,
       );
+    const authoredTools =
+      driver
+        .diagnosticTools?.()
+        .filter(
+          (tool) =>
+            tool.workflow === "family-identification" &&
+            tool.probeId === selectedProbeId,
+        ) ?? [];
+    if (
+      (authoredTools.length > 0 &&
+        authoredTools.every((tool) => !tool.available)) ||
+      familyProbe?.discovery?.available === false
+    )
+      throw new ProbeStageError(
+        "blocked",
+        "The authored identification check is unavailable.",
+      );
+    if (
+      options.automatic &&
+      (!familyProbe?.discovery ||
+        familyProbe.safety.hazard !== "routine" ||
+        familyProbe.safety.assurance !== "verified" ||
+        familyProbe.safety.persistence !== "none")
+    )
+      throw new ProbeStageError(
+        "blocked",
+        "This check needs experimental review; interview permission does not unlock it.",
+      );
+    options.beforePlan?.();
+    const rawPlan = familyProbe
+      ? familyProbe.plan(candidateContext)
+      : profileProbe!.plan(profileContext!);
     const plan = prepareTransmission(
-      familyProbe
-        ? familyProbe.plan(candidateContext)
-        : profileProbe!.plan(profileContext!),
+      {
+        ...rawPlan,
+        metadata: {
+          ...rawPlan.metadata,
+          definitionIdentity: this.ports
+            .identification()
+            .getRegistry()
+            .definitionIdentity(driver.id, profile),
+        },
+      },
       this.ports.connection()._requireTargetBinding(),
     );
     this.ports
@@ -350,62 +817,190 @@ export class TransmissionService {
         probeId: selectedProbeId ?? "unknown",
         planId: plan.id,
       });
-    const decision = this.authorize(plan);
+    if (
+      options.automatic &&
+      (plan.operation.type !== "GetDeviceInfo" ||
+        plan.purpose !== "probe" ||
+        plan.risk !== "read-only" ||
+        plan.persistence !== "none" ||
+        plan.validation !== "verified")
+    )
+      throw new ProbeStageError(
+        "blocked",
+        "Machine discovery permits only reviewed read-only information probes.",
+      );
+    if (
+      !this.ports
+        .protocolEvidence()
+        .getNotificationRouter()
+        .canSchedule(plan.responseExpectation)
+    )
+      throw new ProbeStageError("ambiguous", RESPONSE_AMBIGUITY_MESSAGE);
+    const characteristic = (
+      endpoint: import("../../core/device").GattEndpoint,
+    ) =>
+      fingerprint.services
+        .find(
+          (service) =>
+            normalizeUuid(service.uuid) === normalizeUuid(endpoint.serviceUuid),
+        )
+        ?.characteristics.find(
+          (item) =>
+            normalizeUuid(item.uuid) ===
+            normalizeUuid(endpoint.characteristicUuid),
+        );
+    if (
+      plan.packets.some((packet) => {
+        const properties = characteristic(packet.endpoint)?.properties;
+        return packet.writeMode === "without-response"
+          ? !properties?.writeWithoutResponse
+          : !properties?.write;
+      }) ||
+      (plan.responseExpectation.type === "notification" &&
+        plan.responseExpectation.endpoints.some((endpoint) => {
+          const properties = characteristic(endpoint)?.properties;
+          return !properties?.notify && !properties?.indicate;
+        }))
+    )
+      throw new ProbeStageError(
+        "access",
+        "Required command or response endpoint access is missing. Inspect accessible services before retrying.",
+      );
+    options.reserve?.(plan);
+    let decision = this.evaluatePolicy(plan);
     if (!decision.allowed || !decision.authorized)
-      throw new Error(decision.reasons.join(" "));
-    await this.ports.connection().enableDriverNotifications(driver);
-    const startedAt = new Date().toISOString();
-    const notificationStart = session.notifications.length;
-    let result: ExecutionResult;
+      throw new ProbeStageError("blocked", decision.reasons.join(" "));
     try {
-      result = await this._executor.execute(decision.authorized, driver);
-      this.ports
+      await this.ports.connection().enableDriverNotifications(driver);
+    } catch (error) {
+      throw new ProbeStageError("access", errorMessage(error));
+    }
+    if (!current())
+      throw new ProbeStageError(
+        "retired",
+        "The probe belongs to a retired connection or changed target.",
+      );
+    const startedAt = new Date().toISOString();
+    const notificationStart = this.ports
+      .protocolEvidence()
+      .getNotificationRouter().receiveSequence;
+    const sessionSource = session.source;
+    options.beforePlan?.();
+    decision = this.evaluatePolicy(plan);
+    if (!decision.allowed || !decision.authorized)
+      throw new ProbeStageError("blocked", decision.reasons.join(" "));
+    let result: ExecutionResult;
+    let transaction: import("../../diagnostics/transactions").ProtocolTransaction;
+    let failureEvidence: ExecutionEvidence | null = null;
+    try {
+      result = await this._executor.execute(
+        decision.authorized,
+        driver,
+        undefined,
+        (evidence: ExecutionEvidence) => {
+          failureEvidence = evidence;
+        },
+      );
+      transaction = this.ports
         .protocolEvidence()
         ._recordTransaction(
           decision.authorized.plan,
           result,
           startedAt,
-          notificationStart,
+          current()
+            ? notificationStart
+            : this.ports.protocolEvidence().getNotificationRouter()
+                .receiveSequence,
           "probe",
           null,
           null,
+          sessionSource,
         );
     } catch (error) {
-      this.ports
+      const evidence = failureEvidence;
+      const failedTransaction = this.ports
         .protocolEvidence()
         ._recordTransaction(
           decision.authorized.plan,
           null,
           startedAt,
-          notificationStart,
+          current()
+            ? notificationStart
+            : this.ports.protocolEvidence().getNotificationRouter()
+                .receiveSequence,
           "probe",
           null,
           errorMessage(error),
+          sessionSource,
+          evidence,
         );
-      throw error;
+      throw new ProbeStageError(
+        current() ? "transport" : "retired",
+        errorMessage(error),
+        failedTransaction.id,
+      );
     }
-    const interpretation = familyProbe
-      ? familyProbe.identify(
-          {
-            response: result.response,
-            responseTimedOut: result.responseTimedOut,
-          },
-          candidateContext,
-        )
-      : result.response
-        ? profileProbe!.interpret(result.response)
-        : null;
-    if (interpretation?.matched)
+    const interpretation = result.responseAmbiguous
+      ? {
+          matched: false as const,
+          reason: result.responseRecord?.interpretationAmbiguous
+            ? "Multiple valid decoder interpretations remain; identity was not established. Review the exact evidence in Protocol workbench."
+            : RESPONSE_AMBIGUITY_MESSAGE,
+        }
+      : familyProbe
+        ? familyProbe.identify(
+            {
+              response: result.response,
+              responseTimedOut: result.responseTimedOut,
+            },
+            candidateContext,
+          )
+        : result.response
+          ? profileProbe!.interpret(result.response)
+          : null;
+    if (!current())
+      throw new ProbeStageError(
+        "retired",
+        "The probe belongs to a retired connection or changed target.",
+        transaction.id,
+      );
+    const normalized: import("../../drivers/types").IdentificationResult =
+      interpretation?.matched
+        ? {
+            matched: true,
+            confidence: interpretation.confidence,
+            summary: interpretation.summary,
+          }
+        : interpretation && "reason" in interpretation
+          ? interpretation
+          : { matched: false, reason: "Unmapped interpretation." };
+    const interpretedOutcome = machineOutcome(result, normalized);
+    const outcome =
+      interpretedOutcome === "rejected" &&
+      !normalized.matched &&
+      normalized.rejection &&
+      !(familyProbe?.discovery?.distinguishes ?? [driver.id]).includes(
+        normalized.rejection.driverId,
+      )
+        ? "inconclusive"
+        : interpretedOutcome;
+    const identified = outcome === "identified" && normalized.matched;
+    if (identified && (options.canAdopt?.() ?? true)) {
+      session.recordCorrelatedResponse(result.responseRecord);
       this.ports
         .identification()
         ._resolveProtocol(
           driver,
           profile,
           selectedProbeId ?? familyProbe?.id ?? profileProbe!.id,
-          interpretation.summary,
+          normalized.matched ? normalized.summary : "",
           "live-probe",
         );
-    else
+      if (transaction && !result.responseTimedOut && result.response)
+        this.ports
+          .identification()
+          ._proposeGeometry(driver, transaction, connectionId!);
+    } else
       this.ports
         .protocolEvidence()
         .getTrace()
@@ -414,6 +1009,31 @@ export class TransmissionService {
           probeId: selectedProbeId ?? "unknown",
           responseTimedOut: result.responseTimedOut,
         });
-    return result;
+    return {
+      ...result,
+      transactionId: transaction.id,
+      outcome,
+      identification: {
+        ...(identified && interpretation?.matched
+          ? {
+              matched: true as const,
+              confidence: interpretation.confidence,
+              summary: interpretation.summary,
+            }
+          : {
+              matched: false as const,
+              ...(interpretation && "rejection" in interpretation
+                ? { rejection: interpretation.rejection }
+                : {}),
+              reason:
+                interpretation && "reason" in interpretation
+                  ? interpretation.reason
+                  : "No family match was established by this probe.",
+            }),
+        driverId: driver.id,
+        probeId: selectedProbeId ?? "unknown",
+        family: driver.family,
+      },
+    };
   }
 }

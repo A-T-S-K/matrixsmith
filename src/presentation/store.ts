@@ -14,6 +14,8 @@ import type { MatrixTransport } from "../application/ports/transport";
 import type { ApplicationRuntime } from "../application/runtime";
 import type { PresentationEnvironment } from "./environment";
 export class PresentationStore {
+  private readonly fileActivityCleanup: () => void;
+  private readonly historyCleanup: () => void;
   private disposal: Promise<void> | null = null;
   private readonly connectionStore: ConnectionStore;
   private readonly contentEditorStore: ContentEditorStore;
@@ -34,6 +36,7 @@ export class PresentationStore {
   ) {
     this.connectionStore = new ConnectionStore(
       {
+        reportStore: () => this.reportStore,
         snapshotStore: () => this.snapshotStore,
         noticeStore: () => this.noticeStore,
         investigationStore: () => this.investigationStore,
@@ -53,6 +56,7 @@ export class PresentationStore {
     );
     this.contentSendStore = new ContentSendStore(
       {
+        connectionStore: () => this.connectionStore,
         contentEditorStore: () => this.contentEditorStore,
         workspaceStore: () => this.workspaceStore,
         navigationStore: () => this.navigationStore,
@@ -68,6 +72,7 @@ export class PresentationStore {
     });
     this.investigationStore = new InvestigationStore(
       {
+        projectionStore: () => this.projectionStore,
         workspaceStore: () => this.workspaceStore,
         noticeStore: () => this.noticeStore,
         navigationStore: () => this.navigationStore,
@@ -109,6 +114,23 @@ export class PresentationStore {
     );
     this.workspaceStore = new WorkspaceStore(
       {
+        captureUi: () => ({
+          view: this.navigationStore.getContextView(),
+          editor: this.contentEditorStore.captureContext(),
+          caches: this.contentSendStore.captureCaches(),
+          report: this.reportStore.captureContext(),
+          notice: this.noticeStore.captureContext(),
+          connection: this.connectionStore.captureContext(),
+        }),
+        restoreUi: (state) => {
+          this.contentEditorStore.restoreContext(state?.editor ?? null);
+          this.contentSendStore.restoreCaches(state?.caches ?? null);
+          this.reportStore.restoreContext(state?.report ?? null);
+          this.noticeStore.restoreContext(state?.notice ?? null);
+          this.connectionStore.restoreContext(state?.connection ?? null);
+        },
+        cancelConfirmations: () => this.contentSendStore.invalidateContext(),
+        guidedActive: () => this.guidedController.getGuidedFlow() !== null,
         noticeStore: () => this.noticeStore,
         snapshotStore: () => this.snapshotStore,
         navigationStore: () => this.navigationStore,
@@ -119,6 +141,8 @@ export class PresentationStore {
     );
     this.navigationStore = new NavigationStore(
       {
+        workspaceStore: () => this.workspaceStore,
+        projectionStore: () => this.projectionStore,
         snapshotStore: () => this.snapshotStore,
         reportStore: () => this.reportStore,
         contentSendStore: () => this.contentSendStore,
@@ -141,11 +165,23 @@ export class PresentationStore {
       },
       environment,
     );
+    this.projectionStore.refreshHistory();
+    this.historyCleanup =
+      environment.onHistoryChange?.(() => {
+        this.projectionStore.refreshHistory();
+        this.snapshotStore._emit();
+      }) ?? (() => {});
+    this.fileActivityCleanup =
+      environment.fileActivity?.subscribe?.(() => this.snapshotStore._emit()) ??
+      (() => {});
     this.snapshotStore._rebuild();
     this.workspaceStore.initialize();
     this.navigationStore.initialize();
     this.initialize = this.connectionStore.initialize.bind(
       this.connectionStore,
+    );
+    this.setWorkbenchSection = this.navigationStore.setWorkbenchSection.bind(
+      this.navigationStore,
     );
     this.setView = this.navigationStore.setView.bind(this.navigationStore);
     this.goHome = this.navigationStore.goHome.bind(this.navigationStore);
@@ -162,8 +198,17 @@ export class PresentationStore {
     this.setTransactionSearch = this.reportStore.setTransactionSearch.bind(
       this.reportStore,
     );
+    this.reviewLocalProfile = this.connectionStore.reviewLocalProfile.bind(
+      this.connectionStore,
+    );
+    this.loadLocalProfile = this.connectionStore.loadLocalProfile.bind(
+      this.connectionStore,
+    );
     this.connect = this.connectionStore.connect.bind(this.connectionStore);
     this.disconnect = this.connectionStore.disconnect.bind(
+      this.connectionStore,
+    );
+    this.stopDiscovery = this.connectionStore.stopDiscovery.bind(
       this.connectionStore,
     );
     this.identify = this.connectionStore.identify.bind(this.connectionStore);
@@ -171,6 +216,15 @@ export class PresentationStore {
       this.connectionStore,
     );
     this.refreshInfo = this.connectionStore.refreshInfo.bind(
+      this.connectionStore,
+    );
+    this.updateGeometryDraft = this.connectionStore.updateGeometryDraft.bind(
+      this.connectionStore,
+    );
+    this.submitGeometryDraft = this.connectionStore.submitGeometryDraft.bind(
+      this.connectionStore,
+    );
+    this.useReportedGeometry = this.connectionStore.useReportedGeometry.bind(
       this.connectionStore,
     );
     this.confirmProvisionalGeometry =
@@ -183,14 +237,22 @@ export class PresentationStore {
     this.readCharacteristic = this.connectionStore.readCharacteristic.bind(
       this.connectionStore,
     );
-    this.toggleSubscription = this.connectionStore.toggleSubscription.bind(
-      this.connectionStore,
-    );
+    this.subscribeNotifications =
+      this.connectionStore.subscribeNotifications.bind(this.connectionStore);
     this.recordObservation = this.connectionStore.recordObservation.bind(
       this.connectionStore,
     );
     this.importBundle = this.workspaceStore.importBundle.bind(
       this.workspaceStore,
+    );
+    this.returnToOfflineWorkspace =
+      this.workspaceStore.returnToOfflineWorkspace.bind(this.workspaceStore);
+    this.closeOfflineWorkspace = this.workspaceStore.closeOfflineWorkspace.bind(
+      this.workspaceStore,
+    );
+    this.setReviewNote = this.reportStore.setReviewNote.bind(this.reportStore);
+    this.setContentSelection = this.contentEditorStore.setSelection.bind(
+      this.contentEditorStore,
     );
     this.returnToLiveWorkspace = this.workspaceStore.returnToLiveWorkspace.bind(
       this.workspaceStore,
@@ -217,6 +279,8 @@ export class PresentationStore {
     this.loadGif = this.contentEditorStore.loadGif.bind(
       this.contentEditorStore,
     );
+    this.reconnectAndReviewDraft =
+      this.contentSendStore.reconnectAndReviewDraft.bind(this.contentSendStore);
     this.requestSendText = this.contentSendStore.requestSendText.bind(
       this.contentSendStore,
     );
@@ -318,6 +382,11 @@ export class PresentationStore {
     this.exportBundle = this.reportStore.exportBundle.bind(this.reportStore);
     this.markdown = this.reportStore.markdown.bind(this.reportStore);
     this.copy = this.reportStore.copy.bind(this.reportStore);
+    this.copyReport = this.reportStore.copyReport.bind(this.reportStore);
+    this.downloadReport = this.reportStore.downloadReport.bind(
+      this.reportStore,
+    );
+    this.retryReport = this.reportStore.retryReport.bind(this.reportStore);
     this.download = this.reportStore.download.bind(this.reportStore);
     this.copyTestReport = this.reportStore.copyTestReport.bind(
       this.reportStore,
@@ -329,6 +398,7 @@ export class PresentationStore {
     );
   }
   readonly initialize: ConnectionStore["initialize"];
+  readonly setWorkbenchSection: NavigationStore["setWorkbenchSection"];
   readonly setView: NavigationStore["setView"];
   readonly goHome: NavigationStore["goHome"];
   readonly clearMessage: NoticeStore["clearMessage"];
@@ -338,17 +408,43 @@ export class PresentationStore {
   readonly setReportOptions: ReportStore["setReportOptions"];
   readonly setTransactionFilter: ReportStore["setTransactionFilter"];
   readonly setTransactionSearch: ReportStore["setTransactionSearch"];
+  createCandidateProfile = (
+    ...args: Parameters<ConnectionStore["createCandidateProfile"]>
+  ) => this.connectionStore.createCandidateProfile(...args);
+  reviseCandidateProfile = (
+    ...args: Parameters<ConnectionStore["reviseCandidateProfile"]>
+  ) => this.connectionStore.reviseCandidateProfile(...args);
+  exportCandidateProfile = (
+    ...args: Parameters<ConnectionStore["exportCandidateProfile"]>
+  ) => this.connectionStore.exportCandidateProfile(...args);
+  exportLoadedProfile = (
+    ...args: Parameters<ConnectionStore["exportLoadedProfile"]>
+  ) => this.connectionStore.exportLoadedProfile(...args);
+  inspectProfileEvidence = (
+    ...args: Parameters<ConnectionStore["inspectProfileEvidence"]>
+  ) => this.connectionStore.inspectProfileEvidence(...args);
+  readonly reviewLocalProfile: ConnectionStore["reviewLocalProfile"];
+  readonly loadLocalProfile: ConnectionStore["loadLocalProfile"];
   readonly connect: ConnectionStore["connect"];
+  readonly reconnectAndReviewDraft: ContentSendStore["reconnectAndReviewDraft"];
   readonly disconnect: ConnectionStore["disconnect"];
+  readonly stopDiscovery: ConnectionStore["stopDiscovery"];
   readonly identify: ConnectionStore["identify"];
   readonly runDiagnostic: ConnectionStore["runDiagnostic"];
   readonly refreshInfo: ConnectionStore["refreshInfo"];
+  readonly updateGeometryDraft: ConnectionStore["updateGeometryDraft"];
+  readonly submitGeometryDraft: ConnectionStore["submitGeometryDraft"];
+  readonly useReportedGeometry: ConnectionStore["useReportedGeometry"];
   readonly confirmProvisionalGeometry: ConnectionStore["confirmProvisionalGeometry"];
   readonly applyBrightness: ConnectionStore["applyBrightness"];
   readonly readCharacteristic: ConnectionStore["readCharacteristic"];
-  readonly toggleSubscription: ConnectionStore["toggleSubscription"];
+  readonly subscribeNotifications: ConnectionStore["subscribeNotifications"];
   readonly recordObservation: ConnectionStore["recordObservation"];
   readonly importBundle: WorkspaceStore["importBundle"];
+  readonly returnToOfflineWorkspace: WorkspaceStore["returnToOfflineWorkspace"];
+  readonly closeOfflineWorkspace: WorkspaceStore["closeOfflineWorkspace"];
+  readonly setReviewNote: ReportStore["setReviewNote"];
+  readonly setContentSelection: ContentEditorStore["setSelection"];
   readonly returnToLiveWorkspace: WorkspaceStore["returnToLiveWorkspace"];
   readonly importExternalCapture: ConnectionStore["importExternalCapture"];
   readonly updateContentSettings: ContentEditorStore["updateContentSettings"];
@@ -392,12 +488,37 @@ export class PresentationStore {
   readonly exportBundle: ReportStore["exportBundle"];
   readonly markdown: ReportStore["markdown"];
   readonly copy: ReportStore["copy"];
+  readonly copyReport: ReportStore["copyReport"];
+  readonly downloadReport: ReportStore["downloadReport"];
+  readonly retryReport: ReportStore["retryReport"];
   readonly download: ReportStore["download"];
   readonly copyTestReport: ReportStore["copyTestReport"];
   readonly copyInvestigationReport: ReportStore["copyInvestigationReport"];
   readonly copyForensicReport: ReportStore["copyForensicReport"];
+  openTransaction(id: string): void {
+    this.navigationStore.openTransaction(id);
+  }
+  closeTransaction(): void {
+    this.navigationStore.closeTransaction();
+  }
+  get reviewState() {
+    return this.reportStore.review;
+  }
+  setReviewPage(kind: "transactions" | "raw" | "packets", page: number): void {
+    if (kind === "transactions") this.reportStore.review.transactionPage = page;
+    else if (kind === "raw") this.reportStore.review.rawPage = page;
+    else this.reportStore.review.packetPage = page;
+    this.snapshotStore._emit();
+  }
+  showLatest(kind: "transactions" | "raw"): void {
+    if (kind === "transactions") this.reportStore.review.resetTransactions();
+    else this.reportStore.review.showLatestRaw();
+    this.snapshotStore._emit();
+  }
   subscribe = (listener: () => void) => this.snapshotStore.subscribe(listener);
   getSnapshot = () => this.snapshotStore.getSnapshot();
+  getPublicationFailures = () => this.snapshotStore.getPublicationFailures();
+  getPublicationCounts = () => this.snapshotStore.getPublicationCounts();
   get controller() {
     return this.workspaceStore.getController();
   }
@@ -406,7 +527,11 @@ export class PresentationStore {
   }
   dispose(): Promise<void> {
     if (this.disposal) return this.disposal;
+    this.reportStore.review.dispose();
     this.snapshotStore.dispose();
+    this.historyCleanup();
+    this.fileActivityCleanup();
+    this.projectionStore.dispose();
     this.contentEditorStore.dispose();
     this.navigationStore.dispose();
     this.disposal = Promise.all([
@@ -418,4 +543,4 @@ export class PresentationStore {
 }
 export * from "./state/types";
 export { parseServiceHints } from "./service-hints";
-export { recommendedAction, useMatrixSnapshot } from "./state/selectors";
+export { useMatrixSnapshot } from "./state/selectors";

@@ -22,7 +22,27 @@ export function DeviceHeader({
 }): JSX.Element {
   const [detailsOpen, setDetailsOpen] = useState(false);
   const device = snapshot.device;
-  if (!device) return <></>;
+  if (!device)
+    return (
+      <header class="device-header">
+        <strong>{snapshot.contextLabel}</strong>
+        <p>Display disconnected</p>
+        <div class="inline-form">
+          <button
+            disabled={snapshot.busy !== null}
+            onClick={() => void store.connect()}
+          >
+            Reconnect display
+          </button>
+          <button
+            aria-label={`${snapshot.contextLabel} — back to MatrixSmith home`}
+            onClick={() => store.goHome()}
+          >
+            Go to Home
+          </button>
+        </div>
+      </header>
+    );
   const connected = snapshot.connection === "connected";
   // Exactly one actionable problem, and only when acting on it is the point.
   const problem = protocolProblem(snapshot, store);
@@ -113,7 +133,9 @@ function protocolProblem(
   store: PresentationStore,
 ): { label: string; action?: { label: string; run: () => void } } | null {
   const device = snapshot.device;
-  if (!device) return null;
+  if (!device || snapshot.source === "imported") return null;
+  if (snapshot.connection === "quarantined" && snapshot.source === "live")
+    return { label: "Reconnect required before sending" };
   if (snapshot.connection !== "connected" && snapshot.source === "live") {
     return { label: "Display disconnected" };
   }
@@ -123,8 +145,13 @@ function protocolProblem(
   ) {
     return {
       label: "Protocol needs confirmation",
-      ...(snapshot.connection === "connected"
-        ? { action: { label: "Identify", run: () => void store.identify() } }
+      ...(snapshot.connection === "connected" && snapshot.view !== "diagnose"
+        ? {
+            action: {
+              label: "Open display setup",
+              run: () => store.setView("diagnose"),
+            },
+          }
         : {}),
     };
   }

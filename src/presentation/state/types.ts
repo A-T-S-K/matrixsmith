@@ -1,3 +1,4 @@
+import type { DecodedGif } from "../../render/gif";
 import type { Capability } from "../../core/capabilities";
 import type { ConnectionState } from "../../application/ports/transport";
 import type { ExecutionProgress } from "../../app/executor";
@@ -29,19 +30,18 @@ export type ReportKind = "investigation" | "device" | "forensic";
 export type TransactionFilter =
   "all" | "txrx" | "queries" | "probes" | "diagnostics" | "errors";
 
-export type SupportState =
-  | "Verified"
-  | "Experimental"
-  | "Not tested"
-  | "Unknown"
-  | "Rejected"
-  | "Unsupported"
-  | "Out of scope";
-export interface SupportArea {
-  readonly id: string;
+export interface EvidenceLabel {
+  readonly basis:
+    | "candidate"
+    | "rejected"
+    | "profile-match"
+    | "live-probe"
+    | "historical"
+    | "received"
+    | "unread";
   readonly label: string;
-  readonly state: SupportState;
-  readonly evidence: string;
+  readonly tone: "good" | "bad" | "warn" | "neutral";
+  readonly timestamp: string | null;
 }
 export interface GattCharacteristicView {
   readonly serviceUuid: string;
@@ -55,6 +55,7 @@ export interface DriverCandidateView {
   readonly id: string;
   readonly family: string;
   readonly state: string;
+  readonly evidence: EvidenceLabel;
   readonly summary: string;
   readonly score: number;
   readonly reasons: readonly string[];
@@ -62,15 +63,46 @@ export interface DriverCandidateView {
   readonly canIdentify: boolean;
 }
 
+export interface LocalProfileReview {
+  readonly document: import("../../profiles/document").ProfileDocument | null;
+  readonly problems: readonly string[];
+  readonly error: string | null;
+}
+
 export interface AppSnapshot {
+  readonly candidateReview: {
+    readonly document: import("../../profiles/document").ProfileDocumentV2;
+    readonly observedMatchingName: string;
+    readonly stale: boolean;
+    readonly error: string | null;
+  } | null;
+  readonly profileEvidenceStatus: string | null;
+  readonly profileReview: LocalProfileReview | null;
+  readonly loadedProfiles: readonly import("../../profiles/document").ProfileDocument[];
+  readonly profileLoadReason: string | null;
+  readonly advisoryInput: {
+    readonly owner: object;
+    readonly fingerprint: import("../../core/device").DeviceFingerprint;
+    readonly actions: readonly string[];
+  } | null;
   readonly page: "home" | "workspace";
   readonly view: WorkspaceView;
+  readonly workbenchSection: import("../app/routes").WorkbenchSection;
+  readonly missingContext: import("../app/routes").WorkspaceContext | null;
   readonly connection: ConnectionState;
   readonly source: string;
   readonly liveConnected: boolean;
   readonly liveWorkspaceAvailable: boolean;
+  readonly retainedLiveConnection: ConnectionState | null;
+  readonly offlineWorkspaceAvailable: boolean;
+  readonly contextLabel: string;
+  readonly contextIdentity: string;
+  readonly contextTransitionReason: string | null;
+  readonly reviewNote: string;
+  readonly contentSelection: ContentPathId;
   readonly busy: string | null;
   readonly sendProgress: ExecutionProgress | null;
+  readonly sendAttempt: SendAttempt | null;
   readonly wakeLockSupported: boolean;
   readonly error: string | null;
   readonly info: string | null;
@@ -89,6 +121,7 @@ export interface AppSnapshot {
     readonly advertisementGeometry: string;
     readonly profileId: string | null;
   } | null;
+  readonly deviceInfoEvidence: EvidenceLabel;
   readonly deviceState: {
     readonly brightness: number | null;
     readonly power: string;
@@ -96,8 +129,19 @@ export interface AppSnapshot {
   };
   readonly capabilities: readonly Capability[];
   /** Canonical source for every readiness badge, gate, action, and report projection. */
+  readonly geometryDraft: {
+    readonly width: string;
+    readonly height: string;
+    readonly errors: import("../../domain/device/geometry").GeometryErrors;
+  };
+  readonly discovery:
+    | import("../../application/services/discovery-service").DiscoveryState
+    | null;
+  readonly geometryProposal:
+    | import("../../application/services/identification-service").GeometryProposal
+    | null;
+  readonly geometryProfile: import("../../core/device").DeviceProfile | null;
   readonly assessment: DeviceAssessment;
-  readonly support: readonly SupportArea[];
   readonly recommended: {
     readonly title: string;
     readonly description: string;
@@ -117,12 +161,16 @@ export interface AppSnapshot {
     readonly primary: boolean;
     readonly characteristics: readonly GattCharacteristicView[];
   }[];
+  readonly review: import("./transaction-review").ReviewProjection;
   readonly transactions: readonly ProtocolTransaction[];
   readonly rawEvents: readonly import("../../diagnostics/trace").TraceEvent[];
   readonly observations: readonly import("../../core/evidence").ManualObservation[];
   readonly reportOpen: boolean;
   readonly reportOptions: ReportOptions;
   readonly reportMarkdown: string;
+  readonly reportError: string | null;
+  readonly reportPreviewFailed: boolean;
+  readonly reportObjective: string | null;
   /** Which report the share dialog is showing. */
   readonly reportKind: ReportKind;
   /** True when an investigation is active, making the semantic report the default. */
@@ -182,13 +230,7 @@ export interface ContentState {
     readonly processed: ProcessedImage | null;
   } | null;
   readonly animationPreview: readonly Framebuffer[];
-  readonly gif: {
-    readonly byteLength: number;
-    readonly width: number | null;
-    readonly height: number | null;
-    readonly warning: string | null;
-    readonly name: string;
-  } | null;
+  readonly gif: (DecodedGif & { readonly name: string }) | null;
 }
 
 export interface PendingSend {
@@ -202,9 +244,81 @@ export interface PendingSend {
 }
 /** Exact consequence shown before every persistent content transmission. */
 export const PERSISTENT_CONTENT_CONSEQUENCE =
-  "This replaces the currently stored display program with the new content. " +
-  "The device's hardware reset path is known to restore its factory/default content, " +
-  "but automatic content restoration has not been verified.";
+  "Replaces the display’s stored content. Previous content cannot be restored automatically.";
+
+/** Presentation evidence only; never authorization or a physical observation. */
+export interface SendAttempt {
+  readonly id: number;
+  readonly path: ContentPathId;
+  readonly target: string;
+  readonly connectionId: string | null;
+  readonly phase:
+    | "preparing"
+    | "confirming"
+    | "sending"
+    | "completed"
+    | "failed"
+    | "recovering"
+    | "review";
+  readonly progress: ExecutionProgress | null;
+  readonly evidence: Pick<
+    import("../../app/executor").ExecutionResult,
+    | "hostAccepted"
+    | "protocolAcknowledged"
+    | "deviceStateVerified"
+    | "responseTimedOut"
+    | "completedAt"
+    | "finalWriteAcceptedAt"
+  > | null;
+  readonly failure: {
+    readonly stage: "preflight" | "upload";
+    readonly message: string;
+    readonly reconnectRequired: boolean;
+  } | null;
+}
+
+/** Short outcome copy derived only from attempt evidence. */
+export function sendMessage(
+  attempt: SendAttempt,
+): { headline: string; guidance: string } | null {
+  if (attempt.phase === "recovering")
+    return {
+      headline: "Reconnecting…",
+      guidance: "Your draft is kept for review.",
+    };
+  if (attempt.phase === "review")
+    return {
+      headline: "Review your draft.",
+      guidance:
+        "Reconnected. Nothing was resent. Review the preview, then send when ready.",
+    };
+  if (attempt.failure)
+    return attempt.failure.stage === "preflight"
+      ? {
+          headline: "Send could not start.",
+          guidance:
+            "Review the draft and the send requirements before trying again.",
+        }
+      : {
+          headline: "Upload did not finish.",
+          guidance: "Check the display before sending again.",
+        };
+  if (attempt.phase === "sending")
+    return {
+      headline: "Sending upload…",
+      guidance: "Keep this screen on until sending finishes.",
+    };
+  const evidence = attempt.evidence;
+  if (!evidence) return null;
+  return {
+    headline: !evidence.hostAccepted
+      ? "Upload completion was not confirmed."
+      : evidence.responseTimedOut
+        ? "Upload sent; response timed out."
+        : "Upload sent.",
+    guidance: "Check the display. Its appearance was not confirmed.",
+  };
+}
 
 export interface ImportSummary {
   readonly deviceName: string | null;

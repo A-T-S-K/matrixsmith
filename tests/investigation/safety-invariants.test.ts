@@ -1,3 +1,4 @@
+import { COOLLEDX_ENDPOINT } from "../../src/drivers/coolledx/gatt";
 import { createPresentationStore } from "../helpers/presentation-fixture";
 import { describe, expect, it } from "vitest";
 import { ApplicationRuntime } from "../../src/application/runtime";
@@ -16,6 +17,7 @@ async function identified(): Promise<{
   const transport = new ScriptedCoolLedUxDevice(knownIledHatFingerprint());
   const controller = new ApplicationRuntime(transport, new TraceRecorder());
   await controller.connect();
+  transport.notificationOnWriteEndpoint = COOLLEDX_ENDPOINT;
   transport.notificationOnWrite = parseHexBytes(infoFixture.rxHex);
   await controller.probe();
   transport.notificationOnWrite = null;
@@ -79,6 +81,7 @@ describe("report goal wiring", () => {
     const controller = new ApplicationRuntime(transport, new TraceRecorder());
     const store = createPresentationStore(controller, transport);
     await store.connect();
+    transport.notificationOnWriteEndpoint = COOLLEDX_ENDPOINT;
     transport.notificationOnWrite = parseHexBytes(infoFixture.rxHex);
     await store.identify();
     transport.notificationOnWrite = null;

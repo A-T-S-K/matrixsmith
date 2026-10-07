@@ -25,12 +25,12 @@ test("known display updates routine text directly and remains visible from Home"
   await page.getByRole("button", { name: "Connect a display" }).click();
   await expect(page.getByRole("heading", { name: "Create" })).toBeVisible();
   await page.getByRole("textbox", { name: "Text" }).fill("HI");
-  await page.getByRole("button", { name: "Display it" }).click();
-  await expect(page.getByText("Display updated.")).toBeVisible({
+  await page.getByRole("button", { name: "Send to display" }).click();
+  await expect(page.getByText("Upload sent.")).toBeVisible({
     timeout: 10_000,
   });
   await page.getByRole("button", { name: /back to MatrixSmith home/i }).click();
-  await expect(page.getByText("ACTIVE DISPLAY")).toBeVisible();
+  await expect(page.getByText("ACTIVE DISPLAY", { exact: true })).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Return to display" }),
   ).toBeVisible();
@@ -45,15 +45,20 @@ test("unknown display can identify its family and become provisional", async ({
     page.getByRole("heading", { name: "Investigate" }),
   ).toBeVisible();
   await page
-    .getByRole("button", { name: /safe identification|identify/i })
+    .getByRole("button", { name: "Set up this display", exact: true })
     .first()
     .click();
   await expect(
-    page.getByRole("heading", { name: "Confirm the display size" }),
+    page.getByRole("heading", { name: "Establish the display size" }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Use 32×16" }).click();
   await expect(
-    page.getByText(/Bounded family tests are now available/i),
+    page.getByRole("textbox", { name: "Width (pixels)" }),
+  ).toHaveValue("");
+  await page.getByRole("textbox", { name: "Width (pixels)" }).fill("32");
+  await page.getByRole("textbox", { name: "Height (pixels)" }).fill("16");
+  await page.getByRole("button", { name: "Use these dimensions" }).click();
+  await expect(
+    page.getByText(/Manual dimensions saved as 32×16 pixels, provisional/i),
   ).toBeVisible();
 });
 
@@ -105,7 +110,9 @@ test("critical routes match reviewed ARIA snapshots and the axe gate", async ({
 
   await page.getByRole("button", { name: "Device actions" }).click();
   await page.getByRole("button", { name: "Developer tools" }).click();
-  await expect(page.getByRole("heading", { name: "Develop" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Protocol workbench" }),
+  ).toBeVisible();
   await expect(page.locator(".develop-view")).toMatchAriaSnapshot({
     name: "developer.aria.yml",
   });
@@ -167,8 +174,19 @@ for (const width of [320, 390, 768, 1024, 1280]) {
     await connectKnown(page);
     await expect(page.getByRole("heading", { name: "Create" })).toBeVisible();
     await expect(
-      page.getByRole("button", { name: "Display it" }),
+      page.getByRole("button", { name: "Send to display" }),
     ).toBeVisible();
+    const tabs = await page.getByRole("tab").evaluateAll((elements) =>
+      elements.map((element) => ({
+        label: element.textContent,
+        overflow: element.scrollWidth - element.clientWidth,
+      })),
+    );
+    for (const tab of tabs)
+      expect(
+        tab.overflow,
+        `${tab.label} should fit its tab`,
+      ).toBeLessThanOrEqual(1);
     const overflow = await page.evaluate(
       () => document.documentElement.scrollWidth - window.innerWidth,
     );
@@ -202,6 +220,59 @@ for (const width of [1024, 1280, 1440, 1920]) {
   });
 }
 
+for (const width of [390, 1024, 1440, 1920]) {
+  test(`uploaded image controls retain readable rows at ${width}px`, async ({
+    page,
+  }, testInfo) => {
+    test.skip(
+      testInfo.project.name !== "chromium",
+      "Canonical image layout sweep.",
+    );
+    await page.setViewportSize({ width, height: 1000 });
+    await connectKnown(page);
+    await page.getByRole("tab", { name: "Image", exact: true }).click();
+    await page
+      .locator('input[accept="image/png,image/jpeg,image/webp"]')
+      .setInputFiles("research/image-reduction/fixtures/transparent.png");
+    await page
+      .getByRole("combobox", { name: "Composition", exact: true })
+      .selectOption("custom");
+    await page.getByText("Advanced image processing", { exact: true }).click();
+    for (const name of ["Logical matrix", "Simulated LEDs", "Apparent size"]) {
+      await page.getByRole("tab", { name, exact: true }).click();
+      const editor = await page.locator(".content-editor").boundingBox();
+      const rows = await page
+        .locator(".content-editor > :not(.file-input)")
+        .evaluateAll((elements) =>
+          elements.map((element) => {
+            const rect = element.getBoundingClientRect();
+            return {
+              x: rect.x,
+              y: rect.y,
+              width: rect.width,
+              bottom: rect.bottom,
+            };
+          }),
+        );
+      for (const [index, row] of rows.entries()) {
+        expect(row.x).toBeCloseTo(editor!.x, 0);
+        expect(row.width).toBeCloseTo(editor!.width, 0);
+        if (index > 0)
+          expect(row.y).toBeGreaterThanOrEqual(rows[index - 1]!.bottom);
+      }
+      const send = await page
+        .getByRole("button", { name: "Send to display", exact: true })
+        .boundingBox();
+      expect(send!.height).toBeLessThan(80);
+      expect(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth - window.innerWidth,
+        ),
+      ).toBeLessThanOrEqual(1);
+    }
+  });
+}
+
 test("Browser Back closes overlays before navigating feature history", async ({
   page,
 }, testInfo) => {
@@ -220,7 +291,9 @@ test("Browser Back closes overlays before navigating feature history", async ({
   await page.getByRole("button", { name: /Investigate$/ }).click();
   await page.getByRole("button", { name: "Device actions" }).click();
   await page.getByRole("button", { name: "Developer tools" }).click();
-  await expect(page.getByRole("heading", { name: "Develop" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Protocol workbench" }),
+  ).toBeVisible();
   await page.goBack();
   await expect(
     page.getByRole("heading", { name: "Investigate" }),

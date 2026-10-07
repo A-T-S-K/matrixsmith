@@ -32,8 +32,9 @@ export interface DriverMatch {
 
 export interface DriverContext {
   readonly profile: DeviceProfile;
-  readonly fingerprint: DeviceFingerprint;
-  readonly source: "live" | "imported" | "fake" | "replay";
+  /** Null only in an explicit transport-free compiler context. */
+  readonly fingerprint: DeviceFingerprint | null;
+  readonly source: "live" | "imported" | "fake" | "replay" | "offline";
   /**
    * The session's validated static-raster delivery strategy, when one has
    * been physically established. Drivers route ShowFrame/ShowText through it
@@ -51,7 +52,7 @@ export interface DriverContext {
 export interface DriverNotificationContext {
   readonly profile: DeviceProfile | null;
   readonly fingerprint: DeviceFingerprint;
-  readonly source: DriverContext["source"];
+  readonly source: Exclude<DriverContext["source"], "offline">;
 }
 
 export interface DecodedNotification {
@@ -86,7 +87,7 @@ export interface DriverProbe {
 export interface CandidateContext {
   readonly fingerprint: DeviceFingerprint;
   readonly endpoints: readonly GattEndpoint[];
-  readonly source: DriverContext["source"];
+  readonly source: Exclude<DriverContext["source"], "offline">;
 }
 
 export interface ProbeResult {
@@ -95,14 +96,39 @@ export interface ProbeResult {
 }
 
 export type IdentificationResult =
-  | { readonly matched: false; readonly reason: string }
+  | {
+      readonly matched: false;
+      readonly reason: string;
+      /** Only an authored protocol-negative meaning may contradict this scope. */
+      readonly rejection?: {
+        readonly driverId: string;
+        readonly configurationId?: string;
+      };
+    }
   | {
       readonly matched: true;
       readonly confidence: "strong" | "exact";
       readonly summary: string;
     };
 
+/** Reviewed application contribution. Parameters are fixed in this first slice. */
+export interface DiscoveryMetadata {
+  readonly available: boolean;
+  readonly question: string;
+  readonly distinguishes: readonly string[];
+  readonly prerequisites: readonly string[];
+  readonly parameters: "fixed";
+  readonly consequence: string;
+  readonly cost: {
+    readonly packets: number;
+    readonly bytes: number;
+    readonly elapsedMs: number;
+  };
+  readonly stopping: "identity" | "continue";
+}
+
 export interface FamilyProbeDefinition {
+  readonly discovery?: DiscoveryMetadata;
   readonly id: string;
   readonly label: string;
   readonly safety: OperationSafety;
@@ -175,7 +201,18 @@ export function describeCapabilityOperation(
 export interface MatrixDriver {
   readonly id: string;
   readonly family: string;
+  /** Application-owned reviewed content implementation, never supplied by profile data. */
+  readonly contentCodecId?: string;
   readonly identificationClaimId?: import("../investigation/claims").ClaimId;
+  /** Additional conservative evidence requirements for shared ordinary controls. */
+  readonly operationRequirements?: Readonly<
+    Partial<
+      Record<
+        keyof typeof import("../domain/device/assessment").SHARED_OPERATIONS,
+        readonly import("../investigation/claims").ClaimId[]
+      >
+    >
+  >;
   discoveryHints(): DiscoveryHints;
   match(fingerprint: DeviceFingerprint): DriverMatch;
   profiles(): readonly DeviceProfile[];
@@ -184,6 +221,11 @@ export interface MatrixDriver {
   endpoints(profile: DeviceProfile): readonly GattEndpoint[];
   /** Identification probes that do not require a reviewed physical-product profile. */
   familyProbes?(context: CandidateContext): readonly FamilyProbeDefinition[];
+  /** Interpret pixel dimensions only from an application-eligible identification response.
+   * Field semantics, units and orientation belong entirely to this driver. */
+  interpretGeometry?(
+    response: DecodedNotification,
+  ): import("../domain/device/target").Geometry | null;
   probes?(context: DriverContext): readonly DriverProbe[];
   /** Application-ready operation descriptions; presentation code never reconstructs availability. */
   operations(context: OperationalContext): readonly OperationDefinition[];

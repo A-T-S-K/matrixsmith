@@ -9,9 +9,11 @@ const colors = {
   color: { r: 94, g: 234, b: 212 },
   background: { r: 0, g: 0, b: 0 },
 };
-const messages = ["MATRIXSMITH", "BSIDES ABQ", "LED MATRIX"].map(
-  (message) => planRasterScroll(message, 32, 16, colors).sequence,
-);
+const messages = ["MATRIXSMITH", "BSIDES ABQ", "LED MATRIX"].map((message) => {
+  const plan = planRasterScroll(message, 32, 16, colors);
+  if (!plan.safe) throw new Error(plan.reason);
+  return plan.sequence;
+});
 const diagnostic = diagnosticAnimation();
 const sequence = new FrameSequence(
   [...messages.flatMap((message) => message.frames), ...diagnostic.frames],

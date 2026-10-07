@@ -71,7 +71,7 @@ export function GattSection({
                               : "Live operations are blocked for offline reports."
                           }
                           onClick={() =>
-                            void store.toggleSubscription({
+                            void store.subscribeNotifications({
                               serviceUuid: c.serviceUuid,
                               characteristicUuid: c.uuid,
                             })

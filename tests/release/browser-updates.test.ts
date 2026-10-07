@@ -99,3 +99,62 @@ it("bounds activation wait and clears the applying state after timeout", async (
   expect(manager.state.applying).toBe(false);
   manager.dispose();
 });
+
+it("refuses cross-tab readiness for chooser/import ownership and recovers after failure", async () => {
+  const { manager, container } = setup();
+  await Promise.resolve();
+  const reply = vi.fn();
+  const request = async () => {
+    const channel = new MessageChannel();
+    const response = new Promise<void>((resolve) => {
+      channel.port1.onmessage = (event) => {
+        reply(event.data);
+        channel.port1.close();
+        channel.port2.close();
+        resolve();
+      };
+    });
+    container.dispatchEvent(
+      new MessageEvent("message", {
+        data: { type: "matrixsmith:check-ready" },
+        ports: [channel.port2],
+      }),
+    );
+    await response;
+  };
+  const release = manager.beginActivity("Opening workspace");
+  await request();
+  expect(reply).toHaveBeenLastCalledWith({
+    ready: false,
+    reason: "Opening workspace",
+  });
+  expect(manager.state.applying).toBe(false);
+  release();
+  await request();
+  expect(reply).toHaveBeenLastCalledWith({ ready: true, reason: null });
+  expect(() => manager.beginActivity("Retrying workspace")).toThrow();
+  container.dispatchEvent(
+    new MessageEvent("message", {
+      data: { type: "matrixsmith:update-cancelled" },
+    }),
+  );
+  const retry = manager.beginActivity("Retrying workspace");
+  await request();
+  expect(reply).toHaveBeenLastCalledWith({
+    ready: false,
+    reason: "Retrying workspace",
+  });
+  retry();
+  manager.dispose();
+  const channel = new MessageChannel();
+  const send = vi.spyOn(channel.port2, "postMessage");
+  container.dispatchEvent(
+    new MessageEvent("message", {
+      data: { type: "matrixsmith:check-ready" },
+      ports: [channel.port2],
+    }),
+  );
+  expect(send).not.toHaveBeenCalled();
+  channel.port1.close();
+  channel.port2.close();
+});

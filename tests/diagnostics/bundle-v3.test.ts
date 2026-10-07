@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   BUNDLE_INPUT_LIMITS,
+  BUNDLE_MAX_NESTING_DEPTH,
   BundleValidationError,
   createDiagnosticBundle,
   createShareableBundle,
@@ -9,6 +10,7 @@ import {
   serializeDiagnosticBundle,
 } from "../../src/diagnostics/bundle";
 import { knownIledHatFingerprint } from "../helpers/fixtures";
+import validateStructure from "../../src/diagnostics/generated/bundle-validator.js";
 
 function bundle() {
   return createDiagnosticBundle({
@@ -23,6 +25,77 @@ function bundle() {
 }
 
 describe("Bundle V3 codec", () => {
+  it.each([false, true])(
+    "rejects 10,000 nested objects under the byte budget (unknown field: %s)",
+    (unknownField) => {
+      const json = JSON.stringify({
+        ...bundle(),
+        ...(unknownField ? { unknown: true } : {}),
+      }).replace(
+        '"advertisementEvidence":null',
+        `"advertisementEvidence":${'{"child":'.repeat(10_000)}null${"}".repeat(10_000)}`,
+      );
+      expect(new TextEncoder().encode(json).byteLength).toBeLessThan(
+        BUNDLE_INPUT_LIMITS.diagnosticBundleBytes,
+      );
+      expect(validateStructure(JSON.parse(json))).toBe(!unknownField);
+      const result = safeParseDiagnosticBundle(json);
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.errors).toEqual([
+          {
+            path: expect.stringMatching(/^\$\.advertisementEvidence/),
+            code: "too_deep",
+            message: expect.stringContaining(
+              `${BUNDLE_MAX_NESTING_DEPTH}-level`,
+            ),
+          },
+        ]);
+        expect(result.errors[0]!.path.length).toBeLessThanOrEqual(256);
+      }
+    },
+  );
+
+  it("counts both arrays and objects and accepts the nesting boundary", () => {
+    const atBoundary = {
+      ...bundle(),
+      advertisementEvidence: JSON.parse(
+        '{"children":' +
+          "[".repeat(BUNDLE_MAX_NESTING_DEPTH - 2) +
+          "null" +
+          "]".repeat(BUNDLE_MAX_NESTING_DEPTH - 2) +
+          "}",
+      ),
+    };
+    expect(safeParseDiagnosticBundle(JSON.stringify(atBoundary)).success).toBe(
+      true,
+    );
+    atBoundary.advertisementEvidence.children = [
+      atBoundary.advertisementEvidence.children,
+    ];
+    expect(safeParseDiagnosticBundle(JSON.stringify(atBoundary))).toMatchObject(
+      {
+        success: false,
+        errors: [{ code: "too_deep" }],
+      },
+    );
+  });
+
+  it("returns mandatory structural errors before semantic errors", () => {
+    const result = safeParseDiagnosticBundle(
+      JSON.stringify({
+        ...bundle(),
+        unknown: true,
+        observations: [{}],
+      }),
+    );
+    expect(result).toMatchObject({
+      success: false,
+      errors: [{ path: "$.unknown", code: "invalid_value" }],
+    });
+    if (!result.success) expect(result.errors).toHaveLength(1);
+  });
+
   it("round-trips the only supported schema", () => {
     const parsed = parseDiagnosticBundle(serializeDiagnosticBundle(bundle()));
     expect(parsed.schemaVersion).toBe(3);
@@ -54,17 +127,18 @@ describe("Bundle V3 codec", () => {
       any
     >;
     value.fingerprint.services[0].characteristics[0].properties.notify = "yes";
-    value.transactions = [{ packets: [{ direction: "RX", hex: "xyz" }] }];
     const result = safeParseDiagnosticBundle(JSON.stringify(value));
     expect(result.success).toBe(false);
     if (!result.success) {
       expect(result.errors.map((error) => error.path)).toContain(
         "$.fingerprint.services[0].characteristics[0].properties.notify",
       );
-      expect(result.errors.map((error) => error.path)).toContain(
-        "$.transactions[0].packets[0].hex",
-      );
     }
+    value.transactions = [{ packets: [{ direction: "RX", hex: "xyz" }] }];
+    expect(safeParseDiagnosticBundle(JSON.stringify(value))).toMatchObject({
+      success: false,
+      errors: [{ path: "$.transactions[0].id", code: "invalid_value" }],
+    });
   });
 
   it("enforces the byte and collection budgets before returning data", () => {

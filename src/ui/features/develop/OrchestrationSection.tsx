@@ -114,8 +114,13 @@ export function OrchestrationSection({
           {debug.transfers.map((transfer) => (
             <li key={transfer.transferId}>
               <span>
-                {transfer.reason} · CRC {transfer.programCrc32 ?? "unknown"} ·
-                attempt <code>{transfer.attemptId}</code> ·{" "}
+                {transfer.reason} ·{" "}
+                {transfer.executionClass === "read-only-query" ? (
+                  "Query execution"
+                ) : (
+                  <>CRC {transfer.programCrc32 ?? "unknown"}</>
+                )}{" "}
+                · attempt <code>{transfer.attemptId}</code> ·{" "}
                 {transfer.transactionIds.length} transaction(s)
                 {transfer.failureReason
                   ? ` · FAILED: ${transfer.failureReason}`

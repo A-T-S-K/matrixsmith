@@ -100,5 +100,11 @@ export { type AppRoute, type HashRouter } from "../app/routes";
 export { INPUT_LIMITS } from "../../application/input-limits";
 export { MATRIXSMITH_VERSION } from "../../application/version";
 export { ReplayTransport } from "../../transport/replay";
-export { parseDiagnosticBundle } from "../../diagnostics/bundle";
+export {
+  prepareDiagnosticBundleImport,
+  readPreparedDiagnosticBundle,
+} from "../../diagnostics/bundle";
 export type { FilesPort } from "../../application/ports/files";
+
+export { geometryErrors } from "../../domain/device/geometry";
+export { fingerprintIdentityKey } from "../../investigation/device-identity";

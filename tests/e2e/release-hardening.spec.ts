@@ -40,15 +40,17 @@ test("image selection, settings, and direct send recover after invalid input", a
   await expect(page.getByRole("alert")).toContainText(/image header/i);
   await file.setInputFiles("research/image-reduction/fixtures/transparent.png");
   await expect(
-    page.getByRole("button", { name: "Display it", exact: true }),
+    page.getByRole("button", { name: "Send to display", exact: true }),
   ).toBeEnabled();
   await page
     .getByRole("combobox", { name: "Mode", exact: true })
     .selectOption("pixel-art");
-  await page.getByRole("button", { name: "Display it", exact: true }).click();
-  await expect(page.getByText("Display updated.", { exact: true })).toBeVisible(
-    { timeout: 10000 },
-  );
+  await page
+    .getByRole("button", { name: "Send to display", exact: true })
+    .click();
+  await expect(page.getByText("Upload sent.", { exact: true })).toBeVisible({
+    timeout: 10000,
+  });
   await expect(page.getByRole("dialog")).toHaveCount(0);
 });
 
@@ -102,7 +104,7 @@ test("unexpected disconnect clears the live state and reconnect remains usable",
     ).matrixsmithTransport.disconnect();
   });
   await expect(
-    page.getByRole("button", { name: "Display it", exact: true }),
+    page.getByRole("button", { name: "Send to display", exact: true }),
   ).toBeDisabled();
   await page.getByRole("button", { name: /back to MatrixSmith home/i }).click();
   await page.getByRole("button", { name: "Connect a display" }).click();
@@ -117,20 +119,24 @@ test("experimental content requires one confirmation and permits cancellation", 
   await page.goto("/?sim=experimental#/home");
   await page.getByRole("button", { name: "Connect a display" }).click();
   await page.getByRole("textbox", { name: "Text", exact: true }).fill("HI");
-  await page.getByRole("button", { name: "Display it", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Send to display", exact: true })
+    .click();
   const dialog = page.getByRole("dialog");
   await expect(dialog).toHaveCount(1);
   await expect(dialog.getByRole("checkbox")).toHaveCount(0);
   await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
   await expect(dialog).toHaveCount(0);
-  await page.getByRole("button", { name: "Display it", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Send to display", exact: true })
+    .click();
   await dialog
-    .getByRole("button", { name: "Display text", exact: true })
+    .getByRole("button", { name: "Send to display", exact: true })
     .click();
   await expect(dialog).toHaveCount(0);
-  await expect(page.getByText("Display updated.", { exact: true })).toBeVisible(
-    { timeout: 10000 },
-  );
+  await expect(page.getByText("Upload sent.", { exact: true })).toBeVisible({
+    timeout: 10000,
+  });
 });
 
 test("a missed guided observation can retry without turning the missed attempt into evidence", async ({

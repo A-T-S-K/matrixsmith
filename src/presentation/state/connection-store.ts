@@ -1,7 +1,12 @@
+import {
+  REGISTERED_READS,
+  relevantRead,
+} from "../../application/reviewed-reads";
+import { geometryErrors, fingerprintIdentityKey } from "./dependencies";
 import { INPUT_LIMITS } from "./dependencies";
 import type { GattEndpoint } from "./dependencies";
 
-import { summarizeImport, endpointKey } from "./selectors";
+import { summarizeImport } from "./selectors";
 
 import type { ImportSummary } from "./types";
 
@@ -14,13 +19,24 @@ import type { ContentEditorStore } from "./content-editor-store";
 import type { PresentationEnvironment } from "../environment";
 
 interface Ports {
+  reportStore(): Pick<import("./report-store").ReportStore, "exportProfile">;
   snapshotStore(): Pick<SnapshotStore, "_emit">;
-  noticeStore(): Pick<NoticeStore, "_run" | "setInfo" | "setError">;
+  noticeStore(): Pick<NoticeStore, "_run" | "setInfo" | "setError" | "getBusy">;
   investigationStore(): Pick<
     InvestigationStore,
     "_persistInvestigation" | "_persistDetachedInvestigation"
   >;
-  workspaceStore(): Pick<WorkspaceStore, "getController">;
+  workspaceStore(): Pick<
+    WorkspaceStore,
+    | "getController"
+    | "prepareLiveWorkspace"
+    | "activateConnectedLive"
+    | "transitionReason"
+    | "returnToLiveWorkspace"
+    | "profileRegistry"
+    | "profileLoadReason"
+    | "loadProfileRegistry"
+  >;
   navigationStore(): Pick<
     NavigationStore,
     "setPage" | "setViewState" | "getRouter" | "getView"
@@ -28,7 +44,7 @@ interface Ports {
   contentEditorStore(): Pick<ContentEditorStore, "updateContentSettings">;
 }
 export class ConnectionStore {
-  private readonly _subscriptions = new Set<string>();
+  private workflowGeneration = 0;
   private _previouslyAuthorized: { id: string; name: string }[] = [];
   private _lastImport: ImportSummary | null = null;
   constructor(
@@ -38,13 +54,379 @@ export class ConnectionStore {
       "authorizedDevices"
     >,
   ) {}
+  private candidate:
+    import("../../application/candidate-profile").CandidateArtifact | null =
+    null;
+  private candidateOwner: ReturnType<WorkspaceStore["getController"]> | null =
+    null;
+  private candidateGeneration = 0;
+  private candidateError: string | null = null;
+  private candidateBinding: string | null = null;
+  private bindingReader:
+    | typeof import("../../application/candidate-profile").candidateReviewBinding
+    | null = null;
+  getCandidateReview() {
+    const owner = this.ports.workspaceStore().getController();
+    return this.candidate
+      ? {
+          document: this.candidate.document,
+          observedMatchingName: this.candidate.observedMatchingName,
+          stale:
+            owner !== this.candidateOwner ||
+            this.candidateBinding !== this.bindingReader?.(owner),
+          error: this.candidateError,
+        }
+      : null;
+  }
+  private contextReader:
+    | typeof import("../../application/candidate-profile").candidateContext
+    | null = null;
+  private currentCandidateContext() {
+    return this.contextReader?.(this.ports.workspaceStore().getController());
+  }
+  async createCandidateProfile(): Promise<void> {
+    const owner = this.ports.workspaceStore().getController();
+    const generation = ++this.candidateGeneration;
+    const profile = owner.session.profile;
+    const fingerprint = owner.session.fingerprint;
+    const connectionId = owner.transport.connectionId;
+    const geometryRevision = owner.session.geometryRevision;
+    const evidence = owner.investigation?.claimEvidence;
+    const attempts = JSON.stringify([owner.experiments, owner.transfers]);
+    try {
+      const {
+        buildCandidateProfile,
+        candidateContext,
+        candidateReviewBinding,
+      } = await import("../../application/candidate-profile");
+      if (
+        owner.session.profile !== profile ||
+        owner.session.fingerprint !== fingerprint ||
+        owner.transport.connectionId !== connectionId ||
+        owner.session.geometryRevision !== geometryRevision ||
+        owner.investigation?.claimEvidence !== evidence ||
+        JSON.stringify([owner.experiments, owner.transfers]) !== attempts
+      )
+        throw new Error(
+          "Display context changed during generation. Create the candidate again.",
+        );
+      this.contextReader = candidateContext;
+      const context = candidateContext(owner);
+      const candidate = buildCandidateProfile(owner);
+      if (
+        generation !== this.candidateGeneration ||
+        owner !== this.ports.workspaceStore().getController() ||
+        context !== candidateContext(owner)
+      )
+        return;
+      this.candidate = candidate;
+      this.candidateOwner = owner;
+      this.bindingReader = candidateReviewBinding;
+      this.candidateBinding = candidateReviewBinding(owner);
+      this.candidateError = null;
+      this.ports.noticeStore().setError(null, "candidate");
+    } catch (error) {
+      if (
+        generation !== this.candidateGeneration ||
+        owner !== this.ports.workspaceStore().getController()
+      )
+        return;
+      this.candidateError =
+        error instanceof Error ? error.message : String(error);
+      this.ports.noticeStore().setError(this.candidateError, "candidate");
+    }
+    this.ports.snapshotStore()._emit();
+  }
+  async reviseCandidateProfile(
+    label: string,
+    name: string,
+    id: string,
+  ): Promise<void> {
+    const candidate = this.candidate;
+    const generation = ++this.candidateGeneration;
+    try {
+      const { parseProfileDocument } = await import("../../profiles/document");
+      if (
+        generation !== this.candidateGeneration ||
+        candidate !== this.candidate
+      )
+        return;
+      if (
+        !candidate ||
+        this.getCandidateReview()?.stale ||
+        candidate.context !== this.currentCandidateContext()
+      )
+        throw new Error(
+          "Display context changed. Create and review the candidate again.",
+        );
+      const document = parseProfileDocument(
+        JSON.stringify({
+          ...candidate.document,
+          label,
+          id,
+          matching: {
+            ...candidate.document.matching,
+            name: name.trim().toLowerCase(),
+          },
+        }),
+      );
+      this.candidate = {
+        ...candidate,
+        document:
+          document as import("../../profiles/document").ProfileDocumentV2,
+      };
+      this.candidateError = null;
+      this.ports.noticeStore().setError(null, "candidate");
+    } catch (error) {
+      if (
+        generation !== this.candidateGeneration ||
+        candidate !== this.candidate
+      )
+        return;
+      this.candidateError =
+        error instanceof Error ? error.message : String(error);
+    }
+    this.ports.snapshotStore()._emit();
+  }
+  async exportCandidateProfile(copy = false, evidence = false): Promise<void> {
+    const candidate = this.candidate;
+    if (
+      !candidate ||
+      this.getCandidateReview()?.stale ||
+      candidate.context !== this.currentCandidateContext()
+    ) {
+      this.candidateError =
+        "Display context changed. Create and review the candidate again.";
+      this.ports.snapshotStore()._emit();
+      return;
+    }
+    const generation = this.candidateGeneration;
+    await this.ports.reportStore().exportProfile(
+      () => ({
+        filename: evidence
+          ? `${candidate.document.id}.evidence.json`
+          : `${candidate.document.id}.profile.json`,
+        text: evidence
+          ? candidate.evidence
+          : JSON.stringify(candidate.document, null, 2) + "\n",
+      }),
+      copy,
+      () =>
+        candidate === this.candidate &&
+        generation === this.candidateGeneration &&
+        !this.getCandidateReview()?.stale &&
+        candidate.context === this.currentCandidateContext(),
+      evidence ? "bundle" : "profile",
+    );
+  }
+  async exportLoadedProfile(index: number): Promise<void> {
+    const document = this.getLoadedProfiles()[index];
+    if (!document) return;
+    const registry = this.ports.workspaceStore().profileRegistry();
+    const owner = this.ports.workspaceStore().getController();
+    const profile = owner.session.profile;
+    const fingerprint = owner.session.fingerprint;
+    const connectionId = owner.transport.connectionId;
+    const geometryRevision = owner.session.geometryRevision;
+    await this.ports.reportStore().exportProfile(
+      () => ({
+        filename: `${document.id}.profile.json`,
+        text: JSON.stringify(document, null, 2) + "\n",
+      }),
+      false,
+      () =>
+        registry === this.ports.workspaceStore().profileRegistry() &&
+        owner.session.profile === profile &&
+        owner.session.fingerprint === fingerprint &&
+        owner.transport.connectionId === connectionId &&
+        owner.session.geometryRevision === geometryRevision,
+    );
+  }
+  private attachmentStatus: string | null = null;
+  getProfileEvidenceStatus() {
+    return this.attachmentStatus;
+  }
+  async inspectProfileEvidence(text: string): Promise<void> {
+    const document = this.profileReview?.document;
+    try {
+      if (document?.documentVersion !== 2)
+        throw new Error("Review a V2 candidate before attaching evidence.");
+      const { inspectCandidateEvidence } =
+        await import("../../application/candidate-profile");
+      if (document !== this.profileReview?.document) return;
+      this.attachmentStatus = inspectCandidateEvidence(document, text);
+    } catch (error) {
+      if (document !== this.profileReview?.document) return;
+      this.attachmentStatus =
+        error instanceof Error ? error.message : String(error);
+    }
+    this.ports.snapshotStore()._emit();
+  }
+  private profileReview: import("./types").LocalProfileReview | null = null;
+  private preparedProfiles: {
+    registry: import("../../drivers/registry").DriverRegistry;
+    previous: import("../../drivers/registry").DriverRegistry;
+  } | null = null;
+  private profileAttempt = 0;
+  getProfileReview() {
+    return this.profileReview;
+  }
+  getLoadedProfiles() {
+    return this.ports
+      .workspaceStore()
+      .profileRegistry()
+      .acceptedProfiles.map((entry) => entry.document);
+  }
+  getProfileLoadReason() {
+    return this.ports.workspaceStore().profileLoadReason();
+  }
+  async reviewLocalProfile(text: string): Promise<void> {
+    const attempt = ++this.profileAttempt;
+    const previous = this.ports.workspaceStore().profileRegistry();
+    const [
+      { parseProfileDocument },
+      { reviewLocalProfile, registryWithLocalProfile },
+    ] = await Promise.all([
+      import("../../profiles/document"),
+      import("../../profiles/local-catalog"),
+    ]);
+    if (
+      attempt !== this.profileAttempt ||
+      previous !== this.ports.workspaceStore().profileRegistry()
+    )
+      return;
+    try {
+      const document = parseProfileDocument(text);
+      const problems = reviewLocalProfile(document, previous);
+      const registry = problems.length
+        ? null
+        : registryWithLocalProfile(document, previous);
+      if (problems.length && this.preparedProfiles) {
+        this.ports.noticeStore().setError(problems.join(" "));
+        this.ports.snapshotStore()._emit();
+        return;
+      }
+      this.preparedProfiles = registry ? { registry, previous } : null;
+      this.profileReview = { document, problems, error: null };
+      this.attachmentStatus = null;
+    } catch (error) {
+      if (this.preparedProfiles) {
+        this.ports
+          .noticeStore()
+          .setError(error instanceof Error ? error.message : String(error));
+        this.ports.snapshotStore()._emit();
+        return;
+      }
+      this.preparedProfiles = null;
+      this.profileReview = {
+        document: null,
+        problems: [],
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+    this.ports.snapshotStore()._emit();
+  }
+  loadLocalProfile(): void {
+    try {
+      const prepared = this.preparedProfiles;
+      if (
+        !prepared ||
+        prepared.previous !== this.ports.workspaceStore().profileRegistry()
+      )
+        throw new Error(
+          "Review a compatible profile for the current workspace before loading.",
+        );
+      this.ports.workspaceStore().loadProfileRegistry(prepared.registry);
+      this.preparedProfiles = null;
+      this.profileReview = null;
+    } catch (error) {
+      this.ports
+        .noticeStore()
+        .setError(error instanceof Error ? error.message : String(error));
+    }
+    this.ports.snapshotStore()._emit();
+  }
+  private geometryDraft = {
+    targetKey: "",
+    width: "",
+    height: "",
+    errors: {} as import("../../domain/device/geometry").GeometryErrors,
+  };
+  getGeometryDraft() {
+    const workspace = this.ports.workspaceStore().getController();
+    const fingerprint = workspace.session.fingerprint;
+    if (fingerprint) {
+      // Stable authorized device retains text across reconnects; anonymous targets do not.
+      const key = `${fingerprint.browserDeviceId ?? workspace.transport.connectionId}:${fingerprintIdentityKey(fingerprint)}`;
+      if (key !== this.geometryDraft.targetKey)
+        this.geometryDraft = {
+          targetKey: key,
+          width: "",
+          height: "",
+          errors: {},
+        };
+    }
+    return this.geometryDraft;
+  }
+  updateGeometryDraft(field: "width" | "height", value: string): void {
+    this.geometryDraft = {
+      ...this.getGeometryDraft(),
+      [field]: value,
+      errors: {},
+    };
+    this.ports.snapshotStore()._emit();
+  }
+  submitGeometryDraft(): void {
+    const draft = this.getGeometryDraft();
+    const parse = (raw: string) => (/^\d+$/.test(raw) ? Number(raw) : NaN);
+    const width = parse(draft.width),
+      height = parse(draft.height);
+    const errors = geometryErrors(width, height);
+    this.geometryDraft = { ...draft, errors };
+    if (Object.keys(errors).length) {
+      this.ports.snapshotStore()._emit();
+      return;
+    }
+    this.confirmProvisionalGeometry(width, height);
+  }
+  useReportedGeometry(proposalId: string): void {
+    try {
+      this.ports
+        .workspaceStore()
+        .getController()
+        .useReportedGeometry(proposalId);
+      this.ports
+        .noticeStore()
+        .setInfo(
+          "Reported dimensions adopted as provisional geometry. Physical rendering and content sending remain unconfirmed.",
+        );
+      this.ports.navigationStore().setViewState("diagnose");
+    } catch (error) {
+      this.ports
+        .noticeStore()
+        .setError(error instanceof Error ? error.message : String(error));
+    }
+    this.ports.snapshotStore()._emit();
+  }
+  captureContext() {
+    return { lastImport: this._lastImport, geometryDraft: this.geometryDraft };
+  }
+  restoreContext(
+    state: ReturnType<ConnectionStore["captureContext"]> | null,
+  ): void {
+    this.workflowGeneration += 1;
+    this._lastImport = state?.lastImport ?? null;
+    this.geometryDraft = state?.geometryDraft ?? {
+      targetKey: "",
+      width: "",
+      height: "",
+      errors: {},
+    };
+  }
   getPreviouslyAuthorized(): Readonly<
     ConnectionStore["_previouslyAuthorized"]
   > {
     return this._previouslyAuthorized;
-  }
-  getSubscriptions(): ReadonlySet<string> {
-    return this._subscriptions;
   }
   getLastImport() {
     return this._lastImport;
@@ -63,94 +445,125 @@ export class ConnectionStore {
     mode: "registered" | "inspection" = "registered",
     serviceHints: readonly BluetoothServiceUUID[] = [],
   ): Promise<void> {
-    await this.ports
-      .noticeStore()
-      ._run(
-        mode === "registered" ? "Connecting display…" : "Opening BLE explorer…",
-        async () => {
+    const owner = this.ports.workspaceStore();
+    const reason = owner.transitionReason();
+    if (reason) {
+      this.ports.noticeStore().setError(reason);
+      this.ports.snapshotStore()._emit();
+      return;
+    }
+    const fromOffline = owner.getController().session.source === "imported";
+    await this.ports.noticeStore()._run("Connecting display…", async () => {
+      const workspace = fromOffline
+        ? owner.prepareLiveWorkspace().controller
+        : owner.getController();
+      const connected = () => workspace.transport.state === "connected";
+      if (connected()) {
+        if (fromOffline) owner.activateConnectedLive(workspace);
+        else
+          throw new Error(
+            "Disconnect the active display before choosing another device.",
+          );
+      } else {
+        // No await before connect: the chooser is reached from this user action.
+        // Imported investigations must never be adopted or persisted as live.
+        if (!fromOffline)
           this.ports.investigationStore()._persistInvestigation();
-          await this.ports
-            .workspaceStore()
-            .getController()
-            .connect(mode, serviceHints);
+        await workspace.connect(mode, serviceHints);
+        const connectionId = workspace.transport.connectionId;
+        await workspace.enableDriverNotifications().catch(() => undefined);
+        if (connectionId !== workspace.transport.connectionId || !connected())
+          return;
+        if (fromOffline) {
+          if (!owner.activateConnectedLive(workspace)) return;
+        } else {
+          if (workspace !== owner.getController()) return;
           this.ports.investigationStore()._persistDetachedInvestigation();
-          await this.ports
-            .workspaceStore()
-            .getController()
-            .enableDriverNotifications()
-            .catch(() => undefined);
-          this.ports.navigationStore().setPage("workspace");
-          // Known/usable displays open the Device Workspace; unknown or
-          // incomplete hardware naturally enters the guided investigation.
-          this.ports
-            .navigationStore()
-            .setViewState(
-              mode === "inspection"
-                ? "develop"
-                : this.ports.workspaceStore().getController().session.selection
-                      ?.selected
-                  ? "control"
-                  : "diagnose",
-            );
-          this.ports
-            .navigationStore()
-            .getRouter()
-            ?.navigate(
-              this.ports.navigationStore().getView() === "control"
-                ? "create"
-                : this.ports.navigationStore().getView() === "diagnose"
-                  ? "investigate"
-                  : "develop-transactions",
-            );
-          this.ports
-            .noticeStore()
-            .setInfo("Display connected. Review the recommended next action.");
-        },
-      );
+        }
+      }
+      this.ports.navigationStore().setPage("workspace");
+      this.ports
+        .navigationStore()
+        .setViewState(
+          mode === "inspection" &&
+            !REGISTERED_READS.some(
+              (read) =>
+                workspace.session.fingerprint &&
+                relevantRead(read, workspace.session.fingerprint),
+            )
+            ? "develop"
+            : workspace.session.selection?.selected
+              ? "control"
+              : "diagnose",
+        );
+      this.ports
+        .navigationStore()
+        .getRouter()
+        ?.navigate(
+          this.ports.navigationStore().getView() === "control"
+            ? "create"
+            : this.ports.navigationStore().getView() === "diagnose"
+              ? "investigate"
+              : "develop-transactions",
+        );
+      this.ports
+        .noticeStore()
+        .setInfo("Display connected. Review the recommended next action.");
+    });
   }
   async disconnect(): Promise<void> {
+    const workspace = this.ports.workspaceStore().getController();
     await this.ports.noticeStore()._run("Disconnecting…", async () => {
-      await this.ports.workspaceStore().getController().disconnect();
+      await workspace.disconnect();
+      if (
+        workspace !== this.ports.workspaceStore().getController() ||
+        workspace.transport.connectionId !== null
+      )
+        return;
       this.ports.navigationStore().setPage("home");
       this.ports.navigationStore().setViewState("control");
       this.ports.navigationStore().getRouter()?.navigate("home");
     });
   }
+  stopDiscovery(): void {
+    this.ports.workspaceStore().getController().stopDiscovery();
+    this.ports.snapshotStore()._emit();
+  }
   async identify(): Promise<void> {
+    const reason = this.ports.workspaceStore().transitionReason();
+    if (reason) {
+      this.ports.noticeStore().setError(reason);
+      this.ports.snapshotStore()._emit();
+      return;
+    }
+    const workspace = this.ports.workspaceStore().getController();
     await this.ports
       .noticeStore()
-      ._run("Running safe identification…", async () => {
-        const tool = this.ports
-          .workspaceStore()
-          .getController()
-          .diagnosticTools()
-          .find(({ kind }) => kind === "identify");
-        if (!tool)
-          throw new Error(
-            "No bounded family-identification probe is available.",
-          );
-        const run = await this.ports
-          .workspaceStore()
-          .getController()
-          .runDiagnostic(tool.id);
-        this.ports
-          .noticeStore()
-          .setInfo(
-            run.status === "passed"
-              ? "CoolLEDUX identified from a valid structured 0x1F response."
-              : run.error,
-          );
+      ._run("Setting up this display…", async () => {
+        await workspace.startDiscovery();
       });
   }
   async runDiagnostic(id: string): Promise<void> {
+    const generation = this.workflowGeneration;
+    const workspace = this.ports.workspaceStore().getController();
     await this.ports.noticeStore()._run("Running diagnostic…", async () => {
-      const run = await this.ports
-        .workspaceStore()
-        .getController()
-        .runDiagnostic(id);
-      this.ports
-        .noticeStore()
-        .setInfo(run.status === "passed" ? "Diagnostic passed." : run.error);
+      const context = workspace.captureWorkflowContext(
+        workspace.diagnosticTools().find((tool) => tool.id === id)?.workflow !==
+          "family-identification",
+      );
+      const current = () =>
+        generation === this.workflowGeneration &&
+        workspace === this.ports.workspaceStore().getController() &&
+        context.current();
+      try {
+        const run = await workspace.runDiagnostic(id);
+        if (!current()) return;
+        this.ports
+          .noticeStore()
+          .setInfo(run.status === "passed" ? "Diagnostic passed." : run.error);
+      } catch (error) {
+        if (current()) throw error;
+      }
     });
   }
   async refreshInfo(): Promise<void> {
@@ -177,7 +590,7 @@ export class ConnectionStore {
       this.ports
         .noticeStore()
         .setInfo(
-          `Display size confirmed as ${width}×${height}. Bounded family tests are now available.`,
+          `Manual dimensions saved as ${width}×${height} pixels, provisional. Physical rendering and content sending remain unconfirmed.`,
         );
       this.ports.navigationStore().setViewState("diagnose");
     } catch (error) {
@@ -188,72 +601,76 @@ export class ConnectionStore {
     this.ports.snapshotStore()._emit();
   }
   async applyBrightness(raw: number): Promise<void> {
+    const generation = this.workflowGeneration;
+    const workspace = this.ports.workspaceStore().getController();
     this.ports
       .contentEditorStore()
       .updateContentSettings({ lastBrightness: raw });
     await this.ports.noticeStore()._run("Applying brightness…", async () => {
-      const command = await this.ports
-        .workspaceStore()
-        .getController()
-        .send(
-          this.ports
-            .workspaceStore()
-            .getController()
-            .plan({ type: "SetBrightness", raw }),
+      const context = workspace.captureWorkflowContext();
+      const current = () =>
+        generation === this.workflowGeneration &&
+        workspace === this.ports.workspaceStore().getController() &&
+        context.current();
+      try {
+        if (!current()) return;
+        const command = await workspace.send(
+          workspace.plan({ type: "SetBrightness", raw }),
         );
-      if (!command.protocolAcknowledged)
-        throw new Error("Brightness response did not match the command.");
-      const readback = await this.ports
-        .workspaceStore()
-        .getController()
-        .send(
-          this.ports
-            .workspaceStore()
-            .getController()
-            .plan({ type: "GetDeviceInfo" }),
+        if (!current()) return;
+        if (!command.protocolAcknowledged)
+          throw new Error("Brightness response did not match the command.");
+        const readback = await workspace.send(
+          workspace.plan({ type: "GetDeviceInfo" }),
         );
-      const actual = readback.response?.fields.brightnessRaw;
-      if (actual !== raw)
-        throw new Error(
-          `Brightness readback mismatch: expected ${raw}; received ${String(actual)}.`,
-        );
-      this.ports
-        .noticeStore()
-        .setInfo(`Brightness ${raw} verified by device-info readback.`);
+        if (!current()) return;
+        const actual = readback.response?.fields.brightnessRaw;
+        if (actual !== raw)
+          throw new Error(
+            `Brightness readback mismatch: expected ${raw}; received ${String(actual)}.`,
+          );
+        this.ports
+          .noticeStore()
+          .setInfo(`Brightness ${raw} verified by device-info readback.`);
+      } catch (error) {
+        if (current()) throw error;
+      }
     });
   }
   async readCharacteristic(endpoint: GattEndpoint): Promise<void> {
+    const workspace = this.ports.workspaceStore().getController();
+    const connectionId = workspace.transport.connectionId;
+    const source = workspace.session.source;
+    const selection = workspace.session.selection;
+    const fingerprint = workspace.session.fingerprint;
+    const current = () =>
+      workspace === this.ports.workspaceStore().getController() &&
+      workspace.transport.connectionId === connectionId &&
+      workspace.session.source === source &&
+      workspace.session.selection === selection &&
+      workspace.session.fingerprint === fingerprint;
     await this.ports.noticeStore()._run("Reading characteristic…", async () => {
-      const value = await this.ports
-        .workspaceStore()
-        .getController()
-        .read(endpoint);
-      this.ports
-        .noticeStore()
-        .setInfo(
-          `Read ${value.length} byte(s). The transaction retains exact bytes.`,
-        );
+      try {
+        const value = await workspace.read(endpoint);
+        if (!current()) return;
+        this.ports
+          .noticeStore()
+          .setInfo(
+            `Read ${value.length} byte(s). The transaction retains exact bytes.`,
+          );
+      } catch (error) {
+        if (current()) throw error;
+      }
     });
   }
-  async toggleSubscription(endpoint: GattEndpoint): Promise<void> {
-    const key = endpointKey(endpoint);
-    await this.ports
-      .noticeStore()
-      ._run(
-        this._subscriptions.has(key) ? "Unsubscribing…" : "Subscribing…",
-        async () => {
-          if (this._subscriptions.has(key))
-            throw new Error(
-              "Unsubscribe is available after disconnect in this transport adapter.",
-            );
-          await this.ports
-            .workspaceStore()
-            .getController()
-            .enableNotifications(endpoint);
-          this._subscriptions.add(key);
-          this.ports.noticeStore().setInfo("Notifications subscribed.");
-        },
-      );
+  async subscribeNotifications(endpoint: GattEndpoint): Promise<void> {
+    await this.ports.noticeStore()._run("Subscribing…", async () => {
+      await this.ports
+        .workspaceStore()
+        .getController()
+        .enableNotifications(endpoint);
+      this.ports.noticeStore().setInfo("Notifications subscribed.");
+    });
   }
   recordObservation(summary: string): void {
     this.ports.workspaceStore().getController().recordObservation(summary);
@@ -261,7 +678,6 @@ export class ConnectionStore {
     this.ports.snapshotStore()._emit();
   }
   importExternalCapture(content: string): void {
-    this.ports.noticeStore().setError(null);
     try {
       if (
         new TextEncoder().encode(content).byteLength > INPUT_LIMITS.captureBytes

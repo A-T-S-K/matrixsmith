@@ -10,6 +10,20 @@ export interface UpdateState {
   readonly applying: boolean;
   readonly error: string | null;
 }
+/** The same ownership gate also answers service-worker readiness in other tabs. */
+export function workspaceUpdateBlocker(snapshot: {
+  readonly busy: string | null;
+  readonly contextTransitionReason: string | null;
+  readonly guidedFlow: unknown;
+}): string | null {
+  return (
+    snapshot.busy ??
+    snapshot.contextTransitionReason ??
+    (snapshot.guidedFlow
+      ? "Finish or close the guided test before updating."
+      : null)
+  );
+}
 
 /** Persistent across bootstrap and workspace mounts; owns update state only. */
 export class UpdateManager {
@@ -22,6 +36,14 @@ export class UpdateManager {
   addBlocker(blocker: () => string | null): () => void {
     this.#blockers.add(blocker);
     return () => this.#blockers.delete(blocker);
+  }
+  /** Acquire before a chooser/import; readiness in every tab reads this gate. */
+  beginActivity(reason: string): () => void {
+    if (this.#disposed || this.#state.applying)
+      throw new Error(
+        "An update is being applied. Wait before opening a workspace.",
+      );
+    return this.addBlocker(() => reason);
   }
   constructor(private readonly port: UpdatePort) {
     this.#state = {
@@ -92,6 +114,7 @@ export class UpdateManager {
     this.#unsubscribe = null;
     this.#listeners.clear();
     this.#blockers.clear();
+    this.#blocker = () => null;
   }
   #publish(patch: Partial<UpdateState>): void {
     if (this.#disposed) return;

@@ -1,4 +1,9 @@
-import type { DeviceFingerprint, GattEndpoint } from "../core/device";
+import { COOLLEDX_ENDPOINT } from "../drivers/coolledx/gatt";
+import {
+  normalizeUuid,
+  type DeviceFingerprint,
+  type GattEndpoint,
+} from "../core/device";
 import type { WriteMode } from "../core/transmission";
 import type {
   ConnectionState,
@@ -29,7 +34,21 @@ const DEVICE_INFO_40 =
 
 export class SimulatedIledHatTransport implements MatrixTransport {
   readonly kind = "web-bluetooth" as const;
-  state: ConnectionState = "idle";
+  private connectionState: ConnectionState = "idle";
+  private readonly stateListeners = new Set<(state: ConnectionState) => void>();
+  get state(): ConnectionState {
+    return this.connectionState;
+  }
+  set state(value: ConnectionState) {
+    if (value === this.connectionState) return;
+    this.connectionState = value;
+    for (const listener of this.stateListeners) listener(value);
+  }
+  subscribeState(listener: (state: ConnectionState) => void): () => void {
+    this.stateListeners.add(listener);
+    listener(this.state);
+    return () => this.stateListeners.delete(listener);
+  }
   fingerprint: DeviceFingerprint | null = null;
   connectionId: string | null = null;
   brightness = 0xcc;
@@ -47,7 +66,7 @@ export class SimulatedIledHatTransport implements MatrixTransport {
    * in progress forever.
    */
   failNextWrite = false;
-  readonly #listeners = new Set<(bytes: Uint8Array) => void>();
+  readonly #listeners = new Map<(bytes: Uint8Array) => void, GattEndpoint>();
 
   /**
    * Present as a display MatrixSmith knows nothing about: the same FFF0/FFF1
@@ -97,10 +116,10 @@ export class SimulatedIledHatTransport implements MatrixTransport {
   }
 
   async subscribe(
-    _endpoint: GattEndpoint,
+    endpoint: GattEndpoint,
     listener: (bytes: Uint8Array) => void,
   ): Promise<() => Promise<void>> {
-    this.#listeners.add(listener);
+    this.#listeners.set(listener, { ...endpoint });
     return async () => {
       this.#listeners.delete(listener);
     };
@@ -118,7 +137,15 @@ export class SimulatedIledHatTransport implements MatrixTransport {
       throw new Error("Simulated write failure.");
     }
     const reply = this.#respond(bytes);
-    if (reply) for (const listener of this.#listeners) listener(reply);
+    if (reply)
+      for (const [listener, endpoint] of this.#listeners)
+        if (
+          normalizeUuid(endpoint.serviceUuid) ===
+            normalizeUuid(COOLLEDX_ENDPOINT.serviceUuid) &&
+          normalizeUuid(endpoint.characteristicUuid) ===
+            normalizeUuid(COOLLEDX_ENDPOINT.characteristicUuid)
+        )
+          listener(reply.slice());
     if (this.writeDelayMs > 0)
       await new Promise<void>((resolve) =>
         setTimeout(resolve, this.writeDelayMs),

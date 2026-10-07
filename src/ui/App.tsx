@@ -1,7 +1,7 @@
 import type { JSX } from "preact";
-import { useSignal } from "@preact/signals";
-import { lazy, Suspense } from "preact/compat";
-import { useLayoutEffect } from "preact/hooks";
+import { useMatrixSnapshot } from "../presentation/store";
+import { LazyFeature } from "./components/LazyFailureBoundary";
+import { retryableImport } from "./components/module-recovery";
 import { GuidedTestDialog } from "./components/GuidedTestDialog";
 import { NoticeRegion } from "./components/NoticeRegion";
 import { ExperimentalSendDialog } from "./components/ExperimentalSendDialog";
@@ -10,9 +10,13 @@ import { Home } from "./pages/Home";
 import type { PresentationStore } from "../presentation/store";
 import type { UpdateManager } from "../app/update-manager";
 import { UpdateNotice } from "./components/UpdateNotice";
-const ReportDialog = lazy(async () => ({
-  default: (await import("./components/report/ReportDialog")).ReportDialog,
-}));
+const importReportDialog = retryableImport(
+  "ReportDialog",
+  () => import("./components/report/ReportDialog"),
+);
+const loadReportDialog = async () => ({
+  default: (await importReportDialog()).ReportDialog,
+});
 
 export function App({
   store,
@@ -21,16 +25,7 @@ export function App({
   readonly store: PresentationStore;
   readonly updates?: UpdateManager;
 }): JSX.Element {
-  const snapshotSignal = useSignal(store.getSnapshot());
-  useLayoutEffect(() => {
-    const sync = (): void => {
-      snapshotSignal.value = store.getSnapshot();
-    };
-    const unsubscribe = store.subscribe(sync);
-    sync();
-    return unsubscribe;
-  }, [store, snapshotSignal]);
-  const snapshot = snapshotSignal.value;
+  const snapshot = useMatrixSnapshot(store);
   return (
     <>
       <div class="app-shell">
@@ -40,7 +35,9 @@ export function App({
           <DeviceWorkspace snapshot={snapshot} store={store} />
         )}
       </div>
-      {(snapshot.error || snapshot.info || snapshot.busy) && (
+      {(snapshot.error ||
+        snapshot.info ||
+        (snapshot.busy && snapshot.sendAttempt?.phase !== "sending")) && (
         <NoticeRegion
           tone={snapshot.error ? "error" : "status"}
           onClose={!snapshot.busy ? () => store.clearMessage() : undefined}
@@ -57,9 +54,18 @@ export function App({
             : null)
         }
       />
-      <Suspense fallback={null}>
-        <ReportDialog snapshot={snapshot} store={store} />
-      </Suspense>
+      {snapshot.reportOpen && (
+        <LazyFeature
+          label="Report"
+          loader={loadReportDialog}
+          recovery={importReportDialog}
+          viewProps={{ snapshot, store }}
+          home={() => {
+            store.closeReport();
+            store.goHome();
+          }}
+        />
+      )}
       <ExperimentalSendDialog snapshot={snapshot} store={store} />
       <GuidedTestDialog snapshot={snapshot} store={store} />
     </>

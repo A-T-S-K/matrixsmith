@@ -1,5 +1,5 @@
 import type { JSX } from "preact";
-import { useEffect, useMemo, useState } from "preact/hooks";
+import { useEffect, useState } from "preact/hooks";
 import type { ApplicationCommand } from "../../application/commands";
 import type { HomeCapabilities } from "../../application/ports/home";
 import { readStoredInvestigationSummary } from "../../storage/history-summary";
@@ -35,10 +35,17 @@ export function BootstrapHome({
       active = false;
     };
   }, [capabilities]);
-  const storedInvestigation = useMemo(
-    () => readStoredInvestigationSummary(capabilities.storage),
-    [capabilities],
+  const [storedInvestigation, setStoredInvestigation] = useState(() =>
+    readStoredInvestigationSummary(capabilities.storage),
   );
+  useEffect(() => {
+    const refresh = (): void =>
+      setStoredInvestigation(
+        readStoredInvestigationSummary(capabilities.storage),
+      );
+    refresh();
+    return capabilities.onHistoryChange?.(refresh);
+  }, [capabilities]);
   const load = (label: string, action: ApplicationCommand): Promise<void> => {
     setBusy(label);
     setError(null);
@@ -52,6 +59,8 @@ export function BootstrapHome({
       load("Opening display…", { kind: "connect", mode, optionalServices }),
     setView: () => undefined,
     disconnect: () => undefined,
+    reviewLocalProfile: (content) =>
+      load("Reviewing profile…", { kind: "review-profile", content }),
     importBundle: (content) =>
       load("Opening report…", { kind: "import-bundle", content }),
     importExternalCapture: (content) =>
@@ -67,11 +76,12 @@ export function BootstrapHome({
     },
   };
   const snapshot: HomeSnapshot = {
+    source: "live",
     liveConnected: false,
     device: null,
     assessment: { summary: "No display connected.", readiness: "no-device" },
     busy,
-    error,
+    error: null,
     bluetoothSupported: capabilities.bluetoothSupported,
     liveWorkspaceAvailable: false,
     previouslyAuthorized,
@@ -80,6 +90,7 @@ export function BootstrapHome({
   return (
     <>
       <Home snapshot={snapshot} store={store} />
+      {error && <p role="alert">{error}</p>}
       <UpdateNotice updates={updates} blocked={busy} />
     </>
   );

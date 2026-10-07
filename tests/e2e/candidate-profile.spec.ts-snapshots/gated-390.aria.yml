@@ -1,0 +1,3 @@
+- region "Candidate profile":
+    - heading "Candidate profile" [level=2]
+    - button "Create candidate profile"

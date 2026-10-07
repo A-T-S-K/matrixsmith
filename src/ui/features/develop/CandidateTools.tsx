@@ -3,6 +3,7 @@ import type {
   AppSnapshot,
   PresentationStore,
 } from "../../../presentation/store";
+import { AdvisoryKnowledge } from "../../components/AdvisoryKnowledge";
 import { StatusBadge } from "../../components/StatusBadge";
 import { UnavailableAction } from "../../components/UnavailableAction";
 export function CandidateSection({
@@ -21,29 +22,22 @@ export function CandidateSection({
           secondary.
         </p>
       </div>
+      <AdvisoryKnowledge snapshot={snapshot} store={store} />
       <div class="candidate-grid">
         {snapshot.candidates.map((candidate) => (
           <article key={candidate.id} class="candidate-card">
             <div>
               <h3>{candidate.family}</h3>
-              <StatusBadge
-                tone={
-                  candidate.state.startsWith("VERIFIED")
-                    ? "good"
-                    : candidate.state.startsWith("Rejected")
-                      ? "bad"
-                      : "warn"
-                }
-              >
-                {candidate.state}
+              <StatusBadge tone={candidate.evidence.tone}>
+                {candidate.evidence.label}
               </StatusBadge>
             </div>
             <p>{candidate.summary}</p>
             {candidate.canIdentify ? (
-              <button class="primary" onClick={() => void store.identify()}>
-                Run safe identification
+              <button class="primary" onClick={() => store.setView("diagnose")}>
+                Open display setup
               </button>
-            ) : candidate.state === "Candidate" ? (
+            ) : candidate.evidence.basis === "candidate" ? (
               <p class="notice">
                 No verified read-only discriminator available.
               </p>
@@ -93,9 +87,13 @@ export function ToolSection({
                 tool.unavailableReason ??
                 "This tool is unavailable."
               }
-              onClick={() => void store.runDiagnostic(tool.id)}
+              onClick={() =>
+                tool.kind === "identify"
+                  ? store.setView("diagnose")
+                  : void store.runDiagnostic(tool.id)
+              }
             >
-              Run
+              {tool.kind === "identify" ? "Open display setup" : "Run"}
             </UnavailableAction>
           </article>
         ))}

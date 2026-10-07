@@ -35,7 +35,7 @@ import type { ProtocolEvidenceService } from "./protocol-evidence-service";
 interface Ports {
   connection(): Pick<
     ConnectionService,
-    "setConnectionEpoch" | "getConnectionEpoch" | "getSession"
+    "setConnectionEpoch" | "getConnectionEpoch" | "getSession" | "patchSession"
   >;
   protocolEvidence(): Pick<ProtocolEvidenceService, "getTrace">;
 }
@@ -86,6 +86,27 @@ export class InvestigationService {
         // history intact. What is CURRENTLY on the panel is a different
         // question — the link dropped, and nothing in this session has
         // observed the display since.
+        // Unfamiliar-display visual proof is current-session authority only.
+        // Preserve its history without carrying executable trust across a boundary.
+        this._investigation = {
+          ...investigation,
+          claimEvidence: investigation.claimEvidence.map((entry) =>
+            entry.scope === "current-session" &&
+            entry.testId?.startsWith("coolledux-still-")
+              ? { ...entry, scope: "previous-local-session" as const }
+              : entry,
+          ),
+        };
+        if (
+          investigation.claimEvidence.some(
+            (entry) =>
+              entry.scope === "current-session" &&
+              entry.testId?.startsWith("coolledux-still-"),
+          )
+        )
+          this.ports
+            .connection()
+            .patchSession({ validatedRasterStrategy: null });
         this._investigationEpoch = this.ports.connection().getConnectionEpoch();
         this._invalidatePanelProgram(
           "The display reconnected; what it is showing now was not observed across the disconnect.",
@@ -138,6 +159,33 @@ export class InvestigationService {
     if (!investigation) return;
     const current = investigation.orchestration ?? emptyOrchestration();
     this._investigation = withOrchestration(investigation, mutate(current));
+  }
+  /** Late execution evidence may settle only the investigation that started it. */
+  _updateOrchestrationFor(
+    id: string,
+    mutate: (current: InvestigationOrchestration) => InvestigationOrchestration,
+    origin?: Investigation,
+  ): void {
+    if (this._investigation?.id === id) this._updateOrchestration(mutate);
+    else if (this._detachedInvestigation?.id === id)
+      this._detachedInvestigation = withOrchestration(
+        this._detachedInvestigation,
+        mutate(
+          this._detachedInvestigation.orchestration ?? emptyOrchestration(),
+        ),
+      );
+    else if (origin?.id === id) {
+      // A presentation owner may already have saved/taken detached history.
+      // The in-flight call retains only its own structured origin, and queues
+      // its late evidence for saving again without restoring live authority.
+      const historical = stopInvestigation(
+        demoteInvestigationEvidence(origin, "previous-local-session"),
+      );
+      this._detachedInvestigation = withOrchestration(
+        historical,
+        mutate(historical.orchestration ?? emptyOrchestration()),
+      );
+    }
   }
   panelProgram(): PanelProgramState {
     return (

@@ -1,31 +1,43 @@
 # Diagnostics and offline evidence
 
-MatrixSmith exports a versioned JSON bundle only when the user taps Download. Nothing is uploaded.
+MatrixSmith downloads a versioned JSON bundle only when the user requests it.
+Markdown previews, copy, and downloads are supervised separately. Nothing is uploaded.
 
-## Version 2 shape
+## Version 3 shape
 
 ```text
-schemaVersion (2), matrixsmithVersion, createdAt
+schemaVersion (3), privacy, matrixsmithVersion, createdAt
 fingerprint
 driverMatches, selectedDriver, selectedProfile
+provisionalProfile? — historical geometry snapshot with scalar source metadata
 capabilities
+assessment
 trace
 observations
 advertisementEvidence
 transactions
 diagnosticRuns
-validations          — structured hardware-validation results
 contentCompilations  — compiled-program metadata (type, tiles, CRC, sizes, chunks, pacing)
 importedEvidence     — external-import summaries (provenance, counts, warnings)
+investigation        — guided tests, observations, claims, device binding and orchestration
 ```
 
-Version 1 bundles remain readable: import migrates them by defaulting the new collections to empty. Binary image/GIF payloads are never embedded in the bundle; content evidence is metadata plus the exact TX packet hex already retained by transactions.
+Version 1 and 2 bundles are rejected; no automatic migration is implemented.
+Original image/GIF files are never embedded in the bundle; compiled content
+evidence is metadata plus exact TX packet hex retained by transactions. Packet
+data can still reveal display content.
 
 `transactions` are higher-level serializable protocol transactions (semantic operation, driver/profile, safety, ordered TX packets, raw RX packets, decoded response, host/protocol/device verification, timeout/error, findings). `diagnosticRuns` capture named workflow executions with per-step results and restoration state. Raw `trace` events remain the lowest-level ground truth underneath both.
 
 Raw RX/TX bytes serialize as uppercase hexadecimal. The fingerprint contains portable observations, not browser Bluetooth objects. Trace types cover app startup, selection, matching, GATT lifecycle, reads/notifications, plan creation/authorization/blocking, packet host acceptance/failure, decoded notifications, observations, disconnect, and errors. Unknown notifications remain as raw events.
 
-Import validates top-level metadata, fingerprint shape, match/trace/observation collections, and schema version. It creates an offline `imported` session. Matching, profile resolution, capabilities, Diagnose/Develop review, trace display, and decoder work can run offline, but policy rejects every imported transmission. `ReplayTransport` similarly replays notifications and throws on write.
+Import enforces input budgets, then runs the generated structural validator
+(`src/diagnostics/generated/bundle-validator.js`) and semantic validation in
+`src/diagnostics/bundle.ts` before workspace mutation. It creates an offline
+`imported` session. Matching, profile resolution, capabilities, Investigate/Develop
+review, trace display, and decoder work can run offline, but policy rejects every
+imported transmission. `ReplayTransport` similarly replays notifications and
+throws on write.
 
 ## External capture import (nRF Connect)
 
@@ -33,7 +45,16 @@ Import validates top-level metadata, fingerprint shape, match/trace/observation 
 
 ## Hardware validation results
 
-Guided validation workflows (`src/diagnostics/validation.ts`) transfer diagnostic content once after an explicit consequence confirmation, then record structured yes/no/unsure answers about the physical panel. Results are session-scoped `SessionValidationResult` records with validated and rejected areas; they drive the Diagnose support matrix, the report's support table, and the deterministic suggested next tests. Profile metadata is never silently promoted by a runtime result — the report provides the reviewable evidence for any permanent change.
+Driver-contributed guided tests (`src/investigation/tests.ts`) transfer fixed
+diagnostic content after explicit consequence confirmation, then record structured
+observations in completed guided tests and claim evidence. Application catalog,
+orchestration, and observation services own execution and validation. There is no
+`SessionValidationResult` collection or `src/diagnostics/validation.ts` module.
+The canonical assessment drives availability and reports; recommendations also
+consider historical evidence and execution history. Profile metadata is never
+silently promoted by a runtime result — reports provide reviewable evidence for a
+permanent source change. Simulator and authored fixture results are software
+evidence only.
 
 ## Privacy
 
@@ -47,13 +68,19 @@ Before sharing, review free-form device names, browser device IDs, notes, displa
 
 ## Useful device-support bundle
 
-From Home choose **Explore unknown BLE device** to open the inspection chooser (the controller accepts extra service UUID hints; a UI field for them is planned), select the device, inspect permitted GATT, perform only explicit reads, subscribe only to intended notify characteristics, reproduce one labeled behavior, add manual observations, and export. State what Chrome could not enumerate. Web Bluetooth reveals only services granted through chooser filters/`optionalServices`; missing services are not evidence that the peripheral lacks them.
+From Home use **Explore unknown BLE** → **Choose device**, entering suspected
+services in **Optional service UUIDs** first. Select the device, inspect permitted
+GATT, perform only explicit reads, subscribe only to intended notify
+characteristics, reproduce one labeled behavior, add manual observations, and
+export. State what Chrome could not enumerate. Web Bluetooth reveals only services
+granted through chooser filters/`optionalServices`; missing services are not
+evidence that the peripheral lacks them.
 
 ## Guided investigation evidence (2026-08-31 revision)
 
 Bundle V3 additionally carries the canonical assessment and active investigation (goal, device binding, completed guided tests with structured observations, and session claim evidence). Importing structurally demotes every investigation claim-evidence entry to `imported-external`; serialized scope fields are never trusted. Imported evidence never authorizes live operations.
 
-The portable contract is published as [`public/bundle-v3.schema.json`](../public/bundle-v3.schema.json). The runtime codec remains authoritative and validates nested values plus byte/count budgets before any workspace mutation; the schema regression test keeps its required top-level fields, version, assessment, fingerprint, and transaction definitions aligned with serialized Bundle V3 output.
+The portable contract is published as [`public/bundle-v3.schema.json`](../public/bundle-v3.schema.json). Its generated standalone validator executes in the browser before semantic checks and sanitization; `schema:check` verifies generated output. Runtime checks also validate nested values and byte/count budgets before workspace mutation. Schema tests keep the published contract aligned with serialized Bundle V3 output.
 
 Three report formats exist beyond the classic device report:
 
@@ -71,3 +98,107 @@ Stored-program receipts decode structurally (`program-announce-receipt`, `progra
 - Scoped test reports include a "Physical timing" section: T0 (final host-accepted write), T1 (full raster visible), T2 (movement/observation end), render latency, and visible static hold — measured by the MatrixSmith timer and kept distinct from per-packet transport timing.
 - A characterized channel permutation is flagged as ENCODER CORRECTION REQUIRED with the observed vs emitted maps, an explicit instruction to fix the driver/profile in code, and a reminder that normal image/text sending stays gated until re-verification.
 - Abandoned tests (transfer completed, observation stopped) keep their transactions and partial observations and still produce a test report.
+
+The optional `provisionalProfile` remains Bundle V3: older V3 bundles without it
+still validate. It contains experimental geometry and empty profile evidence,
+using existing profile metadata for manual/reported source and response provenance.
+Validation checks geometry limits, selected driver/profile consistency and the
+original successful correlated identification transaction for reported dimensions.
+Both archive modes retain dimensions, source, driver, transaction linkage and
+timestamps. Shareable JSON omits the geometry browser device ID and replaces
+geometry fingerprint/connection keys with output-local aliases; known identifiers
+repeated in interpretation rationale are redacted. Default Markdown projections
+apply the same policy and preserve equality between repeated binding keys. Full
+local archives retain the original provenance, and privacy projection never mutates
+the source archive or live state. Import restores only historical
+geometry, including when that driver is absent locally. It never creates an eligible
+proposal, a current family claim, an unlock or confirmation. A live connection
+always requires new identification and explicit adoption.
+
+### Workbench review windows
+
+Transactions, selected-transaction packets, and raw events use explicit pages of
+50 records. Transaction and raw-event windows open newest first and retain their
+identities while records arrive. **Show latest** starts a new window on page one.
+Search and filter changes also restart transaction paging; they search the full
+capture's operation, driver, decoded summary/opcode, and exact packet hex, not
+just the visible page. Retention leaves unavailable slots rather than silently
+substituting another record. Packet numbering is the original zero-based index.
+Reports and bundle exports still contain all retained evidence.
+
+Search, filter, pages, selection, and list position are in-memory workspace review
+state. A transaction detail URL selects an opaque ID within a retained runtime;
+its browser history entry also binds the runtime generation. Reloads and old
+history from replacement reports require reopening the intended context. URLs do
+not restore live connections, permissions, or evidence. Browser Back returns to
+the list and restores its row focus and scroll position when the row survives.
+
+Host acceptance, correlated acknowledgement, and operation-response fulfillment
+are independent recorded dimensions. The executor's `deviceStateVerified` flag
+means a matching response fulfilled the operation expectation. It is not proof of
+physical appearance or separate readback; physical observations remain separate.
+
+Projection caches belong to one workspace review owner. Transaction, compilation,
+and trace mutation revisions cover in-place edits, imports, and same-length
+retention. Unrelated publications reuse filtering and joins. Compilation joins
+preserve the first matching record for retained transaction IDs and refresh when
+that ID membership changes. Disposal clears the active review caches. The caches
+retain references and identities,
+not extra normalized copies of large packet strings. Replacing or disposing a
+workspace releases its captured review state; no global evidence cache is used.
+
+## Bounded unfamiliar CoolLEDUX still-image verification
+
+Current live CoolLEDUX family identification, an explicit target geometry and
+application-registered `coolledux-reviewed-v1` are required. Profile names,
+local assertions and advisory knowledge do not identify the family. The reviewed
+compiler uses full 16-row pixel streams and eight-column Animation tiles;
+verification conservatively accepts height 16 and widths 16–64 divisible by eight.
+Other geometries keep their drafts and can use Protocol workbench/reports; the
+suite does not crop or search for another stride.
+
+Three application-owned fixed definitions form one finite goal. Each transfer
+requires target/preview review and deliberate stored-content replacement consent.
+Content cannot be read back, so restoration is not promised. No definition accepts
+caller pixel words, framebuffers or numeric parameters.
+
+1. `still-bootstrap`: one Animation frame with asymmetric axes and distinct
+   increasing-height markers in every eight-column tile. Physical full-image,
+   coverage and orientation answers establish upload, single-frame container
+   behavior and tile placement. Only a complete measured timeline with at least
+   15 seconds from full-image-visible establishes single-frame static hold.
+   Transport acceptance and receipt/echo evidence establish none of these claims.
+2. `still-raw-channels`: three small raw patches, left/middle/right, transmitting
+   0x0F00/0x00F0/0x000F, with literal 0x0000 background. Explicit observed RGB
+   answers establish raw channel mapping; a separate off/black answer establishes
+   Animation black semantics. This does not verify the logical RGB encoder.
+3. `still-encoder`: the fixed asymmetric spatial/color image through
+   `compileAnimationStaticFrame` and the ordinary logical-frame encoder. Explicit
+   coverage, orientation/seam and labeled color agreement establishes encoder
+   correctness. The existing atomic static-strategy evaluator then selects the
+   single-frame Animation route. No Graffiti rejection or direct `static.strategy`
+   assertion is needed. This is deliberately a proof of one still-image route,
+   not multi-frame playback, perceptual calibration or full family support.
+
+Six tiles are described at 48 columns; 16/32 columns use two/four. Markers and axes
+allow spatial judgments independent of color. Unknown answers never verify a
+color claim. Missing/negative/contradictory observations stop the sequence with
+partial evidence and explicit retry/report alternatives. Nothing auto-sends the
+next experiment. Completion offers Create; optional work does not prolong the goal.
+
+Attempt, transfer and observation owners remain authoritative. Successful new
+claims include target/profile, codec definition, geometry, attempt, transactions
+and accepted-write timing. An ephemeral accepted-plan digest binds observation
+adoption to the exact current connection, definition, bytes and geometry; it is
+never exported or restored. Stop/Back/disconnect/context replacement retire pending
+work. Failed persistent transfers leave panel state uncertain and never retry
+implicitly. History/import/reconnect retain evidence as history and require fresh
+current-session proof. Built-in iLedHat evidence and its existing suite remain
+separate and immutable.
+
+Once all requirements hold, ordinary still text/images use that tested route with
+experimental plan validation and exact-send confirmation. Assessment, driver
+contribution and transmission authorization agree. Animation/GIF, brightness,
+power and power-cycle persistence keep their separate gates. Simulator journeys
+and regression fixtures prove software behavior only; no hardware or human
+acceptance follows from them.

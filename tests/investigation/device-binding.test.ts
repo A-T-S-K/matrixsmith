@@ -1,3 +1,4 @@
+import { COOLLEDX_ENDPOINT } from "../../src/drivers/coolledx/gatt";
 import { describe, expect, it } from "vitest";
 import { ApplicationRuntime } from "../../src/application/runtime";
 import { TraceRecorder } from "../../src/diagnostics/trace";
@@ -27,6 +28,7 @@ async function connectedController(
   const transport = new ScriptedCoolLedUxDevice(fingerprint);
   const controller = new ApplicationRuntime(transport, new TraceRecorder());
   await controller.connect();
+  transport.notificationOnWriteEndpoint = COOLLEDX_ENDPOINT;
   transport.notificationOnWrite = parseHexBytes(infoFixture.rxHex);
   await controller.probe();
   transport.notificationOnWrite = null;
@@ -53,7 +55,10 @@ describe("device identity binding", () => {
     const a = deviceIdentityBinding(knownIledHatFingerprint(), "profile");
     const b = deviceIdentityBinding(knownIledHatFingerprint(), null);
     expect(compareBindings(a, b)).toBe("same-authorized-device");
-    expect(bindingAllowsSessionContinuity(a, b)).toBe(true);
+    expect(bindingAllowsSessionContinuity(a, b)).toBe(false);
+    expect(
+      bindingAllowsSessionContinuity(a, { ...b!, profileId: "profile" }),
+    ).toBe(true);
   });
 
   it("distinguishes two identical units by browser device id", () => {

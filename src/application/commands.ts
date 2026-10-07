@@ -6,6 +6,7 @@ export type ApplicationCommand =
       readonly optionalServices?: readonly BluetoothServiceUUID[];
     }
   | { readonly kind: "reconnect"; readonly deviceId: string }
+  | { readonly kind: "review-profile"; readonly content: string }
   | { readonly kind: "import-bundle"; readonly content: string }
   | { readonly kind: "import-capture"; readonly content: string }
   | { readonly kind: "resume-investigation" }

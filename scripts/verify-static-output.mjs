@@ -1,6 +1,10 @@
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
+import validateKnowledge from "../src/knowledge/generated/knowledge-validator.js";
+import { validateKnowledgeReferences } from "../src/knowledge/validation.ts";
 import { gzipSync } from "node:zlib";
+import { createHash } from "node:crypto";
+import { spawnSync } from "node:child_process";
 
 const root = resolve(process.argv[2] ?? "dist");
 const required = [
@@ -15,10 +19,15 @@ const required = [
   "icon-512.png",
   "icon-maskable-512.png",
   "bundle-v3.schema.json",
+  "profile-v1.schema.json",
+  "profile-v2.schema.json",
+  "knowledge-v1.schema.json",
+  "knowledge-v1.json",
 ];
 const failures = [];
 const INITIAL_ROUTE_JS_GZIP_LIMIT = 90 * 1024;
-const TOTAL_JS_GZIP_LIMIT = 180 * 1024;
+// Provisional independent offline-family allowance; see docs/asset-budgets.md.
+const TOTAL_JS_GZIP_LIMIT = 240 * 1024;
 for (const file of required)
   if (!existsSync(join(root, file)))
     failures.push(`Missing required static file: ${file}`);
@@ -39,6 +48,29 @@ if (existsSync(root)) {
     /\.(?:html|js|css|json|webmanifest)$/.test(file),
   );
   const javascript = output.filter((file) => file.endsWith(".js"));
+  // Parse without evaluation or linking. --check alone misses undeclared
+  // export bindings in Node; the native module constructor rejects them.
+  const syntax = spawnSync(
+    process.execPath,
+    [
+      "--experimental-vm-modules",
+      "--input-type=module",
+      "-e",
+      `
+    import { SourceTextModule } from "node:vm";
+    import { readFileSync } from "node:fs";
+    for (const file of JSON.parse(readFileSync(0, "utf8"))) {
+      try { new SourceTextModule(readFileSync(file, "utf8"), { identifier: file }); }
+      catch (error) { console.error(file + ": " + error.message); process.exitCode = 1; }
+    }
+  `,
+    ],
+    { input: JSON.stringify(javascript), encoding: "utf8" },
+  );
+  if (syntax.status !== 0)
+    failures.push(
+      `Invalid emitted JavaScript: ${syntax.error ?? syntax.stderr}`,
+    );
   const totalJsGzip = javascript.reduce(
     (total, file) => total + gzipSync(readFileSync(file)).byteLength,
     0,
@@ -49,6 +81,7 @@ if (existsSync(root)) {
     );
   else console.log(`Total JavaScript: ${totalJsGzip} bytes gzip.`);
   const html = readFileSync(join(root, "index.html"), "utf8");
+  verifyRecoveryMap(html);
   const entryReference = html.match(
     /<script[^>]+src=["']([^"']+\.js)["']/,
   )?.[1];
@@ -87,7 +120,23 @@ if (existsSync(root)) {
       failures.push(
         `Development simulator leaked into ${relative(root, file)}`,
       );
-    const withoutMarkupNamespaces = source
+    let checkedSource = source;
+    if (relative(root, file) === "knowledge-v1.json") {
+      try {
+        if (Buffer.byteLength(source) > 256 * 1024)
+          throw new Error("Knowledge data exceeds byte limit.");
+        const corpus = JSON.parse(source);
+        if (!validateKnowledge(corpus))
+          throw new Error("Invalid knowledge schema.");
+        validateKnowledgeReferences(corpus);
+        // The sole data-citation exception. All other strings remain origin-scanned.
+        for (const citation of corpus.sources) citation.url = null;
+        checkedSource = JSON.stringify(corpus);
+      } catch (error) {
+        failures.push(`Invalid provenance data: ${String(error)}`);
+      }
+    }
+    const withoutMarkupNamespaces = checkedSource
       .replaceAll(
         /https?:\/\/www\.w3\.org\/(?:1999\/xhtml|2000\/svg|1998\/Math\/MathML)/g,
         "",
@@ -146,4 +195,183 @@ function collectInitialJavascript(html, entryPath) {
       pending.push(resolve(file, "..", match[1]));
   }
   return found;
+}
+
+/** Check exact generated recovery scopes and both enforced security policies. */
+function verifyRecoveryMap(html) {
+  try {
+    const maps = [
+      ...html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/g),
+    ].filter((match) => /\btype=["']importmap["']/.test(match[1]));
+    if (maps.length !== 1 || maps[0][1].trim() !== 'type="importmap"')
+      throw new Error("Expected one plain inline recovery import map.");
+    const [, , text] = maps[0];
+    if (html.indexOf(maps[0][0]) > html.search(/<script\b[^>]*type="module"/))
+      throw new Error("Recovery map must precede the entry module.");
+    const hash = createHash("sha256").update(text).digest("base64");
+    const policy = `script-src 'self' 'sha256-${hash}'`;
+    const headers = readFileSync(join(root, "_headers"), "utf8");
+    const sourceHeaders = readFileSync("public/_headers", "utf8");
+    if (headers !== sourceHeaders.replace("script-src 'self'", policy))
+      throw new Error(
+        "Generated hosting policy differs from the exact map hash or source directives.",
+      );
+    const metaPolicy = html.match(/content="([^"]*script-src[^"]*)"/)?.[1];
+    const sourcePolicy = readFileSync("index.html", "utf8").match(
+      /content="([^"]*script-src[^"]*)"/,
+    )?.[1];
+    if (
+      !sourcePolicy ||
+      metaPolicy !== sourcePolicy.replace("script-src 'self'", policy)
+    )
+      throw new Error(
+        "Generated meta policy differs from the exact map hash or source directives.",
+      );
+    const map = JSON.parse(text);
+    if (Object.keys(map).sort().join() !== "imports,scopes")
+      throw new Error("Unexpected recovery map fields.");
+    const manifest = JSON.parse(
+      readFileSync(join(root, "asset-manifest.json"), "utf8"),
+    );
+    const assets = new Set(manifest.assets);
+    const validAddress = (address) => {
+      if (
+        typeof address !== "string" ||
+        !/^\.\/assets\/[^/?#]+\.js(?:\?matrixsmith-retry=(?:a1|a[01]f[01]))?$/.test(
+          address,
+        )
+      )
+        throw new Error(`Invalid recovery address: ${address}`);
+      if (!assets.has(address.split("?")[0]))
+        throw new Error(`Recovery asset is not precached: ${address}`);
+      return address.split("?")[0];
+    };
+    const dependencies = (address, includeDynamic = false) => {
+      const file = validAddress(address);
+      const source = readFileSync(join(root, file), "utf8");
+      const references = [
+        ...source.matchAll(
+          /\b(?:import|export)(?:[^"'(]*?from)?["']([^"']+\.js)["']/g,
+        ),
+      ];
+      if (includeDynamic)
+        references.push(
+          ...source.matchAll(/\bimport\(\s*["'`]([^"'`]+\.js)["'`]\s*\)/g),
+        );
+      return [
+        ...new Set(
+          references.map(
+            (match) =>
+              "./" + relative(root, resolve(root, file, "..", match[1])),
+          ),
+        ),
+      ];
+    };
+    const closure = (address, includeDynamic = false) => {
+      const found = new Set();
+      const visit = (file) => {
+        if (found.has(file)) return;
+        found.add(file);
+        for (const dependency of dependencies(file)) visit(dependency);
+        if (includeDynamic && !initial.has(file))
+          for (const dependency of dependencies(file, true))
+            if (!featureEntries.has(dependency)) visit(dependency);
+      };
+      visit(validAddress(address));
+      return found;
+    };
+    const entry = html.match(/<script[^>]+src=["']([^"']+\.js)["']/)?.[1];
+    if (!entry)
+      throw new Error("Missing initial entry for recovery validation.");
+    const initial = closure(entry);
+    const featureEntries = new Set(
+      Object.entries(map.imports)
+        .filter(([alias]) => !alias.startsWith("matrixsmith/application/"))
+        .map(([, address]) => validAddress(address)),
+    );
+    const application = closure(map.imports["matrixsmith/application/1"], true);
+    const aliases = ["matrixsmith/application/1"];
+    for (const feature of [
+      "ControlView",
+      "InvestigationView",
+      "DevelopView",
+      "ReportDialog",
+    ])
+      for (const [app, attempt] of [
+        [0, 1],
+        [1, 0],
+        [1, 1],
+      ])
+        aliases.push(`matrixsmith/${feature}/${app}/${attempt}`);
+    if (Object.keys(map.imports).sort().join() !== aliases.sort().join())
+      throw new Error("Missing or unbounded recovery entry aliases.");
+    const expectedScopes = {};
+    const featureOwners = new Map();
+    for (const alias of aliases.filter((alias) => alias.endsWith("/0/1")))
+      for (const file of closure(map.imports[alias], true)) {
+        if (initial.has(file) || application.has(file)) continue;
+        featureOwners.set(file, (featureOwners.get(file) ?? 0) + 1);
+      }
+    if ([...featureOwners.values()].some((owners) => owners > 1))
+      throw new Error(
+        "Shared feature modules must belong to the preserved application graph.",
+      );
+    for (const alias of aliases) {
+      const address = map.imports[alias];
+      const parts = alias.split("/");
+      const app = parts[1] === "application" ? 1 : Number(parts[2]);
+      const featureRevision =
+        parts[1] === "application" ? "" : `a${app}f${parts[3]}`;
+      const revisionFor = (file) =>
+        initial.has(file)
+          ? ""
+          : application.has(file)
+            ? app
+              ? "a1"
+              : ""
+            : featureEntries.has(file) && !featureRevision
+              ? app
+                ? "a1f0"
+                : ""
+              : featureRevision;
+      const revised = (file) =>
+        file +
+        (revisionFor(file) ? `?matrixsmith-retry=${revisionFor(file)}` : "");
+      if (address !== revised(validAddress(address)))
+        throw new Error(`Incorrect entry revision: ${alias}`);
+      for (const file of closure(address, true)) {
+        if (!revisionFor(file)) continue;
+        expectedScopes[revised(file)] = Object.fromEntries(
+          dependencies(file, true).map((dependency) => [
+            dependency,
+            application.has(file) && featureEntries.has(dependency)
+              ? dependency + (app ? "?matrixsmith-retry=a1f0" : "")
+              : revised(dependency),
+          ]),
+        );
+      }
+    }
+    const normalized = (scopes) =>
+      JSON.stringify(
+        Object.entries(scopes)
+          .sort()
+          .map(([key, values]) => [key, Object.entries(values).sort()]),
+      );
+    for (const [scope, mappings] of Object.entries(map.scopes)) {
+      validAddress(scope);
+      for (const [specifier, target] of Object.entries(mappings)) {
+        validAddress(specifier);
+        validAddress(target);
+      }
+    }
+    if (normalized(map.scopes) !== normalized(expectedScopes))
+      throw new Error(
+        "Recovery scopes do not match the static/lazy graph and preserved application identity.",
+      );
+    console.log(
+      `Recovery import map: ${aliases.length} finite entries; exact CSP hash and static graph verified.`,
+    );
+  } catch (error) {
+    failures.push(`Invalid module recovery output: ${String(error)}`);
+  }
 }

@@ -1,5 +1,4 @@
 import type { JSX } from "preact";
-import { useState } from "preact/hooks";
 import type { AppSnapshot, PresentationStore } from "../../presentation/store";
 import type { ContentPathId } from "../../investigation/gating";
 import { Tabs } from "../components/Tabs";
@@ -33,14 +32,25 @@ export function ControlView({
   readonly snapshot: AppSnapshot;
   readonly store: PresentationStore;
 }): JSX.Element {
-  const [selected, setSelected] = useState<ContentPathId>("text");
+  const selected = snapshot.contentSelection;
   return (
     <section class="view create">
       <h1 class="view-title">Create</h1>
+      {snapshot.assessment.capabilities["static-frame"].availability ===
+        "available" &&
+        snapshot.assessment.capabilities["static-frame"].confidence ===
+          "experimental" &&
+        snapshot.coreProgress?.title === "Verify one still-image route" && (
+          <p class="notice">
+            Text and images are available experimentally via{" "}
+            {snapshot.rasterStrategyLabel}, verified for this session only.
+            Review each stored-content replacement before sending.
+          </p>
+        )}
       <Tabs
         label="Content type"
         selected={selected}
-        onSelect={setSelected}
+        onSelect={(selection) => store.setContentSelection(selection)}
         class="type-tabs"
         items={CONTENT_TYPES.map((type) => ({
           id: type.id,

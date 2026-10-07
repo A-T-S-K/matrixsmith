@@ -1,7 +1,7 @@
 import type { Persistence, RiskClass } from "../core/risk";
 import type { MatrixOperation } from "../core/operations";
 import type { ClaimEvidence, ClaimId, ClaimState, ClaimStatus } from "./claims";
-import { claimState } from "./claims";
+import { claimState, operationalTrust } from "./claims";
 import type { ObservationFieldSpec, ObservationValue } from "./observations";
 import type { GuidedTestStatus } from "./investigation";
 
@@ -157,6 +157,44 @@ export function resolveGuidedOperation(
   return test.buildOperation ? test.buildOperation(context) : test.operation;
 }
 
+/** This slice supports only queries and the existing stored-content tests. */
+export function guidedExecutionClass(
+  consequence: Pick<GuidedTestDefinition, "risk" | "persistence">,
+): "read-only-query" | "persistent-content" | null {
+  if (consequence.risk === "read-only" && consequence.persistence === "none")
+    return "read-only-query";
+  if (
+    consequence.risk === "persistent" &&
+    consequence.persistence === "persistent"
+  )
+    return "persistent-content";
+  return null;
+}
+
+export function validateGuidedConsequence(
+  test: GuidedTestDefinition,
+  plan: import("../core/transmission").TransmissionPlan,
+): void {
+  const declared = guidedExecutionClass(test);
+  if (!declared)
+    throw new Error(
+      "This registered test has an unsupported or unknown consequence; only read-only queries and persistent content are supported.",
+    );
+  if (
+    guidedExecutionClass(plan) !== declared ||
+    plan.risk !== test.risk ||
+    plan.persistence !== test.persistence ||
+    plan.purpose !== "operation"
+  )
+    throw new Error(
+      "The registered test declaration and compiled plan consequence disagree.",
+    );
+  if (declared === "read-only-query" && test.timer)
+    throw new Error(
+      "Read-only query tests cannot use stored-program observation timing.",
+    );
+}
+
 export interface GuidedTestAvailability {
   readonly test: GuidedTestDefinition;
   readonly available: boolean;
@@ -170,11 +208,20 @@ export function evaluateTestAvailability(
   evidence: readonly ClaimEvidence[],
   completedTestIds: readonly string[],
 ): GuidedTestAvailability {
+  const eligibleEvidence = evidence.filter(
+    ({ scope }) =>
+      scope === "current-session" ||
+      scope === "built-in-profile" ||
+      scope === "source-reference",
+  );
   const unmet = test.prerequisites.filter(
     (requirement) =>
       !requirement.anyOf.includes(
-        claimState(requirement.claimId, evidence).status,
-      ),
+        claimState(requirement.claimId, eligibleEvidence).status,
+      ) ||
+      (claimState(requirement.claimId, eligibleEvidence).status ===
+        "verified" &&
+        !operationalTrust(requirement.claimId, eligibleEvidence).trusted),
   );
   const missing = test.requiresCompletedTests.filter(
     (id) => !completedTestIds.includes(id),

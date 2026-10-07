@@ -1,7 +1,12 @@
+import {
+  DiscoveryInterview,
+  showDiscovery,
+} from "../features/investigation/DiscoveryInterview";
 import type { JSX } from "preact";
 import type { AppSnapshot, PresentationStore } from "../../presentation/store";
 import {
   GeometrySetup,
+  GeometryOutcome,
   KnownCharacterized,
   CoreProgress,
   CoreComplete,
@@ -22,6 +27,8 @@ import {
   TestCatalogue,
   CompletedTests,
 } from "../features/investigation/CatalogueSections";
+import { AdvisoryKnowledge } from "../components/AdvisoryKnowledge";
+import { CandidateReview } from "../components/CandidateReview";
 import { DeveloperTools } from "../features/investigation/DeveloperTools";
 
 /** The guided investigation workspace. */
@@ -32,6 +39,22 @@ export function InvestigationView({
   readonly snapshot: AppSnapshot;
   readonly store: PresentationStore;
 }): JSX.Element {
+  if (snapshot.source === "imported")
+    return (
+      <section class="view investigate">
+        <h1 class="view-title">Offline report</h1>
+        <p>
+          Read-only recorded evidence. Connect a display explicitly to begin a
+          separate live session.
+        </p>
+        <GeometryOutcome snapshot={snapshot} store={store} />
+        <AdvisoryKnowledge snapshot={snapshot} store={store} />
+        <WhatWeKnow snapshot={snapshot} />
+        <CompletedTests snapshot={snapshot} store={store} />
+        <SupportMap snapshot={snapshot} />
+        <ReportActions store={store} />
+      </section>
+    );
   const started = Boolean(snapshot.investigation?.completedTests.length);
   return (
     <section class="view investigate">
@@ -48,8 +71,11 @@ export function InvestigationView({
             automatically. {snapshot.cycleWarning}
           </p>
         )}
+        {showDiscovery(snapshot) && (
+          <DiscoveryInterview snapshot={snapshot} store={store} />
+        )}
         {snapshot.assessment.readiness === "needs-geometry" ? (
-          <GeometrySetup store={store} />
+          <GeometrySetup store={store} snapshot={snapshot} />
         ) : snapshot.coreProgress?.complete ? (
           snapshot.investigation ? (
             <CoreComplete snapshot={snapshot} store={store} />
@@ -59,9 +85,14 @@ export function InvestigationView({
         ) : (
           <NextAction snapshot={snapshot} store={store} />
         )}
+        {snapshot.assessment.readiness !== "needs-geometry" && (
+          <GeometryOutcome snapshot={snapshot} store={store} />
+        )}
         <CoreProgress snapshot={snapshot} />
+        <CandidateReview snapshot={snapshot} store={store} />
       </div>
       <div class="investigation-context">
+        <AdvisoryKnowledge snapshot={snapshot} store={store} />
         <WhatWeKnow snapshot={snapshot} />
         <RecentResult snapshot={snapshot} store={store} />
         <PreviousInvestigation snapshot={snapshot} store={store} />

@@ -1,3 +1,4 @@
+import { stillGeometryReason } from "./diagnostics";
 import type { Capability } from "../../core/capabilities";
 import type { DeviceFingerprint, DeviceProfile } from "../../core/device";
 import type { MatrixOperation } from "../../core/operations";
@@ -7,7 +8,7 @@ import {
   type TransmissionPlan,
 } from "../../core/transmission";
 import {
-  ILEDHAT_PROFILE_ID,
+  isReviewedIledHat,
   iledHat31aeProfile,
 } from "../../profiles/iledhat-31ae-32x16";
 import {
@@ -50,7 +51,13 @@ import { diagnosticRasterStrategy } from "./diagnostics";
 
 export const coolLedUxDriver: MatrixDriver = {
   id: "coolledux",
+  operationRequirements: {
+    GetDeviceInfo: ["protocol.coolledux"],
+    SetBrightness: ["protocol.coolledux"],
+    SetPower: ["protocol.coolledux"],
+  },
   family: "CoolLEDUX",
+  contentCodecId: "coolledux-reviewed-v1",
   identificationClaimId: "protocol.coolledux",
   // 0x31AE is the observed iLedHat company identifier; requesting it lets the
   // browser expose that manufacturer data without narrowing the chooser.
@@ -104,7 +111,7 @@ export const coolLedUxDriver: MatrixDriver = {
       {
         id: "capability:gif",
         operationId: "ShowGif" as const,
-        label: "Display GIF",
+        label: "Native GIF decoder (experimental)",
         capabilityId: "gif" as const,
       },
     ].map((description) => describeCapabilityOperation(context, description)),
@@ -161,6 +168,18 @@ function coolLedUxFamilyProbe(
   return {
     id: "get-device-info",
     label: "Identify CoolLEDUX with device info",
+    discovery: {
+      available: true,
+      question:
+        "Does this display return structured CoolLEDUX device information?",
+      distinguishes: ["coolledux"],
+      prerequisites: [],
+      parameters: "fixed",
+      consequence:
+        "Reads device information without replacing displayed content.",
+      cost: { packets: 1, bytes: 8, elapsedMs: 6500 },
+      stopping: "identity",
+    },
     safety: { hazard: "routine", persistence: "none", assurance: "verified" },
     establishesClaims: ["protocol.coolledux", "device-info.query"],
     plan: () => {
@@ -185,6 +204,8 @@ function coolLedUxFamilyProbe(
         ]),
         responseExpectation: {
           type: "notification" as const,
+          endpoints: [COOLLED_ENDPOINT],
+          dispatchPacketIndex: 0,
           kind: "device-info",
           opcode: COOLLEDUX_OPCODES.deviceInfo,
           required: true,
@@ -253,7 +274,7 @@ function resolveIledHatProfile(
 export function coolLedUxCapabilities(
   profile: DeviceProfile,
 ): readonly Capability[] {
-  const exact = profile.id === ILEDHAT_PROFILE_ID;
+  const exact = isReviewedIledHat(profile);
   const characterized =
     exact &&
     profile.quirks?.preferredRasterStrategy !== undefined &&
@@ -292,12 +313,15 @@ export function coolLedUxCapabilities(
       id: "device-info",
       label: "Device information",
       supported: true,
-      live: exact,
+      // Bounded query is live after family evidence; geometry is not physical validation.
+      live: true,
       risk: "read-only",
       persistence: "none",
-      evidenceConfidence: "observed",
+      evidenceConfidence: exact ? "observed" : "inferred",
       validation: exact ? "verified" : "experimental",
-      evidenceRefs: ["iledhat-coolledux-probe", "coolledux-ble@4f5656d"],
+      evidenceRefs: exact
+        ? ["iledhat-coolledux-probe", "coolledux-ble@4f5656d"]
+        : ["coolledux-ble@4f5656d"],
     },
     {
       id: "brightness",
@@ -308,7 +332,9 @@ export function coolLedUxCapabilities(
       persistence: "unknown",
       evidenceConfidence: "corroborated",
       validation: exact ? "verified" : "experimental",
-      evidenceRefs: ["iledhat-coolledux-brightness", "coolledux-ble@4f5656d"],
+      evidenceRefs: exact
+        ? ["iledhat-coolledux-brightness", "coolledux-ble@4f5656d"]
+        : ["coolledux-ble@4f5656d"],
     },
     // Untested on this panel and unchanged: source-confirmed upstream only.
     {
@@ -328,7 +354,7 @@ export function coolLedUxCapabilities(
         ? "Static frame (verified one-frame Animation route)"
         : "Static frame (stored program)",
       supported: true,
-      live: exact,
+      live: exact || stillGeometryReason(profile) === null,
       ...persistent,
       ...demonstrated,
     },
@@ -346,14 +372,14 @@ export function coolLedUxCapabilities(
         ? "Rendered text (via the verified static route)"
         : "Rendered text (stored program)",
       supported: true,
-      live: exact,
+      live: exact || stillGeometryReason(profile) === null,
       ...persistent,
       ...viaSubstrate,
     },
     // GIF depends on a decoder this panel has never been observed running.
     {
       id: "gif",
-      label: "GIF (stored program)",
+      label: "Native GIF decoder (experimental)",
       supported: true,
       live: exact,
       ...persistent,
@@ -400,6 +426,8 @@ export function createCoolLedUxPlan(
       execution = "live";
       responseExpectation = {
         type: "notification",
+        endpoints: [COOLLED_ENDPOINT],
+        dispatchPacketIndex: 0,
         kind: "device-info",
         opcode: COOLLEDUX_OPCODES.deviceInfo,
         required: true,
@@ -409,10 +437,14 @@ export function createCoolLedUxPlan(
       break;
     case "SetBrightness":
       bytes = encodeBrightness(operation.raw);
-      validation = "verified";
+      validation = isReviewedIledHat(context.profile)
+        ? "verified"
+        : "experimental";
       execution = "live";
       responseExpectation = {
         type: "notification",
+        endpoints: [COOLLED_ENDPOINT],
+        dispatchPacketIndex: 0,
         kind: "command-echo",
         opcode: COOLLEDUX_OPCODES.brightness,
         required: true,
@@ -448,9 +480,7 @@ export function createCoolLedUxPlan(
     purpose,
     evidenceRefs: [
       "coolledux-ble@4f5656d",
-      ...(context.profile.id === ILEDHAT_PROFILE_ID
-        ? ["iledhat-nrf-2026-08-31"]
-        : []),
+      ...(isReviewedIledHat(context.profile) ? ["iledhat-nrf-2026-08-31"] : []),
     ],
     packets: Object.freeze([packet]),
     responseExpectation,
@@ -638,7 +668,7 @@ function createContentPlan(
     delayAfterMs: compiled.pacingMs,
   }));
   const verifiedRoutine =
-    profile.id === ILEDHAT_PROFILE_ID &&
+    isReviewedIledHat(profile) &&
     operation.type !== "ShowGif" &&
     operation.type !== "ShowDiagnostic";
   return Object.freeze({
@@ -655,14 +685,16 @@ function createContentPlan(
     purpose: "operation" as const,
     evidenceRefs: [
       "coolledux-ble@4f5656d",
-      ...(profile.id === ILEDHAT_PROFILE_ID ? ["iledhat-nrf-2026-08-31"] : []),
+      ...(isReviewedIledHat(profile) ? ["iledhat-nrf-2026-08-31"] : []),
     ],
     packets: Object.freeze(packets),
     responseExpectation: { type: "none" as const },
     timeoutMs: 15000,
     recoveryNotes: [
       "This replaces the stored display program.",
-      "The hardware reset path has been observed to restore factory content; automatic restoration is not implemented or verified.",
+      isReviewedIledHat(profile)
+        ? "The hardware reset path has been observed to restore factory content; automatic restoration is not implemented or verified."
+        : "Existing content cannot be read back; restoration and hardware reset behavior have not been verified on this target.",
     ],
     metadata: {
       family: "CoolLEDUX",

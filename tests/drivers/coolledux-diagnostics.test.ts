@@ -245,6 +245,9 @@ describe("no general raw writer", () => {
       "animation-static-raster",
       "pixel-channel-probe",
       "color-white-probe",
+      "still-bootstrap",
+      "still-raw-channels",
+      "still-encoder",
     ]);
   });
 

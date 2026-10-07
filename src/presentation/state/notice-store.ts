@@ -7,28 +7,60 @@ interface Ports {
 }
 export class NoticeStore {
   private _busy: string | null = null;
-  private _error: string | null = null;
+  private errors = new Map<
+    string,
+    {
+      message: string;
+      workspace: ReturnType<
+        ReturnType<Ports["workspaceStore"]>["getController"]
+      >;
+      version: number;
+    }
+  >();
+  private errorVersion = 0;
+  private ownerOperations = new Map<string, number>();
   private _info: string | null = null;
   private _operationVersion = 0;
   private active = new Map<number, string>();
   constructor(private readonly ports: Ports) {}
+  captureContext() {
+    return { errors: this.errors, info: this._info };
+  }
+  restoreContext(
+    state: ReturnType<NoticeStore["captureContext"]> | null,
+  ): void {
+    this.errors = state?.errors ?? new Map();
+    this._info = state?.info ?? null;
+  }
   setInfo(value: NoticeStore["_info"]): void {
     this._info = value;
   }
-  setError(value: NoticeStore["_error"]): void {
-    this._error = value;
+  setError(value: string | null, owner = "notice"): void {
+    if (value === null) this.errors.delete(owner);
+    else
+      this.errors.set(owner, {
+        message: value,
+        workspace: this.ports.workspaceStore().getController(),
+        version: ++this.errorVersion,
+      });
   }
   getBusy() {
     return this._busy;
   }
   getError() {
-    return this._error;
+    const workspace = this.ports.workspaceStore().getController();
+    for (const [owner, error] of this.errors)
+      if (error.workspace !== workspace) this.errors.delete(owner);
+    return (
+      [...this.errors.values()].sort((a, b) => b.version - a.version)[0]
+        ?.message ?? null
+    );
   }
   getInfo() {
     return this._info;
   }
   clearMessage(): void {
-    this._error = null;
+    this.errors.clear();
     this._info = null;
     this.ports.snapshotStore()._emit();
   }
@@ -37,16 +69,27 @@ export class NoticeStore {
     const workspace = this.ports.workspaceStore().getController();
     this.active.set(operation, label);
     this._busy = label;
-    this._error = null;
+    this._info = null;
+    const originErrors = this.errors;
+    const previousError = originErrors.get(label);
+    this.ownerOperations.set(label, operation);
     this.ports.snapshotStore()._emit();
     try {
       await action();
+      if (
+        originErrors.get(label) === previousError &&
+        this.ownerOperations.get(label) === operation
+      )
+        originErrors.delete(label);
     } catch (error) {
       if (
-        operation === this._operationVersion &&
+        this.ownerOperations.get(label) === operation &&
         workspace === this.ports.workspaceStore().getController()
       )
-        this._error = error instanceof Error ? error.message : String(error);
+        this.setError(
+          error instanceof Error ? error.message : String(error),
+          label,
+        );
     } finally {
       this.active.delete(operation);
       this._busy = [...this.active.values()].at(-1) ?? null;
